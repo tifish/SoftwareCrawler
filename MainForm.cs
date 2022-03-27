@@ -23,6 +23,7 @@ namespace SoftwareCrawler
                 _mainForm.downloadAllToolStripMenuItem.Enabled = false;
                 _mainForm.testSelectedToolStripMenuItem.Enabled = false;
                 _mainForm.testAllToolStripMenuItem.Enabled = false;
+                _mainForm.reloadToolStripMenuItem.Enabled = false;
             }
 
             public void Dispose()
@@ -31,6 +32,7 @@ namespace SoftwareCrawler
                 _mainForm.downloadAllToolStripMenuItem.Enabled = true;
                 _mainForm.testSelectedToolStripMenuItem.Enabled = true;
                 _mainForm.testAllToolStripMenuItem.Enabled = true;
+                _mainForm.reloadToolStripMenuItem.Enabled = true;
             }
         }
 
@@ -87,10 +89,8 @@ namespace SoftwareCrawler
                     item.ResetStatus();
 
                 foreach (var item in items)
-                {
                     if (!await item.Download(retryCount: 3))
                         success = false;
-                }
             }
 
             return success;
