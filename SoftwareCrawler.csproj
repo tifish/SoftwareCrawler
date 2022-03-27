@@ -22,6 +22,7 @@
         <PackageReference Include="HtmlAgilityPack" Version="1.11.42" />
         <PackageReference Include="Selenium.WebDriver" Version="4.1.0" />
         <PackageReference Include="Serilog.Sinks.File" Version="5.0.1-dev-00947" />
+        <PackageReference Include="System.CommandLine.DragonFruit" Version="0.4.0-alpha.22114.1" />
         <PackageReference Include="System.Text.Encoding.CodePages" Version="7.0.0-preview.2.22152.2" />
     </ItemGroup>
 

@@ -71,12 +71,14 @@ namespace SoftwareCrawler
                     item.ResetStatus();
 
                 foreach (var item in items)
-                    await item.Download();
+                    await item.Download(retryCount: 3);
             }
         }
 
-        private async void downloadAllToolStripMenuItem_Click(object sender, EventArgs e)
+        public async Task<bool> DownloadAll()
         {
+            var success = true;
+
             using (new DownloadUIDisabler(this))
             {
                 var items = SoftwareManager.Items.ToList();
@@ -85,8 +87,18 @@ namespace SoftwareCrawler
                     item.ResetStatus();
 
                 foreach (var item in items)
-                    await item.Download();
+                {
+                    if (!await item.Download(retryCount: 3))
+                        success = false;
+                }
             }
+
+            return success;
+        }
+
+        private async void downloadAllToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            await DownloadAll();
         }
 
         private async void testSelectedToolStripMenuItem_Click(object sender, EventArgs e)
