@@ -185,9 +185,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         {
             var success = await DownloadOnce(testOnly);
             if (success)
+            {
+                Logger.Information($"Download {Name} successfully, retryCount={i}");
                 return true;
+            }
         }
 
+        Logger.Warning($"Download {Name} failed, retryCount={retryCount}, error={ErrorMessage}");
         return false;
     }
 
@@ -369,7 +373,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                     }
                     else if (File.Exists(targetFile))
                     {
-                        if(fileTime.HasValue)
+                        if (fileTime.HasValue)
                             File.SetLastWriteTime(targetFile, fileTime.Value);
                     }
                 }

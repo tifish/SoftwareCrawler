@@ -109,9 +109,15 @@ public class BrowserObject
         {
             var dateString = response.GetHeaderByName("last-modified");
             if (DateTime.TryParse(dateString, CultureInfo.InvariantCulture.DateTimeFormat, DateTimeStyles.AssumeUniversal, out var date))
+            {
                 _owner._lastRespondTime = date;
+            }
             else
+            {
+                Logger.Warning($"Failed to parse last-modified header \"{dateString}\" of {request.Url}");
                 _owner._lastRespondTime = null;
+            }
+
             return false;
         }
     }
