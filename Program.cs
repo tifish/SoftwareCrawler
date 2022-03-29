@@ -14,7 +14,7 @@ static class Program
         bool forceClose)
     {
         Logger.Information($"Program starts with arguments: downloadAll={downloadAll}, autoClose={autoClose}, forceClose={forceClose}.");
-            
+
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
         // To customize application configuration such as set high DPI settings or default font,
@@ -35,7 +35,7 @@ static class Program
                     mainForm.Close();
             }
         }
-            
+
         Logger.Information("Program ends.");
     }
 }

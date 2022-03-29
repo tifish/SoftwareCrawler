@@ -180,16 +180,16 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public static readonly string SystemDownloadFolder = KnownFolders.GetPath(KnownFolder.Downloads);
 
     private bool _hasCancelled;
-    
+
     public async Task<bool> Download(bool testOnly = false, int retryCount = 0)
     {
         _hasCancelled = false;
-        
+
         for (var i = 0; i < retryCount + 1; i++)
         {
             if (_hasCancelled)
                 return false;
-            
+
             var success = await DownloadOnce(testOnly);
             if (success)
             {

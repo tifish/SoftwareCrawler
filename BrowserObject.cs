@@ -26,7 +26,7 @@ public class BrowserObject
         WebBrowser = new ChromiumWebBrowser("about:blank");
         WebBrowser.LoadingStateChanged += WebBrowserOnLoadingStateChanged;
         WebBrowser.FrameLoadStart += WebBrowserOnFrameLoadStart;
-        WebBrowser.LifeSpanHandler = new MyLifeSpanHandler();
+        WebBrowser.LifeSpanHandler = new MyLifeSpanHandler(this);
         WebBrowser.RequestHandler = new MyRequestHandler(this);
         WebBrowser.DownloadHandler = new MyDownloadHandler(this);
 
@@ -81,14 +81,24 @@ public class BrowserObject
 
     #endregion
 
-    #region Prevent popup window
+    #region Prevent popup window / get referer
+
+    private string _referer = string.Empty;
 
     private class MyLifeSpanHandler : LifeSpanHandler
     {
+        private readonly BrowserObject _owner;
+
+        public MyLifeSpanHandler(BrowserObject owner)
+        {
+            _owner = owner;
+        }
+
         protected override bool OnBeforePopup(IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame, string targetUrl, string targetFrameName, WindowOpenDisposition targetDisposition, bool userGesture, IPopupFeatures popupFeatures, IWindowInfo windowInfo, IBrowserSettings browserSettings, ref bool noJavascriptAccess, out IWebBrowser? newBrowser)
         {
             // Prevent popup windows.
             newBrowser = null;
+            _owner._referer = frame.Url;
             chromiumWebBrowser.LoadUrl(targetUrl);
             return true;
         }
@@ -96,7 +106,7 @@ public class BrowserObject
 
     #endregion
 
-    #region Get download header
+    #region Get download header / set referer
 
     private DateTime? _lastRespondTime;
 
@@ -128,16 +138,22 @@ public class BrowserObject
         {
             var dateString = response.GetHeaderByName("last-modified");
             if (DateTime.TryParse(dateString, CultureInfo.InvariantCulture.DateTimeFormat, DateTimeStyles.AssumeUniversal, out var date))
-            {
                 _owner._lastRespondTime = date;
-            }
             else
-            {
-                Logger.Warning($"Failed to parse last-modified header \"{dateString}\" of {request.Url}");
                 _owner._lastRespondTime = null;
-            }
 
             return false;
+        }
+
+        protected override CefReturnValue OnBeforeResourceLoad(IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame, IRequest request, IRequestCallback callback)
+        {
+            if (_owner._referer != string.Empty)
+            {
+                request.SetReferrer(_owner._referer, ReferrerPolicy.Origin);
+                _owner._referer = string.Empty;
+            }
+
+            return base.OnBeforeResourceLoad(chromiumWebBrowser, browser, frame, request, callback);
         }
     }
 

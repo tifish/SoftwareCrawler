@@ -37,7 +37,7 @@ public partial class MainForm : Form
             _mainForm.reloadToolStripMenuItem.Enabled = true;
 
             _mainForm.cancelToolStripMenuItem.Enabled = false;
-            
+
             _mainForm._currentDownloadItem = null;
         }
     }
