@@ -24,6 +24,8 @@ public partial class MainForm : Form
             _mainForm.testSelectedToolStripMenuItem.Enabled = false;
             _mainForm.testAllToolStripMenuItem.Enabled = false;
             _mainForm.reloadToolStripMenuItem.Enabled = false;
+
+            _mainForm.cancelToolStripMenuItem.Enabled = true;
         }
 
         public void Dispose()
@@ -33,6 +35,10 @@ public partial class MainForm : Form
             _mainForm.testSelectedToolStripMenuItem.Enabled = true;
             _mainForm.testAllToolStripMenuItem.Enabled = true;
             _mainForm.reloadToolStripMenuItem.Enabled = true;
+
+            _mainForm.cancelToolStripMenuItem.Enabled = false;
+            
+            _mainForm._currentDownloadItem = null;
         }
     }
 
@@ -60,10 +66,13 @@ public partial class MainForm : Form
         softwareListDataGridView.DataSource = new BindingSource(bindingList, null);
     }
 
+    private SoftwareItem? _currentDownloadItem;
+
     public async Task<bool> DownloadAll()
     {
         Logger.Information("DownloadAll starts.");
-        
+
+        _hasCancelled = false;
         var success = true;
 
         using (new DownloadUIDisabler(this))
@@ -71,21 +80,39 @@ public partial class MainForm : Form
             var items = SoftwareManager.Items.ToList();
 
             foreach (var item in items)
+            {
+                if (_hasCancelled)
+                {
+                    success = false;
+                    break;
+                }
+
                 item.ResetStatus();
+            }
 
             foreach (var item in items)
+            {
+                if (_hasCancelled)
+                {
+                    success = false;
+                    break;
+                }
+
+                _currentDownloadItem = item;
                 if (!await item.Download(retryCount: 3))
                     success = false;
+            }
         }
 
         Logger.Information($"DownloadAll ends with success = {success}.");
         return success;
     }
-  
+
     public async Task<bool> DownloadSelected()
     {
         Logger.Information("DownloadSelected starts.");
-        
+
+        _hasCancelled = false;
         var success = true;
 
         using (new DownloadUIDisabler(this))
@@ -96,16 +123,34 @@ public partial class MainForm : Form
                     items.Add(item);
 
             foreach (var item in items)
+            {
+                if (_hasCancelled)
+                {
+                    success = false;
+                    break;
+                }
+
                 item.ResetStatus();
+            }
 
             foreach (var item in items)
-                await item.Download(retryCount: 3);
+            {
+                if (_hasCancelled)
+                {
+                    success = false;
+                    break;
+                }
+
+                _currentDownloadItem = item;
+                if (!await item.Download(retryCount: 3))
+                    success = false;
+            }
         }
 
         Logger.Information($"DownloadSelected ends with success = {success}.");
         return success;
     }
-    
+
     private async void downloadSelectedToolStripMenuItem_Click(object sender, EventArgs e)
     {
         await DownloadSelected();
@@ -118,29 +163,40 @@ public partial class MainForm : Form
 
     private async void testSelectedToolStripMenuItem_Click(object sender, EventArgs e)
     {
+        _hasCancelled = false;
+
         using (new DownloadUIDisabler(this))
-        {            var items = softwareListDataGridView.SelectedRows.OfType<DataGridViewRow>()
+        {
+            var items = softwareListDataGridView.SelectedRows.OfType<DataGridViewRow>()
                 .Select(row => row.DataBoundItem as SoftwareItem)
                 .Where(item => item != null)
                 .ToList();
 
-            foreach (var item in items)
+            foreach (var item in items.TakeWhile(_ => !_hasCancelled))
                 item!.ResetStatus();
 
-            foreach (var item in items)
+            foreach (var item in items.TakeWhile(_ => !_hasCancelled))
+            {
+                _currentDownloadItem = item;
                 await item!.Download(true);
+            }
         }
     }
 
     private async void testAllToolStripMenuItem_Click(object sender, EventArgs e)
     {
+        _hasCancelled = false;
+
         using (new DownloadUIDisabler(this))
         {
-            foreach (var item in SoftwareManager.Items)
+            foreach (var item in SoftwareManager.Items.TakeWhile(_ => !_hasCancelled))
                 item.ResetStatus();
 
-            foreach (var item in SoftwareManager.Items)
+            foreach (var item in SoftwareManager.Items.TakeWhile(_ => !_hasCancelled))
+            {
+                _currentDownloadItem = item;
                 await item.Download(true);
+            }
         }
     }
 
@@ -224,5 +280,13 @@ public partial class MainForm : Form
                     UseShellExecute = true,
                 });
             });
+    }
+
+    private bool _hasCancelled;
+
+    private void cancelToolStripMenuItem_Click(object sender, EventArgs e)
+    {
+        _hasCancelled = true;
+        _currentDownloadItem?.CancelDownload();
     }
 }

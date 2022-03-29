@@ -2,7 +2,9 @@
 using System.Globalization;
 using CefSharp;
 using CefSharp.Handler;
+using CefSharp.Internals;
 using CefSharp.OffScreen;
+using Timer = System.Threading.Timer;
 
 namespace SoftwareCrawler;
 
@@ -38,8 +40,7 @@ public class BrowserObject
 
     private void WebBrowserOnFrameLoadStart(object? sender, FrameLoadStartEventArgs e)
     {
-        if (e.Frame.IsValid && e.Frame.IsMain)
-            _loadStartTaskCompletionSource?.TrySetResult(true);
+        _loadStartTaskCompletionSource?.TrySetResult(true);
     }
 
     private void WebBrowserOnLoadingStateChanged(object? sender, LoadingStateChangedEventArgs e)
@@ -48,16 +49,34 @@ public class BrowserObject
             _loadEndTaskCompletionSource?.TrySetResult(true);
     }
 
-    public async Task WaitForLoadStart()
+    private static Task<bool> WithTimeout(Task<bool> task, TimeSpan timeout)
     {
-        if (_loadStartTaskCompletionSource != null)
-            await _loadStartTaskCompletionSource.Task;
+        var result = new TaskCompletionSource<bool>(task.AsyncState);
+        var timer = new Timer(
+            state => ((TaskCompletionSource<bool>) state!).TrySetResult(false),
+            result, timeout, TimeSpan.FromMilliseconds(-1));
+        task.ContinueWith(_ =>
+        {
+            timer.Dispose();
+            result.TrySetFromTask(task);
+        }, TaskContinuationOptions.ExecuteSynchronously);
+        return result.Task;
     }
 
-    public async Task WaitForLoadEnd()
+    public async Task<bool> WaitForLoadStart(TimeSpan timeout)
+    {
+        if (_loadStartTaskCompletionSource != null)
+            return await WithTimeout(_loadStartTaskCompletionSource.Task, timeout);
+
+        return false;
+    }
+
+    public async Task<bool> WaitForLoadEnd(TimeSpan timeout)
     {
         if (_loadEndTaskCompletionSource != null)
-            await _loadEndTaskCompletionSource.Task;
+            return await WithTimeout(_loadEndTaskCompletionSource.Task, timeout);
+
+        return false;
     }
 
     #endregion
@@ -129,6 +148,8 @@ public class BrowserObject
     public EventHandler<DownloadItem>? BeginDownloadHandler;
     public EventHandler<DownloadItem>? DownloadProgressHandler;
 
+    private bool _hasDownloadCancelled;
+
     private class MyDownloadHandler : IDownloadHandler
     {
         private readonly BrowserObject _owner;
@@ -150,6 +171,12 @@ public class BrowserObject
             _latestDownloadID = downloadItem.Id;
             _suggestedFileName = downloadItem.SuggestedFileName;
 
+            if (_owner._hasDownloadCancelled)
+            {
+                _callback?.Cancel();
+                return;
+            }
+
             downloadItem.EndTime = _owner._lastRespondTime;
             _owner.BeginDownloadHandler?.Invoke(this, downloadItem);
 
@@ -167,6 +194,12 @@ public class BrowserObject
         public void OnDownloadUpdated(IWebBrowser chromiumWebBrowser, IBrowser browser, DownloadItem downloadItem,
             IDownloadItemCallback callback)
         {
+            if (_owner._hasDownloadCancelled)
+            {
+                _callback?.Cancel();
+                return;
+            }
+
             // Will be called once before OnBeforeDownload, keep callback to use in OnBeforeDownload.
             if (_callback == null && downloadItem.Id > _latestDownloadID)
             {
@@ -213,10 +246,10 @@ public class BrowserObject
 
     private TaskCompletionSource<bool>? _downloadTaskCompletionSource;
 
-    public async Task<bool> WaitForDownloaded()
+    public async Task<bool> WaitForDownloaded(TimeSpan timeout)
     {
         if (_downloadTaskCompletionSource != null)
-            return await _downloadTaskCompletionSource.Task;
+            return await WithTimeout(_downloadTaskCompletionSource.Task, timeout);
 
         return false;
     }
@@ -225,6 +258,8 @@ public class BrowserObject
 
     public void PrepareLoadEvents()
     {
+        _hasDownloadCancelled = false;
+
         _loadStartTaskCompletionSource = new TaskCompletionSource<bool>();
         _loadEndTaskCompletionSource = new TaskCompletionSource<bool>();
         _downloadTaskCompletionSource = new TaskCompletionSource<bool>();
@@ -290,5 +325,19 @@ public class BrowserObject
             return (await frame.EvaluateScriptAsync(script)).Success;
 
         return false;
+    }
+
+    public void Cancel()
+    {
+        _loadStartTaskCompletionSource?.TrySetResult(false);
+        _loadStartTaskCompletionSource = null;
+        _loadEndTaskCompletionSource?.TrySetResult(false);
+        _loadEndTaskCompletionSource = null;
+        _downloadTaskCompletionSource?.TrySetResult(false);
+        _downloadTaskCompletionSource = null;
+
+        _hasDownloadCancelled = true;
+
+        WebBrowser.LoadUrl("about:blank");
     }
 }

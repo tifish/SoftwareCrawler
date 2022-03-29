@@ -179,10 +179,17 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     public static readonly string SystemDownloadFolder = KnownFolders.GetPath(KnownFolder.Downloads);
 
+    private bool _hasCancelled;
+    
     public async Task<bool> Download(bool testOnly = false, int retryCount = 0)
     {
+        _hasCancelled = false;
+        
         for (var i = 0; i < retryCount + 1; i++)
         {
+            if (_hasCancelled)
+                return false;
+            
             var success = await DownloadOnce(testOnly);
             if (success)
             {
@@ -237,12 +244,14 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 if (ClickAfterLoaded)
                 {
                     Status = DownloadStatus.WaitingForLoadEnd;
-                    await Browser.WaitForLoadEnd();
+                    if (!await Browser.WaitForLoadEnd(TimeSpan.FromMinutes(1)))
+                        return Failed("Failed to wait for page load end.");
                 }
                 else
                 {
                     Status = DownloadStatus.WaitingForLoadStart;
-                    await Browser.WaitForLoadStart();
+                    if (!await Browser.WaitForLoadStart(TimeSpan.FromMinutes(1)))
+                        return Failed("Failed to wait for page load start.");
                 }
 
                 Browser.PrepareLoadEvents();
@@ -286,8 +295,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
             // Wait for download to complete.
             Status = DownloadStatus.Downloading;
-            if (!await Browser.WaitForDownloaded())
-                return Failed("Failed to download file");
+            if (!await Browser.WaitForDownloaded(TimeSpan.FromHours(2)))
+                return Failed("Failed to download file.");
 
             return Downloaded(testOnly ? DownloadStatus.Tested : DownloadStatus.Downloaded);
         }
@@ -446,6 +455,12 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         Status = DownloadStatus.Idle;
         Progress = string.Empty;
         ErrorMessage = string.Empty;
+    }
+
+    public void CancelDownload()
+    {
+        _hasCancelled = true;
+        Browser.Cancel();
     }
 }
 

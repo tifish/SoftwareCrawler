@@ -43,6 +43,8 @@
             this.errorMessageLabel = new System.Windows.Forms.Label();
             this.showDevToolsButton = new System.Windows.Forms.Button();
             this.softwareListDataGridView = new System.Windows.Forms.DataGridView();
+            this.toolStripSeparator4 = new System.Windows.Forms.ToolStripSeparator();
+            this.cancelToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.dataGridViewContextMenuStrip.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.softwareListDataGridView)).BeginInit();
             this.SuspendLayout();
@@ -56,12 +58,14 @@
             this.testSelectedToolStripMenuItem,
             this.testAllToolStripMenuItem,
             this.toolStripSeparator2,
+            this.cancelToolStripMenuItem,
+            this.toolStripSeparator4,
             this.reloadToolStripMenuItem,
             this.toolStripSeparator3,
             this.openWebPageToolStripMenuItem,
             this.openDownloadDirectoryToolStripMenuItem});
             this.dataGridViewContextMenuStrip.Name = "dataGridViewContextMenuStrip";
-            this.dataGridViewContextMenuStrip.Size = new System.Drawing.Size(210, 176);
+            this.dataGridViewContextMenuStrip.Size = new System.Drawing.Size(210, 226);
             // 
             // downloadSelectedToolStripMenuItem
             // 
@@ -117,14 +121,14 @@
             // 
             this.openWebPageToolStripMenuItem.Name = "openWebPageToolStripMenuItem";
             this.openWebPageToolStripMenuItem.Size = new System.Drawing.Size(209, 22);
-            this.openWebPageToolStripMenuItem.Text = "Open web page";
+            this.openWebPageToolStripMenuItem.Text = "Open &web page";
             this.openWebPageToolStripMenuItem.Click += new System.EventHandler(this.openWebPageToolStripMenuItem_Click);
             // 
             // openDownloadDirectoryToolStripMenuItem
             // 
             this.openDownloadDirectoryToolStripMenuItem.Name = "openDownloadDirectoryToolStripMenuItem";
             this.openDownloadDirectoryToolStripMenuItem.Size = new System.Drawing.Size(209, 22);
-            this.openDownloadDirectoryToolStripMenuItem.Text = "Open download directory";
+            this.openDownloadDirectoryToolStripMenuItem.Text = "&Open download directory";
             this.openDownloadDirectoryToolStripMenuItem.Click += new System.EventHandler(this.openDownloadDirectoryToolStripMenuItem_Click);
             // 
             // errorMessageLabel
@@ -171,6 +175,18 @@
             this.softwareListDataGridView.UserDeletedRow += new System.Windows.Forms.DataGridViewRowEventHandler(this.softwareListDataGridView_UserDeletedRow);
             this.softwareListDataGridView.MouseDown += new System.Windows.Forms.MouseEventHandler(this.softwareListDataGridView_MouseDown);
             // 
+            // toolStripSeparator4
+            // 
+            this.toolStripSeparator4.Name = "toolStripSeparator4";
+            this.toolStripSeparator4.Size = new System.Drawing.Size(206, 6);
+            // 
+            // cancelToolStripMenuItem
+            // 
+            this.cancelToolStripMenuItem.Name = "cancelToolStripMenuItem";
+            this.cancelToolStripMenuItem.Size = new System.Drawing.Size(209, 22);
+            this.cancelToolStripMenuItem.Text = "&Cancel";
+            this.cancelToolStripMenuItem.Click += new System.EventHandler(this.cancelToolStripMenuItem_Click);
+            // 
             // MainForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
@@ -203,5 +219,7 @@
         private ToolStripSeparator toolStripSeparator3;
         private ToolStripMenuItem openWebPageToolStripMenuItem;
         private ToolStripMenuItem openDownloadDirectoryToolStripMenuItem;
+        private ToolStripMenuItem cancelToolStripMenuItem;
+        private ToolStripSeparator toolStripSeparator4;
     }
 }
