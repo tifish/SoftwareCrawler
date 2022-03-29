@@ -212,7 +212,7 @@ public class BrowserObject
         {
             if (_owner._hasDownloadCancelled)
             {
-                _callback?.Cancel();
+                callback.Cancel();
                 return;
             }
 
