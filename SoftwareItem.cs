@@ -331,12 +331,18 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             }
 
             targetFile = Path.Combine(DownloadDirectory, fileName);
-            if (File.Exists(targetFile))
+            
+            var oldFile = targetFile;
+            if (!File.Exists(oldFile))
+                oldFile = Directory.GetFiles(DownloadDirectory, $"*{ext}").FirstOrDefault();
+            if (File.Exists(oldFile))
             {
-                var fileInfo = new FileInfo(targetFile);
+                var fileInfo = new FileInfo(oldFile);
                 if (fileInfo.Length == fileSize)
                 {
                     beginDownloadResult = BeginDownloadResult.Downloaded;
+                    targetFile = oldFile;
+                    fileName = Path.GetFileName(targetFile);
                     item.IsCancelled = true;
                     return;
                 }
@@ -373,11 +379,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
                 if (!testOnly)
                 {
-                    DeleteOldFile(targetFile);
                     if (File.Exists(downloadFile))
                     {
+                        DeleteOldFile(targetFile);
+                        
                         if (fileTime.HasValue)
                             File.SetLastWriteTime(downloadFile, fileTime.Value);
+
                         CopyFileIfChanged(downloadFile, targetFile, true);
                     }
                     else if (File.Exists(targetFile))
