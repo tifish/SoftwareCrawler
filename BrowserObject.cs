@@ -97,6 +97,9 @@ public class BrowserObject
         protected override bool OnBeforePopup(IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame, string targetUrl, string targetFrameName, WindowOpenDisposition targetDisposition, bool userGesture, IPopupFeatures popupFeatures, IWindowInfo windowInfo, IBrowserSettings browserSettings, ref bool noJavascriptAccess, out IWebBrowser? newBrowser)
         {
             // Prevent popup windows.
+            // https://obsproject.com/ won't start download if I redirect the popup window.
+            // Pass referer doesn't solve the problem.
+            // Can only be solve by get and open download url directly.  
             newBrowser = null;
             _owner._referer = frame.Url;
             chromiumWebBrowser.LoadUrl(targetUrl);
