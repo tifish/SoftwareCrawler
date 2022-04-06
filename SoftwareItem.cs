@@ -350,7 +350,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             targetFile = Path.Combine(DownloadDirectory, fileName);
 
             // Compare file size to determine download or not.
-            // Epic Lanucher download page may change its file name for each download.
+            // Epic Launcher download page may change its file name for each download.
             // Find the old file and check the size.
             var oldFile = File.Exists(targetFile)
                 ? targetFile
@@ -382,7 +382,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         // Called when download progress changes.
         void OnDownloadProgressHandler(object? o, DownloadItem item)
         {
-            // Dowload file name may change if same file exists.
+            // Download file name may change if same file exists.
             downloadFile = item.FullPath;
 
             Progress = $"{item.SuggestedFileName} - {item.PercentComplete:00}% - {item.ReceivedBytes:#,###} / {item.TotalBytes:#,###} Bytes - {item.CurrentSpeed / 1024:#,###} KB/s";
