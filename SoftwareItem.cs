@@ -142,11 +142,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             var value = prop.GetValue(this);
 
             if (prop.PropertyType == typeof(string))
-                return (string)(value ?? string.Empty);
+                return (string) (value ?? string.Empty);
 
             if (prop.PropertyType == typeof(int))
             {
-                var intValue = (int)value!;
+                var intValue = (int) value!;
                 return intValue switch
                 {
                     0 => string.Empty,
@@ -155,7 +155,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             }
 
             if (prop.PropertyType == typeof(bool))
-                return (bool)value! switch
+                return (bool) value! switch
                 {
                     true => "true",
                     false => string.Empty,
@@ -307,8 +307,22 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         }
         finally
         {
-            if (!testOnly && File.Exists(downloadFile))
-                File.Delete(downloadFile);
+            if (!testOnly && !string.IsNullOrEmpty(downloadFile))
+                while (true)
+                {
+                    try
+                    {
+                        if (File.Exists(downloadFile))
+                            File.Delete(downloadFile);
+                    }
+                    catch
+                    {
+                        await Task.Delay(1000);
+                        continue;
+                    }
+
+                    break;
+                }
 
             _uiSynchronizationContext = null;
             Browser.BeginDownloadHandler -= OnBeginDownloadHandler;
@@ -379,7 +393,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         {
             Status = finalStatus;
 
-            Progress = $"{fileName} - {(double)fileSize:#,###} Bytes";
+            Progress = $"{fileName} - {(double) fileSize:#,###} Bytes";
 
 
             if (!testOnly)
