@@ -335,9 +335,12 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
             targetFile = Path.Combine(DownloadDirectory, fileName);
 
-            var oldFile = targetFile;
-            if (!File.Exists(oldFile))
-                oldFile = Directory.GetFiles(DownloadDirectory, $"*{ext}").FirstOrDefault();
+            // Compare file size to determine download or not.
+            // Epic Lanucher download page may change its file name for each download.
+            // Find the old file and check the size.
+            var oldFile = File.Exists(targetFile)
+                ? targetFile
+                : Directory.GetFiles(DownloadDirectory, $"*{ext}").FirstOrDefault();
             if (File.Exists(oldFile))
             {
                 var fileInfo = new FileInfo(oldFile);
