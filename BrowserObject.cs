@@ -53,7 +53,7 @@ public class BrowserObject
     {
         var result = new TaskCompletionSource<bool>(task.AsyncState);
         var timer = new Timer(
-            state => ((TaskCompletionSource<bool>) state!).TrySetResult(false),
+            state => ((TaskCompletionSource<bool>)state!).TrySetResult(false),
             result, timeout, TimeSpan.FromMilliseconds(-1));
         task.ContinueWith(_ =>
         {
@@ -256,9 +256,9 @@ public class BrowserObject
             {
                 _owner._downloadTaskCompletionSource.TrySetResult(false);
             }
-            else
+            else // Download is interrupted unexpectedly
             {
-                throw new Exception("Unknown download state");
+                _owner._downloadTaskCompletionSource.TrySetResult(false);
             }
         }
     }

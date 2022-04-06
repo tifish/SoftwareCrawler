@@ -142,11 +142,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             var value = prop.GetValue(this);
 
             if (prop.PropertyType == typeof(string))
-                return (string) (value ?? string.Empty);
+                return (string)(value ?? string.Empty);
 
             if (prop.PropertyType == typeof(int))
             {
-                var intValue = (int) value!;
+                var intValue = (int)value!;
                 return intValue switch
                 {
                     0 => string.Empty,
@@ -155,7 +155,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             }
 
             if (prop.PropertyType == typeof(bool))
-                return (bool) value! switch
+                return (bool)value! switch
                 {
                     true => "true",
                     false => string.Empty,
@@ -307,6 +307,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         }
         finally
         {
+            if (!testOnly && File.Exists(downloadFile))
+                File.Delete(downloadFile);
+
             _uiSynchronizationContext = null;
             Browser.BeginDownloadHandler -= OnBeginDownloadHandler;
             Browser.DownloadProgressHandler -= OnDownloadProgressHandler;
@@ -331,7 +334,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             }
 
             targetFile = Path.Combine(DownloadDirectory, fileName);
-            
+
             var oldFile = targetFile;
             if (!File.Exists(oldFile))
                 oldFile = Directory.GetFiles(DownloadDirectory, $"*{ext}").FirstOrDefault();
@@ -362,9 +365,10 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         // Called when download progress changes.
         void OnDownloadProgressHandler(object? o, DownloadItem item)
         {
+            // Dowload file name may change if same file exists.
+            downloadFile = item.FullPath;
+
             Progress = $"{item.SuggestedFileName} - {item.PercentComplete:00}% - {item.ReceivedBytes:#,###} / {item.TotalBytes:#,###} Bytes - {item.CurrentSpeed / 1024:#,###} KB/s";
-            if (item.IsComplete)
-                Browser.DownloadProgressHandler -= OnDownloadProgressHandler;
         }
 
         // When download is complete, move file to target directory.
@@ -372,43 +376,35 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         {
             Status = finalStatus;
 
-            try
+            Progress = $"{fileName} - {(double)fileSize:#,###} Bytes";
+
+
+            if (!testOnly)
             {
-                Progress = $"{fileName} - {(double) fileSize:#,###} Bytes";
-
-
-                if (!testOnly)
+                if (File.Exists(downloadFile))
                 {
-                    if (File.Exists(downloadFile))
-                    {
-                        DeleteOldFile(targetFile);
-                        
-                        if (fileTime.HasValue)
-                            File.SetLastWriteTime(downloadFile, fileTime.Value);
+                    DeleteOldFile(targetFile);
 
-                        CopyFileIfChanged(downloadFile, targetFile, true);
-                    }
-                    else if (File.Exists(targetFile))
-                    {
-                        if (fileTime.HasValue)
-                            File.SetLastWriteTime(targetFile, fileTime.Value);
-                    }
+                    if (fileTime.HasValue)
+                        File.SetLastWriteTime(downloadFile, fileTime.Value);
+
+                    CopyFileIfChanged(downloadFile, targetFile, true);
                 }
-
-                if (string.IsNullOrEmpty(DownloadDirectory2))
-                    return true;
-
-                if (!testOnly)
+                else if (File.Exists(targetFile))
                 {
-                    var targetFile2 = Path.Combine(DownloadDirectory2, fileName);
-                    DeleteOldFile(targetFile2);
-                    CopyFileIfChanged(targetFile, targetFile2);
+                    if (fileTime.HasValue)
+                        File.SetLastWriteTime(targetFile, fileTime.Value);
                 }
             }
-            finally
+
+            if (string.IsNullOrEmpty(DownloadDirectory2))
+                return true;
+
+            if (!testOnly)
             {
-                if (!testOnly && File.Exists(downloadFile))
-                    File.Delete(downloadFile);
+                var targetFile2 = Path.Combine(DownloadDirectory2, fileName);
+                DeleteOldFile(targetFile2);
+                CopyFileIfChanged(targetFile, targetFile2);
             }
 
             return true;
@@ -431,6 +427,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             Status = DownloadStatus.Failed;
             ErrorMessage = errorMessage;
             Progress = string.Empty;
+
             return false;
         }
     }
