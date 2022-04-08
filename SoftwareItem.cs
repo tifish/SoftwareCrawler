@@ -228,50 +228,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             Browser.Load(WebPage);
 
             // Click links, last link is the download link.
-            var xPathOrScripts = string.IsNullOrWhiteSpace(XPathOrScripts)
-                ? new List<string>()
-                : XPathOrScripts.Split('`')
-                    .Select(x => x.Trim())
-                    .ToList();
-            var frameNames = string.IsNullOrWhiteSpace(Frames)
-                ? new List<string>()
-                : Frames.Split('`')
-                    .Select(x => x.Trim())
-                    .ToList();
-
-            for (var i = 0; i < xPathOrScripts.Count; i++)
-            {
-                if (ClickAfterLoaded)
-                {
-                    Status = DownloadStatus.WaitingForLoadEnd;
-                    if (!await Browser.WaitForLoadEnd(TimeSpan.FromMinutes(1)))
-                        return Failed("Failed to wait for page load end.");
-                }
-                else
-                {
-                    Status = DownloadStatus.WaitingForLoadStart;
-                    if (!await Browser.WaitForLoadStart(TimeSpan.FromMinutes(1)))
-                        return Failed("Failed to wait for page load start.");
-                }
-
-                Browser.PrepareLoadEvents();
-
-                var xpathOrScript = xPathOrScripts[i];
-                var frameName = i < frameNames.Count ? frameNames[i] : string.Empty;
-
-                if (xpathOrScript.StartsWith('/'))
-                {
-                    Status = DownloadStatus.Clicking;
-                    if (!await Browser.TryClick(xpathOrScript, frameName))
-                        return Failed($"Failed to click {xpathOrScript}");
-                }
-                else
-                {
-                    Status = DownloadStatus.ExecutingScript;
-                    if (!await Browser.TryEvaluateJavascript(xpathOrScript, frameName))
-                        return Failed($"Failed to execute {xpathOrScript}");
-                }
-            }
+            if (!await ClickAndTriggerDownload())
+                return false;
 
             // Wait for download to start.
             Status = DownloadStatus.WaitingForDownload;
@@ -329,6 +287,56 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             _uiSynchronizationContext = null;
             Browser.BeginDownloadHandler -= OnBeginDownloadHandler;
             Browser.DownloadProgressHandler -= OnDownloadProgressHandler;
+        }
+
+        async Task<bool> ClickAndTriggerDownload()
+        {
+            var xPathOrScripts = string.IsNullOrWhiteSpace(XPathOrScripts)
+                ? new List<string>()
+                : XPathOrScripts.Split('`')
+                    .Select(x => x.Trim())
+                    .ToList();
+            var frameNames = string.IsNullOrWhiteSpace(Frames)
+                ? new List<string>()
+                : Frames.Split('`')
+                    .Select(x => x.Trim())
+                    .ToList();
+
+            for (var i = 0; i < xPathOrScripts.Count; i++)
+            {
+                if (ClickAfterLoaded)
+                {
+                    Status = DownloadStatus.WaitingForLoadEnd;
+                    if (!await Browser.WaitForLoadEnd(TimeSpan.FromMinutes(1)))
+                        return Failed("Failed to wait for page load end.");
+                }
+                else
+                {
+                    Status = DownloadStatus.WaitingForLoadStart;
+                    if (!await Browser.WaitForLoadStart(TimeSpan.FromMinutes(1)))
+                        return Failed("Failed to wait for page load start.");
+                }
+
+                Browser.PrepareLoadEvents();
+
+                var xpathOrScript = xPathOrScripts[i];
+                var frameName = i < frameNames.Count ? frameNames[i] : string.Empty;
+
+                if (xpathOrScript.StartsWith('/'))
+                {
+                    Status = DownloadStatus.Clicking;
+                    if (!await Browser.TryClick(xpathOrScript, frameName))
+                        return Failed($"Failed to click {xpathOrScript}");
+                }
+                else
+                {
+                    Status = DownloadStatus.ExecutingScript;
+                    if (!await Browser.TryEvaluateJavascript(xpathOrScript, frameName))
+                        return Failed($"Failed to execute {xpathOrScript}");
+                }
+            }
+
+            return true;
         }
 
         // Called when download starts, decide whether to download.
