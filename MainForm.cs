@@ -134,10 +134,7 @@ public partial class MainForm : Form
 
         using (new DownloadUIDisabler(this))
         {
-            var items = new List<SoftwareItem>();
-            foreach (DataGridViewRow row in softwareListDataGridView.SelectedRows)
-                if (row.DataBoundItem is SoftwareItem item)
-                    items.Add(item);
+            var items = GetSelectedItems();
 
             foreach (var item in items)
             {
@@ -168,6 +165,16 @@ public partial class MainForm : Form
         return success;
     }
 
+    private List<SoftwareItem> GetSelectedItems()
+    {
+        var items = softwareListDataGridView.SelectedRows.OfType<DataGridViewRow>()
+            .OrderBy(row => row.Index)
+            .Select(row => row.DataBoundItem)
+            .OfType<SoftwareItem>()
+            .ToList();
+        return items;
+    }
+
     private async void downloadSelectedToolStripMenuItem_Click(object sender, EventArgs e)
     {
         await DownloadSelected();
@@ -184,10 +191,7 @@ public partial class MainForm : Form
 
         using (new DownloadUIDisabler(this))
         {
-            var items = softwareListDataGridView.SelectedRows.OfType<DataGridViewRow>()
-                .Select(row => row.DataBoundItem as SoftwareItem)
-                .Where(item => item != null)
-                .ToList();
+            var items = GetSelectedItems();
 
             foreach (var item in items.TakeWhile(_ => !_hasCancelled))
                 item!.ResetStatus();
