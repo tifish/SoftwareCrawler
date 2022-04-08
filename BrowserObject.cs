@@ -8,22 +8,65 @@ using Timer = System.Threading.Timer;
 
 namespace SoftwareCrawler;
 
+public enum BrowserType
+{
+    OffScreen,
+    WinForms,
+}
+
 public class BrowserObject
 {
     public static BrowserObject Browser { get; } = new();
 
-    public ChromiumWebBrowser WebBrowser = null!;
+    public BrowserType Type { get; private set; } = BrowserType.OffScreen;
 
-    public async Task Init()
+    public IWebBrowser WebBrowser = null!;
+
+    public async Task Init(BrowserType type, Control? parentForm)
     {
-        var settings = new CefSettings();
-        settings.CefCommandLineArgs.Add("disable-gpu", "1");
-        settings.CefCommandLineArgs.Add("disable-image-loading", "1");
-        settings.CachePath = Path.Combine(Path.GetFullPath("Cache"));
-        settings.PersistSessionCookies = true;
-        await Cef.InitializeAsync(settings);
+        _hasDownloadCancelled = false;
 
-        WebBrowser = new ChromiumWebBrowser("about:blank");
+        _loadStartTaskCompletionSource = null;
+        _loadEndTaskCompletionSource = null;
+        _downloadTaskCompletionSource = null;
+
+        Type = type;
+        switch (Type)
+        {
+            case BrowserType.OffScreen:
+                var offScreenSettings = new CefSettings();
+                offScreenSettings.CefCommandLineArgs.Add("disable-gpu", "1");
+                offScreenSettings.CefCommandLineArgs.Add("disable-image-loading", "1");
+                offScreenSettings.CachePath = Path.Combine(Path.GetFullPath("Cache"));
+                offScreenSettings.PersistSessionCookies = true;
+                await Cef.InitializeAsync(offScreenSettings);
+
+                WebBrowser = new ChromiumWebBrowser("about:blank");
+                break;
+            case BrowserType.WinForms:
+                var winFormsSettings = new CefSharp.WinForms.CefSettings();
+                winFormsSettings.CefCommandLineArgs.Add("disable-gpu", "1");
+                winFormsSettings.CefCommandLineArgs.Add("disable-image-loading", "1");
+                winFormsSettings.CachePath = Path.Combine(Path.GetFullPath("Cache"));
+                winFormsSettings.PersistSessionCookies = true;
+                await Cef.InitializeAsync(winFormsSettings);
+
+                var webBrowser = new CefSharp.WinForms.ChromiumWebBrowser("about:blank");
+
+                if (parentForm != null)
+                {
+                    webBrowser.Parent = parentForm;
+                    webBrowser.Dock = DockStyle.Fill;
+                    parentForm.Show();
+                    parentForm.Size = new Size(1280, 720);
+                }
+
+                WebBrowser = webBrowser;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
+
         WebBrowser.LoadingStateChanged += WebBrowserOnLoadingStateChanged;
         WebBrowser.FrameLoadStart += WebBrowserOnFrameLoadStart;
         WebBrowser.LifeSpanHandler = new MyLifeSpanHandler(this);
@@ -53,7 +96,7 @@ public class BrowserObject
     {
         var result = new TaskCompletionSource<bool>(task.AsyncState);
         var timer = new Timer(
-            state => ((TaskCompletionSource<bool>)state!).TrySetResult(false),
+            state => ((TaskCompletionSource<bool>) state!).TrySetResult(false),
             result, timeout, TimeSpan.FromMilliseconds(-1));
         task.ContinueWith(_ =>
         {

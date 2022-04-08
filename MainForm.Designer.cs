@@ -36,6 +36,8 @@
             this.testSelectedToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.testAllToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripSeparator2 = new System.Windows.Forms.ToolStripSeparator();
+            this.cancelToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripSeparator4 = new System.Windows.Forms.ToolStripSeparator();
             this.reloadToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripSeparator3 = new System.Windows.Forms.ToolStripSeparator();
             this.openWebPageToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -43,8 +45,8 @@
             this.errorMessageLabel = new System.Windows.Forms.Label();
             this.showDevToolsButton = new System.Windows.Forms.Button();
             this.softwareListDataGridView = new System.Windows.Forms.DataGridView();
-            this.toolStripSeparator4 = new System.Windows.Forms.ToolStripSeparator();
-            this.cancelToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.offScreenRadioButton = new System.Windows.Forms.RadioButton();
+            this.winFormRadioButton = new System.Windows.Forms.RadioButton();
             this.dataGridViewContextMenuStrip.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.softwareListDataGridView)).BeginInit();
             this.SuspendLayout();
@@ -65,7 +67,7 @@
             this.openWebPageToolStripMenuItem,
             this.openDownloadDirectoryToolStripMenuItem});
             this.dataGridViewContextMenuStrip.Name = "dataGridViewContextMenuStrip";
-            this.dataGridViewContextMenuStrip.Size = new System.Drawing.Size(210, 226);
+            this.dataGridViewContextMenuStrip.Size = new System.Drawing.Size(210, 204);
             // 
             // downloadSelectedToolStripMenuItem
             // 
@@ -104,6 +106,18 @@
             // 
             this.toolStripSeparator2.Name = "toolStripSeparator2";
             this.toolStripSeparator2.Size = new System.Drawing.Size(206, 6);
+            // 
+            // cancelToolStripMenuItem
+            // 
+            this.cancelToolStripMenuItem.Name = "cancelToolStripMenuItem";
+            this.cancelToolStripMenuItem.Size = new System.Drawing.Size(209, 22);
+            this.cancelToolStripMenuItem.Text = "&Cancel";
+            this.cancelToolStripMenuItem.Click += new System.EventHandler(this.cancelToolStripMenuItem_Click);
+            // 
+            // toolStripSeparator4
+            // 
+            this.toolStripSeparator4.Name = "toolStripSeparator4";
+            this.toolStripSeparator4.Size = new System.Drawing.Size(206, 6);
             // 
             // reloadToolStripMenuItem
             // 
@@ -156,8 +170,8 @@
             // 
             this.softwareListDataGridView.AllowUserToOrderColumns = true;
             this.softwareListDataGridView.AllowUserToResizeRows = false;
-            this.softwareListDataGridView.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
-            | System.Windows.Forms.AnchorStyles.Left) 
+            this.softwareListDataGridView.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom)
+            | System.Windows.Forms.AnchorStyles.Left)
             | System.Windows.Forms.AnchorStyles.Right)));
             this.softwareListDataGridView.AutoSizeColumnsMode = System.Windows.Forms.DataGridViewAutoSizeColumnsMode.AllCells;
             this.softwareListDataGridView.ClipboardCopyMode = System.Windows.Forms.DataGridViewClipboardCopyMode.Disable;
@@ -175,23 +189,39 @@
             this.softwareListDataGridView.UserDeletedRow += new System.Windows.Forms.DataGridViewRowEventHandler(this.softwareListDataGridView_UserDeletedRow);
             this.softwareListDataGridView.MouseDown += new System.Windows.Forms.MouseEventHandler(this.softwareListDataGridView_MouseDown);
             // 
-            // toolStripSeparator4
+            // offScreenRadioButton
             // 
-            this.toolStripSeparator4.Name = "toolStripSeparator4";
-            this.toolStripSeparator4.Size = new System.Drawing.Size(206, 6);
+            this.offScreenRadioButton.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
+            this.offScreenRadioButton.AutoSize = true;
+            this.offScreenRadioButton.Checked = true;
+            this.offScreenRadioButton.Location = new System.Drawing.Point(963, 648);
+            this.offScreenRadioButton.Name = "offScreenRadioButton";
+            this.offScreenRadioButton.Size = new System.Drawing.Size(80, 19);
+            this.offScreenRadioButton.TabIndex = 6;
+            this.offScreenRadioButton.TabStop = true;
+            this.offScreenRadioButton.Text = "Off Screen";
+            this.offScreenRadioButton.UseVisualStyleBackColor = true;
+            this.offScreenRadioButton.Click += new System.EventHandler(this.browserTypeRadioButton_Click);
             // 
-            // cancelToolStripMenuItem
+            // winFormRadioButton
             // 
-            this.cancelToolStripMenuItem.Name = "cancelToolStripMenuItem";
-            this.cancelToolStripMenuItem.Size = new System.Drawing.Size(209, 22);
-            this.cancelToolStripMenuItem.Text = "&Cancel";
-            this.cancelToolStripMenuItem.Click += new System.EventHandler(this.cancelToolStripMenuItem_Click);
+            this.winFormRadioButton.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
+            this.winFormRadioButton.AutoSize = true;
+            this.winFormRadioButton.Location = new System.Drawing.Point(1049, 648);
+            this.winFormRadioButton.Name = "winFormRadioButton";
+            this.winFormRadioButton.Size = new System.Drawing.Size(82, 19);
+            this.winFormRadioButton.TabIndex = 7;
+            this.winFormRadioButton.Text = "Win Forms";
+            this.winFormRadioButton.UseVisualStyleBackColor = true;
+            this.winFormRadioButton.Click += new System.EventHandler(this.browserTypeRadioButton_Click);
             // 
             // MainForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1264, 681);
+            this.Controls.Add(this.winFormRadioButton);
+            this.Controls.Add(this.offScreenRadioButton);
             this.Controls.Add(this.errorMessageLabel);
             this.Controls.Add(this.showDevToolsButton);
             this.Controls.Add(this.softwareListDataGridView);
@@ -221,5 +251,7 @@
         private ToolStripMenuItem openDownloadDirectoryToolStripMenuItem;
         private ToolStripMenuItem cancelToolStripMenuItem;
         private ToolStripSeparator toolStripSeparator4;
+        private RadioButton offScreenRadioButton;
+        private RadioButton winFormRadioButton;
     }
 }

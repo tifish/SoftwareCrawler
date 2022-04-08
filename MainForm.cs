@@ -26,6 +26,9 @@ public partial class MainForm : Form
             _mainForm.reloadToolStripMenuItem.Enabled = false;
 
             _mainForm.cancelToolStripMenuItem.Enabled = true;
+
+            _mainForm.offScreenRadioButton.Enabled = false;
+            _mainForm.winFormRadioButton.Enabled = false;
         }
 
         public void Dispose()
@@ -38,6 +41,9 @@ public partial class MainForm : Form
 
             _mainForm.cancelToolStripMenuItem.Enabled = false;
 
+            _mainForm.offScreenRadioButton.Enabled = true;
+            _mainForm.winFormRadioButton.Enabled = true;
+
             _mainForm._currentDownloadItem = null;
         }
     }
@@ -48,14 +54,25 @@ public partial class MainForm : Form
 
         using (new DownloadUIDisabler(this))
         {
-            await Reload();
-            await Browser.Init();
+            await Settings.Load();
 
-            // var browserForm = new Form();
-            // browserForm.Controls.Add(WebBrowser.Browser);
-            // WebBrowser.Browser.Dock = DockStyle.Fill;
-            // browserForm.Show();
-            // browserForm.Size = new Size(1280, 720);
+            Control? parentForm = null;
+            switch (Settings.BrowserType)
+            {
+                case BrowserType.OffScreen:
+                    offScreenRadioButton.Checked = true;
+                    break;
+                case BrowserType.WinForms:
+                    winFormRadioButton.Checked = true;
+
+                    parentForm = new Form();
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            await Reload();
+            await Browser.Init(Settings.BrowserType, parentForm);
         }
     }
 
@@ -288,5 +305,21 @@ public partial class MainForm : Form
     {
         _hasCancelled = true;
         _currentDownloadItem?.CancelDownload();
+    }
+
+    private void Restart()
+    {
+        Process.Start(Application.ExecutablePath);
+        Application.Exit();
+    }
+
+    private async void browserTypeRadioButton_Click(object sender, EventArgs e)
+    {
+        Settings.BrowserType = offScreenRadioButton.Checked
+            ? BrowserType.OffScreen
+            : BrowserType.WinForms;
+        await Settings.Save();
+
+        Restart();
     }
 }
