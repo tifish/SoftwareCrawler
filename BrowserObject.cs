@@ -18,17 +18,12 @@ public class BrowserObject
 {
     public static BrowserObject Browser { get; } = new();
 
-    public BrowserType Type { get; private set; } = BrowserType.OffScreen;
+    public static BrowserType Type { get; private set; } = BrowserType.OffScreen;
 
-    public IWebBrowser WebBrowser = null!;
-
-    public async Task Init(BrowserType type, Control? parentForm = null)
+    public async Task<bool> SetType(BrowserType type)
     {
-        _hasDownloadCancelled = false;
-
-        _loadStartTaskCompletionSource = null;
-        _loadEndTaskCompletionSource = null;
-        _downloadTaskCompletionSource = null;
+        if (Cef.IsInitialized)
+            return false;
 
         Type = type;
         switch (Type)
@@ -40,8 +35,6 @@ public class BrowserObject
                 offScreenSettings.CachePath = Path.Combine(Path.GetFullPath("Cache"));
                 offScreenSettings.PersistSessionCookies = true;
                 await Cef.InitializeAsync(offScreenSettings);
-
-                WebBrowser = new ChromiumWebBrowser("about:blank");
                 break;
             case BrowserType.WinForms:
                 var winFormsSettings = new CefSharp.WinForms.CefSettings();
@@ -50,7 +43,30 @@ public class BrowserObject
                 winFormsSettings.CachePath = Path.Combine(Path.GetFullPath("Cache"));
                 winFormsSettings.PersistSessionCookies = true;
                 await Cef.InitializeAsync(winFormsSettings);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
 
+        return true;
+    }
+
+    public IWebBrowser WebBrowser = null!;
+
+    public async Task Init(Control? parentForm = null)
+    {
+        _hasDownloadCancelled = false;
+
+        _loadStartTaskCompletionSource = null;
+        _loadEndTaskCompletionSource = null;
+        _downloadTaskCompletionSource = null;
+
+        switch (Type)
+        {
+            case BrowserType.OffScreen:
+                WebBrowser = new ChromiumWebBrowser("about:blank");
+                break;
+            case BrowserType.WinForms:
                 var webBrowser = new CefSharp.WinForms.ChromiumWebBrowser("about:blank");
 
                 if (parentForm != null)
@@ -58,7 +74,6 @@ public class BrowserObject
                     webBrowser.Parent = parentForm;
                     webBrowser.Dock = DockStyle.Fill;
                     parentForm.Show();
-                    parentForm.Size = new Size(1280, 720);
                 }
 
                 WebBrowser = webBrowser;

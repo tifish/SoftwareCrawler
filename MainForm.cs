@@ -71,8 +71,12 @@ public partial class MainForm : Form
                     throw new ArgumentOutOfRangeException();
             }
 
+            await Browser.SetType(Settings.BrowserType);
+            await Browser.Init(parentForm);
+            if (parentForm != null)
+                parentForm.Size = new Size(1280, 720);
+
             await Reload();
-            await Browser.Init(Settings.BrowserType, parentForm);
         }
     }
 
