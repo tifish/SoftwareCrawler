@@ -212,7 +212,6 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         ErrorMessage = string.Empty;
 
         var fileName = string.Empty;
-        var ext = string.Empty;
         var fileSize = 0L;
         DateTime? fileTime = null;
         var targetFile = string.Empty;
@@ -341,7 +340,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             fileSize = item.TotalBytes;
             fileTime = item.EndTime;
 
-            ext = Path.GetExtension(fileName).ToLower();
+            var ext = Path.GetExtension(fileName).ToLower();
             if (ext is not (".exe" or ".msi" or ".zip"))
             {
                 Failed($"Unexpected file name: {fileName}");
@@ -355,9 +354,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             // Compare file size to determine download or not.
             // Epic Launcher download page may change its file name for each download.
             // Find the old file and check the size.
-            var oldFile = File.Exists(targetFile)
-                ? targetFile
-                : Directory.GetFiles(DownloadDirectory, $"*{ext}").FirstOrDefault();
+            var oldFile = targetFile;
+            if (!File.Exists(oldFile) && !string.IsNullOrWhiteSpace(FilePatternToDelete))
+                oldFile = Directory.GetFiles(DownloadDirectory, FilePatternToDelete).FirstOrDefault();
             if (File.Exists(oldFile))
             {
                 var fileInfo = new FileInfo(oldFile);
@@ -432,11 +431,10 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
         void DeleteOldFile(string targetFilePath)
         {
-            if (testOnly)
+            if (testOnly || string.IsNullOrWhiteSpace(FilePatternToDelete))
                 return;
 
-            var pattern = string.IsNullOrEmpty(FilePatternToDelete) ? $"*{ext}" : FilePatternToDelete;
-            Directory.GetFiles(Path.GetDirectoryName(targetFilePath)!, pattern)
+            Directory.GetFiles(Path.GetDirectoryName(targetFilePath)!, FilePatternToDelete)
                 .Where(file => string.Compare(file, targetFilePath, StringComparison.OrdinalIgnoreCase) != 0)
                 .ToList().ForEach(File.Delete);
         }
