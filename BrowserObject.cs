@@ -22,7 +22,7 @@ public class BrowserObject
 
     public IWebBrowser WebBrowser = null!;
 
-    public async Task Init(BrowserType type, Control? parentForm)
+    public async Task Init(BrowserType type, Control? parentForm = null)
     {
         _hasDownloadCancelled = false;
 
