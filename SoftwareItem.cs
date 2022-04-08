@@ -174,6 +174,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         NoDownload,
         Failed,
         Downloaded,
+        HasUpdate,
         Started,
     }
 
@@ -291,6 +292,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                     return false;
                 case BeginDownloadResult.Downloaded:
                     return Downloaded(DownloadStatus.SameFileAlreadyDownloaded);
+                case BeginDownloadResult.HasUpdate:
+                    return Downloaded(DownloadStatus.HasUpdate);
             }
 
             // Wait for download to complete.
@@ -298,7 +301,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             if (!await Browser.WaitForDownloaded(TimeSpan.FromHours(2)))
                 return Failed("Failed to download file.");
 
-            return Downloaded(testOnly ? DownloadStatus.Tested : DownloadStatus.Downloaded);
+            return Downloaded(DownloadStatus.Downloaded);
         }
         catch (Exception ex)
         {
@@ -370,7 +373,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
             if (testOnly)
             {
-                beginDownloadResult = BeginDownloadResult.Downloaded;
+                beginDownloadResult = BeginDownloadResult.HasUpdate;
                 item.IsCancelled = true;
                 return;
             }
@@ -497,6 +500,6 @@ public enum DownloadStatus
     Downloading,
     SameFileAlreadyDownloaded,
     Downloaded,
-    Tested,
+    HasUpdate,
     Failed,
 }
