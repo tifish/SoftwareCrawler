@@ -48,6 +48,8 @@ public partial class MainForm : Form
         }
     }
 
+    private readonly TaskCompletionSource<bool> _onLoadTaskCompletionSource = new();
+
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
@@ -78,6 +80,8 @@ public partial class MainForm : Form
 
             await Reload();
         }
+
+        _onLoadTaskCompletionSource.TrySetResult(true);
     }
 
     private async Task Reload()
@@ -92,6 +96,8 @@ public partial class MainForm : Form
     public async Task<bool> DownloadAll()
     {
         Logger.Information("DownloadAll starts.");
+
+        await _onLoadTaskCompletionSource.Task;
 
         _hasCancelled = false;
         var success = true;
@@ -132,6 +138,8 @@ public partial class MainForm : Form
     public async Task<bool> DownloadSelected()
     {
         Logger.Information("DownloadSelected starts.");
+
+        await _onLoadTaskCompletionSource.Task;
 
         _hasCancelled = false;
         var success = true;
@@ -198,11 +206,12 @@ public partial class MainForm : Form
             var items = GetSelectedItems();
 
             foreach (var item in items.TakeWhile(_ => !_hasCancelled))
-                item!.ResetStatus();
+                item.ResetStatus();
 
             foreach (var item in items.TakeWhile(_ => !_hasCancelled))
             {
                 _currentDownloadItem = item;
+                // ReSharper disable once RedundantSuppressNullableWarningExpression
                 await item!.Download(true);
             }
         }
