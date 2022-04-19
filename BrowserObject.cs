@@ -184,6 +184,12 @@ public class BrowserObject
         {
             return _headersProcessingResourceRequestHandler;
         }
+
+        protected override bool OnCertificateError(IWebBrowser chromiumWebBrowser, IBrowser browser, CefErrorCode errorCode, string requestUrl, ISslInfo sslInfo, IRequestCallback callback)
+        {
+            callback.Continue(true);
+            return true;
+        }
     }
 
     private class HeadersProcessingResourceRequestHandler : ResourceRequestHandler
