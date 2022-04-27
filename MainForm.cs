@@ -339,4 +339,11 @@ public partial class MainForm : Form
 
         Restart();
     }
+    
+    private void softwareListDataGridView_CurrentCellDirtyStateChanged(object sender, EventArgs e)
+    {
+        if (softwareListDataGridView.IsCurrentCellDirty
+            && softwareListDataGridView.CurrentCell.OwningColumn is DataGridViewCheckBoxColumn)
+            softwareListDataGridView.EndEdit();
+    }
 }

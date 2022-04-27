@@ -188,6 +188,7 @@
             this.softwareListDataGridView.UserAddedRow += new System.Windows.Forms.DataGridViewRowEventHandler(this.softwareListDataGridView_UserAddedRow);
             this.softwareListDataGridView.UserDeletedRow += new System.Windows.Forms.DataGridViewRowEventHandler(this.softwareListDataGridView_UserDeletedRow);
             this.softwareListDataGridView.MouseDown += new System.Windows.Forms.MouseEventHandler(this.softwareListDataGridView_MouseDown);
+            this.softwareListDataGridView.CurrentCellDirtyStateChanged += new System.EventHandler(this.softwareListDataGridView_CurrentCellDirtyStateChanged);
             // 
             // offScreenRadioButton
             // 
