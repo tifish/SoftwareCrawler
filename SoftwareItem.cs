@@ -45,11 +45,12 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         }
     }
 
+    public bool Enabled { get; set; } = true;
     public string Name { get; set; } = string.Empty;
     public string WebPage { get; set; } = string.Empty;
     public string XPathOrScripts { get; set; } = string.Empty;
     public string Frames { get; set; } = string.Empty;
-    public bool ClickAfterLoaded { get; set; }
+    public bool ClickAfterLoaded { get; set; } = false;
     public string DownloadDirectory { get; set; } = string.Empty;
     public string DownloadDirectory2 { get; set; } = string.Empty;
     public string FilePatternToDelete { get; set; } = string.Empty;
@@ -189,6 +190,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     public async Task<bool> Download(bool testOnly = false, int retryCount = 0)
     {
+        if (!Enabled)
+            return false;
+
         _hasCancelled = false;
 
         for (var i = 0; i < retryCount + 1; i++)
