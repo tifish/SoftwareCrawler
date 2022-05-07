@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using CefSharp;
@@ -51,8 +52,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public bool ClickAfterLoaded { get; set; }
     public string DownloadDirectory { get; set; } = string.Empty;
     public string DownloadDirectory2 { get; set; } = string.Empty;
-
     public string FilePatternToDelete { get; set; } = string.Empty;
+    public bool ExtractAfterDownload { get; set; } = false;
+    public string FilePatternToDeleteBeforeExtraction { get; set; } = string.Empty;
 
     private string _errorMessage = string.Empty;
 
@@ -182,6 +184,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     private bool _hasCancelled;
 
+    private static readonly List<string> _executableFileTypes = new() {".exe", ".msi"};
+    private static readonly List<string> _archiveFileTypes = new() {".zip", ".rar", ".7z"};
+
     public async Task<bool> Download(bool testOnly = false, int retryCount = 0)
     {
         _hasCancelled = false;
@@ -248,9 +253,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 case BeginDownloadResult.Failed:
                     return false;
                 case BeginDownloadResult.Downloaded:
-                    return Downloaded(DownloadStatus.SameFileAlreadyDownloaded);
+                    return await Downloaded(DownloadStatus.SameFileAlreadyDownloaded);
                 case BeginDownloadResult.HasUpdate:
-                    return Downloaded(DownloadStatus.HasUpdate);
+                    return await Downloaded(DownloadStatus.HasUpdate);
             }
 
             // Wait for download to complete.
@@ -258,7 +263,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             if (!await Browser.WaitForDownloaded(TimeSpan.FromHours(2)))
                 return Failed("Failed to download file.");
 
-            return Downloaded(DownloadStatus.Downloaded);
+            return await Downloaded(DownloadStatus.Downloaded);
         }
         catch (Exception ex)
         {
@@ -349,7 +354,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             fileTime = item.EndTime;
 
             var ext = Path.GetExtension(fileName).ToLower();
-            if (ext is not (".exe" or ".msi" or ".zip"))
+            if (!_executableFileTypes.Contains(ext) && !_archiveFileTypes.Contains(ext))
             {
                 Failed($"Unexpected file name: {fileName}");
                 beginDownloadResult = BeginDownloadResult.Failed;
@@ -399,40 +404,38 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         }
 
         // When download is complete, move file to target directory.
-        bool Downloaded(DownloadStatus finalStatus)
+        async Task<bool> Downloaded(DownloadStatus finalStatus)
         {
             Status = finalStatus;
 
             Progress = $"{fileName} - {(double) fileSize:#,###} Bytes";
 
+            if (testOnly)
+                return true;
 
-            if (!testOnly)
+            if (File.Exists(downloadFile))
             {
-                if (File.Exists(downloadFile))
-                {
-                    DeleteOldFile(targetFile);
+                DeleteOldFile(targetFile);
 
-                    if (fileTime.HasValue)
-                        File.SetLastWriteTime(downloadFile, fileTime.Value);
+                if (fileTime.HasValue)
+                    File.SetLastWriteTime(downloadFile, fileTime.Value);
 
-                    CopyFileIfChanged(downloadFile, targetFile, true);
-                }
-                else if (File.Exists(targetFile))
-                {
-                    if (fileTime.HasValue)
-                        File.SetLastWriteTime(targetFile, fileTime.Value);
-                }
+                await CopyFileIfChanged(downloadFile, targetFile, true);
+                await ExtractArchiveFile(targetFile);
+            }
+            else if (File.Exists(targetFile))
+            {
+                if (fileTime.HasValue)
+                    File.SetLastWriteTime(targetFile, fileTime.Value);
             }
 
             if (string.IsNullOrEmpty(DownloadDirectory2))
                 return true;
 
-            if (!testOnly)
-            {
-                var targetFile2 = Path.Combine(DownloadDirectory2, fileName);
-                DeleteOldFile(targetFile2);
-                CopyFileIfChanged(targetFile, targetFile2);
-            }
+            var targetFile2 = Path.Combine(DownloadDirectory2, fileName);
+            DeleteOldFile(targetFile2);
+            await CopyFileIfChanged(targetFile, targetFile2);
+            await ExtractArchiveFile(targetFile2);
 
             return true;
         }
@@ -458,20 +461,55 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         }
     }
 
-    private static void CopyFileIfChanged(string sourceFile, string targetFile2, bool move = false)
+    private static async Task CopyFileIfChanged(string sourceFile, string targetFile, bool move = false)
     {
-        var fileInfo = new FileInfo(sourceFile);
-        var fileInfo2 = new FileInfo(targetFile2);
+        var sourceFileInfo = new FileInfo(sourceFile);
+        var targetFileInfo = new FileInfo(targetFile);
 
-        if (fileInfo2.Exists)
-            if (fileInfo.Length == fileInfo2.Length && fileInfo.LastWriteTime == fileInfo2.LastWriteTime)
+        if (targetFileInfo.Exists)
+            if (sourceFileInfo.Length == targetFileInfo.Length && sourceFileInfo.LastWriteTime == targetFileInfo.LastWriteTime)
                 return;
 
+        await using (var source = File.Open(sourceFile, FileMode.Open, FileAccess.Read))
+        {
+            await using (var target = File.Create(targetFile))
+            {
+                await source.CopyToAsync(target);
+            }
+        }
+
         if (move)
-            File.Move(sourceFile, targetFile2, true);
-        else
-            File.Copy(sourceFile, targetFile2, true);
-        File.SetLastWriteTime(targetFile2, fileInfo.LastWriteTime);
+            File.Delete(sourceFile);
+
+        File.SetLastWriteTime(targetFile, sourceFileInfo.LastWriteTime);
+    }
+
+    private static readonly string sevenZipPath = Path.Combine(AppDomain.CurrentDomain.SetupInformation.ApplicationBase!, "7z.exe");
+
+    private async Task ExtractArchiveFile(string archiveFile)
+    {
+        if (!ExtractAfterDownload)
+            return;
+
+        if (!_archiveFileTypes.Contains(Path.GetExtension(archiveFile).ToLower()))
+            return;
+
+        var archiveDir = Path.GetDirectoryName(archiveFile)!;
+        if (FilePatternToDeleteBeforeExtraction != "")
+            Directory.GetFiles(archiveDir, FilePatternToDeleteBeforeExtraction)
+                .ToList().ForEach(File.Delete);
+
+        using var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = sevenZipPath,
+            Arguments = $@"x -y -o""{archiveDir}"" ""{archiveFile}""",
+            UseShellExecute = true,
+        });
+
+        if (process == null)
+            return;
+
+        await process.WaitForExitAsync();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
