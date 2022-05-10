@@ -191,7 +191,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public async Task<bool> Download(bool testOnly = false, int retryCount = 0)
     {
         if (!Enabled)
-            return false;
+            return true;
 
         _hasCancelled = false;
 
