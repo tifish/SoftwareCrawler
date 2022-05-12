@@ -220,6 +220,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         Status = DownloadStatus.Downloading;
         ErrorMessage = string.Empty;
 
+        if (DownloadDirectory == "")
+            return Failed("Download directory is empty.");
+        if (!Directory.Exists(DownloadDirectory))
+            return Failed("Download directory does not exist.");
+        if (DownloadDirectory2 != "" && !Directory.Exists(DownloadDirectory2))
+            return Failed("Download directory 2 does not exist.");
+
         var fileName = string.Empty;
         var fileSize = 0L;
         DateTime? fileTime = null;
