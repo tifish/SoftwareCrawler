@@ -93,6 +93,8 @@ public partial class MainForm : Form
 
     private SoftwareItem? _currentDownloadItem;
 
+    private const int DownloadRetryCount = 5;
+
     public async Task<bool> DownloadAll()
     {
         Logger.Information("DownloadAll starts.");
@@ -126,7 +128,7 @@ public partial class MainForm : Form
                 }
 
                 _currentDownloadItem = item;
-                if (!await item.Download(retryCount: 3))
+                if (!await item.Download(retryCount: DownloadRetryCount))
                     success = false;
             }
         }
@@ -168,7 +170,7 @@ public partial class MainForm : Form
                 }
 
                 _currentDownloadItem = item;
-                if (!await item.Download(retryCount: 3))
+                if (!await item.Download(retryCount: DownloadRetryCount))
                     success = false;
             }
         }
