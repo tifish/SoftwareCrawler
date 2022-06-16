@@ -206,6 +206,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 Logger.Information($"Download {Name} successfully, retryCount={i}");
                 return true;
             }
+
+            await Task.Delay(3000);
         }
 
         Logger.Warning($"Download {Name} failed, retryCount={retryCount}, error={ErrorMessage}");
