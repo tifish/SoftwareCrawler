@@ -456,9 +456,16 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             if (testOnly || string.IsNullOrWhiteSpace(FilePatternToDelete))
                 return;
 
-            Directory.GetFiles(Path.GetDirectoryName(targetFilePath)!, FilePatternToDelete)
-                .Where(file => string.Compare(file, targetFilePath, StringComparison.OrdinalIgnoreCase) != 0)
-                .ToList().ForEach(File.Delete);
+            try
+            {
+                Directory.GetFiles(Path.GetDirectoryName(targetFilePath)!, FilePatternToDelete)
+                    .Where(file => string.Compare(file, targetFilePath, StringComparison.OrdinalIgnoreCase) != 0)
+                    .ToList().ForEach(File.Delete);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to delete old file.");
+            }
         }
 
         // When download fails, return error message.
