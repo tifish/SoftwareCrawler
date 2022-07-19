@@ -157,7 +157,7 @@ public class BrowserObject
             // Prevent popup windows.
             // https://obsproject.com/ won't start download if I redirect the popup window.
             // Pass referer doesn't solve the problem.
-            // Can only be solve by get and open download url directly.  
+            // Can only be solve by get and open download url directly.
             newBrowser = null;
             _owner._referer = frame.Url;
             chromiumWebBrowser.LoadUrl(targetUrl);
@@ -255,6 +255,12 @@ public class BrowserObject
             _suggestedFileName = downloadItem.SuggestedFileName;
 
             if (_owner._hasDownloadCancelled)
+            {
+                _callback?.Cancel();
+                return;
+            }
+
+            if (_owner.BeginDownloadHandler == null)
             {
                 _callback?.Cancel();
                 return;
