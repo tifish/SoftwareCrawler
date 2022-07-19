@@ -12,10 +12,11 @@ public class SettingsObject
     public BrowserType BrowserType { get; set; }
     public string Proxy { get; set; } = "";
     public int DownloadRetryCount { get; set; } = 5;
+    public int DownloadRetryInterval { get; set; } = 3;
     public int LoadPageStartTimeout { get; set; } = 60;
+    public int LoadPageEndTimeout { get; set; } = 60;
     public int TryClickCount { get; set; } = 10;
     public int TryClickInterval { get; set; } = 1;
-    public int LoadPageEndTimeout { get; set; } = 60;
     public int StartDownloadTimeout { get; set; } = 60;
     public int DownloadTimeout { get; set; } = 7200;
 

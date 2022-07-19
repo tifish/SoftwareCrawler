@@ -196,24 +196,24 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
         _hasCancelled = false;
 
-        await Cef.UIThreadTaskFactory.StartNew(() =>
-        {
-            var proxyDict = new Dictionary<string, object>();
-            if (UseProxy && !string.IsNullOrEmpty(Settings.Proxy))
-            {
-                proxyDict["mode"] = "fixed_servers";
-                proxyDict["server"] = Settings.Proxy;
-            }
-
-            if (!Browser.WebBrowser.GetBrowserHost().RequestContext.SetPreference(
-                    "proxy", proxyDict, out var error))
-                Logger.Error("Set proxy error: {Error}", error!);
-        });
-
         for (var i = 0; i < retryCount + 1; i++)
         {
             if (_hasCancelled)
                 return false;
+
+            await Cef.UIThreadTaskFactory.StartNew(() =>
+            {
+                var proxyDict = new Dictionary<string, object>();
+                if (UseProxy && !string.IsNullOrEmpty(Settings.Proxy))
+                {
+                    proxyDict["mode"] = "fixed_servers";
+                    proxyDict["server"] = Settings.Proxy;
+                }
+
+                if (!Browser.WebBrowser.GetBrowserHost().RequestContext.SetPreference(
+                        "proxy", proxyDict, out var error))
+                    Logger.Error("Set proxy error: {Error}", error!);
+            });
 
             var success = await DownloadOnce(testOnly);
             if (success)
@@ -222,7 +222,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 return true;
             }
 
-            await Task.Delay(3000);
+            await Task.Delay(Settings.DownloadRetryInterval * 1000);
         }
 
         Logger.Warning("Download {Name} failed, retryCount={RetryCount}, error={ErrorMessage}", Name, retryCount, ErrorMessage);
