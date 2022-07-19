@@ -340,13 +340,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 if (ClickAfterLoaded)
                 {
                     Status = DownloadStatus.WaitingForLoadEnd;
-                    if (!await Browser.WaitForLoadEnd(TimeSpan.FromMinutes(1)))
+                    if (!await Browser.WaitForLoadEnd(TimeSpan.FromSeconds(Settings.LoadPageEndTimeout)))
                         return Failed("Failed to wait for page load end.");
                 }
                 else
                 {
                     Status = DownloadStatus.WaitingForLoadStart;
-                    if (!await Browser.WaitForLoadStart(TimeSpan.FromMinutes(1)))
+                    if (!await Browser.WaitForLoadStart(TimeSpan.FromSeconds(Settings.LoadPageStartTimeout)))
                         return Failed("Failed to wait for page load start.");
                 }
 
@@ -358,7 +358,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 if (xpathOrScript.StartsWith('/'))
                 {
                     Status = DownloadStatus.Clicking;
-                    if (!await Browser.TryClick(xpathOrScript, frameName))
+                    if (!await Browser.TryClick(xpathOrScript, frameName,
+                            Settings.TryClickCount, Settings.TryClickInterval * 1000))
                         return Failed($"Failed to click {xpathOrScript}");
                 }
                 else

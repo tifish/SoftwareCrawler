@@ -365,7 +365,7 @@ public class BrowserObject
         WebBrowser.Load(url);
     }
 
-    public async Task<bool> TryClick(string xpath, string frameName = "", int count = 10, int interval = 500)
+    public async Task<bool> TryClick(string xpath, string frameName, int count, int interval)
     {
         var success = false;
         for (var i = 0; i < count; i++)
