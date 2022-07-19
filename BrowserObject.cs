@@ -111,7 +111,7 @@ public class BrowserObject
     {
         var result = new TaskCompletionSource<bool>(task.AsyncState);
         var timer = new Timer(
-            state => ((TaskCompletionSource<bool>) state!).TrySetResult(false),
+            state => ((TaskCompletionSource<bool>)state!).TrySetResult(false),
             result, timeout, TimeSpan.FromMilliseconds(-1));
         task.ContinueWith(_ =>
         {
@@ -248,21 +248,20 @@ public class BrowserObject
         public void OnBeforeDownload(IWebBrowser chromiumWebBrowser, IBrowser browser, DownloadItem downloadItem,
             IBeforeDownloadCallback callback)
         {
-            if (callback.IsDisposed)
-                return;
-
             _latestDownloadID = downloadItem.Id;
             _suggestedFileName = downloadItem.SuggestedFileName;
 
             if (_owner._hasDownloadCancelled)
             {
-                _callback?.Cancel();
+                if (_callback is { IsDisposed: false })
+                    _callback?.Cancel();
                 return;
             }
 
             if (_owner.BeginDownloadHandler == null)
             {
-                _callback?.Cancel();
+                if (_callback is { IsDisposed: false })
+                    _callback.Cancel();
                 return;
             }
 
@@ -272,7 +271,10 @@ public class BrowserObject
             using (callback)
             {
                 if (downloadItem.IsCancelled)
-                    _callback?.Cancel();
+                {
+                    if (_callback is { IsDisposed: false })
+                        _callback?.Cancel();
+                }
                 else
                     callback.Continue(downloadItem.FullPath, false);
             }
@@ -285,7 +287,8 @@ public class BrowserObject
         {
             if (_owner._hasDownloadCancelled)
             {
-                callback.Cancel();
+                if (callback is { IsDisposed: false })
+                    callback.Cancel();
                 return;
             }
 
@@ -299,14 +302,16 @@ public class BrowserObject
             // If no download listener is registered then cancel the download.
             if (_owner._downloadTaskCompletionSource == null || _owner._downloadTaskCompletionSource.Task.IsCompleted)
             {
-                callback.Cancel();
+                if (callback is { IsDisposed: false })
+                    callback.Cancel();
                 return;
             }
 
             // Only keep the latest download.
             if (downloadItem.Id < _latestDownloadID)
             {
-                callback.Cancel();
+                if (callback is { IsDisposed: false })
+                    callback.Cancel();
                 return;
             }
 
