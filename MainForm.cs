@@ -93,11 +93,9 @@ public partial class MainForm : Form
 
     private SoftwareItem? _currentDownloadItem;
 
-    private const int DownloadRetryCount = 5;
-
     public async Task<bool> DownloadAll()
     {
-        Logger.Information("DownloadAll starts.");
+        Logger.Information("DownloadAll starts");
 
         await _onLoadTaskCompletionSource.Task;
 
@@ -128,18 +126,18 @@ public partial class MainForm : Form
                 }
 
                 _currentDownloadItem = item;
-                if (!await item.Download(retryCount: DownloadRetryCount))
+                if (!await item.Download(retryCount: Settings.DownloadRetryCount))
                     success = false;
             }
         }
 
-        Logger.Information($"DownloadAll ends with success = {success}.");
+        Logger.Information("DownloadAll ends with success = {Success}", success);
         return success;
     }
 
     public async Task<bool> DownloadSelected()
     {
-        Logger.Information("DownloadSelected starts.");
+        Logger.Information("DownloadSelected starts");
 
         await _onLoadTaskCompletionSource.Task;
 
@@ -170,12 +168,12 @@ public partial class MainForm : Form
                 }
 
                 _currentDownloadItem = item;
-                if (!await item.Download(retryCount: DownloadRetryCount))
+                if (!await item.Download(retryCount: Settings.DownloadRetryCount))
                     success = false;
             }
         }
 
-        Logger.Information($"DownloadSelected ends with success = {success}.");
+        Logger.Information("DownloadSelected ends with success = {Success}", success);
         return success;
     }
 
@@ -273,7 +271,7 @@ public partial class MainForm : Form
 
     private void softwareListDataGridView_CurrentCellChanged(object sender, EventArgs e)
     {
-        // errorMessageLabel bind to selected SoftwareItem 
+        // errorMessageLabel bind to selected SoftwareItem
         errorMessageLabel.DataBindings.Clear();
 
         if (softwareListDataGridView.CurrentRow?.DataBoundItem == null)
@@ -341,7 +339,7 @@ public partial class MainForm : Form
 
         Restart();
     }
-    
+
     private void softwareListDataGridView_CurrentCellDirtyStateChanged(object sender, EventArgs e)
     {
         if (softwareListDataGridView.IsCurrentCellDirty

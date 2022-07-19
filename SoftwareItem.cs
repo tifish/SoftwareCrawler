@@ -51,6 +51,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public string XPathOrScripts { get; set; } = string.Empty;
     public string Frames { get; set; } = string.Empty;
     public bool ClickAfterLoaded { get; set; } = false;
+    public bool UseProxy { get; set; } = false;
     public string DownloadDirectory { get; set; } = string.Empty;
     public string DownloadDirectory2 { get; set; } = string.Empty;
     public string FilePatternToDelete { get; set; } = string.Empty;
@@ -145,11 +146,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             var value = prop.GetValue(this);
 
             if (prop.PropertyType == typeof(string))
-                return (string) (value ?? string.Empty);
+                return (string)(value ?? string.Empty);
 
             if (prop.PropertyType == typeof(int))
             {
-                var intValue = (int) value!;
+                var intValue = (int)value!;
                 return intValue switch
                 {
                     0 => string.Empty,
@@ -158,7 +159,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             }
 
             if (prop.PropertyType == typeof(bool))
-                return (bool) value! switch
+                return (bool)value! switch
                 {
                     true => "true",
                     false => string.Empty,
@@ -185,8 +186,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     private bool _hasCancelled;
 
-    private static readonly List<string> _executableFileTypes = new() {".exe", ".msi"};
-    private static readonly List<string> _archiveFileTypes = new() {".zip", ".rar", ".7z"};
+    private static readonly List<string> ExecutableFileTypes = new() { ".exe", ".msi" };
+    private static readonly List<string> ArchiveFileTypes = new() { ".zip", ".rar", ".7z" };
 
     public async Task<bool> Download(bool testOnly = false, int retryCount = 0)
     {
@@ -194,6 +195,20 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             return true;
 
         _hasCancelled = false;
+
+        await Cef.UIThreadTaskFactory.StartNew(() =>
+        {
+            var proxyDict = new Dictionary<string, object>();
+            if (UseProxy && !string.IsNullOrEmpty(Settings.Proxy))
+            {
+                proxyDict["mode"] = "fixed_servers";
+                proxyDict["server"] = Settings.Proxy;
+            }
+
+            if (!Browser.WebBrowser.GetBrowserHost().RequestContext.SetPreference(
+                    "proxy", proxyDict, out var error))
+                Logger.Error("Set proxy error: {Error}", error!);
+        });
 
         for (var i = 0; i < retryCount + 1; i++)
         {
@@ -203,14 +218,14 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             var success = await DownloadOnce(testOnly);
             if (success)
             {
-                Logger.Information($"Download {Name} successfully, retryCount={i}");
+                Logger.Information("Download {Name} successfully, retryCount={RetryCount}", Name, i);
                 return true;
             }
 
             await Task.Delay(3000);
         }
 
-        Logger.Warning($"Download {Name} failed, retryCount={retryCount}, error={ErrorMessage}");
+        Logger.Warning("Download {Name} failed, retryCount={RetryCount}, error={ErrorMessage}", Name, retryCount, ErrorMessage);
         return false;
     }
 
@@ -251,7 +266,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
             // Wait for download to start.
             Status = DownloadStatus.WaitingForDownload;
-            var waitCounter = 20;
+            var waitCounter = Settings.StartDownloadTimeout * 2;
             while (beginDownloadResult == BeginDownloadResult.NoDownload)
             {
                 await Task.Delay(500);
@@ -273,14 +288,14 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
             // Wait for download to complete.
             Status = DownloadStatus.Downloading;
-            if (!await Browser.WaitForDownloaded(TimeSpan.FromHours(2)))
+            if (!await Browser.WaitForDownloaded(TimeSpan.FromSeconds(Settings.DownloadTimeout)))
                 return Failed("Failed to download file.");
 
             return await Downloaded(DownloadStatus.Downloaded);
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Download {Name} failed.", Name);
+            Logger.Error(ex, "Download {Name} failed", Name);
             return Failed(ex.Message);
         }
         finally
@@ -295,7 +310,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                     }
                     catch
                     {
-                        await Task.Delay(1000);
+                        await Task.Delay(500);
                         continue;
                     }
 
@@ -367,7 +382,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             fileTime = item.EndTime;
 
             var ext = Path.GetExtension(fileName).ToLower();
-            if (!_executableFileTypes.Contains(ext) && !_archiveFileTypes.Contains(ext))
+            if (!ExecutableFileTypes.Contains(ext) && !ArchiveFileTypes.Contains(ext))
             {
                 Failed($"Unexpected file name: {fileName}");
                 beginDownloadResult = BeginDownloadResult.Failed;
@@ -421,7 +436,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         {
             Status = finalStatus;
 
-            Progress = $"{fileName} - {(double) fileSize:#,###} Bytes";
+            Progress = $"{fileName} - {(double)fileSize:#,###} Bytes";
 
             if (testOnly)
                 return true;
@@ -511,7 +526,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         if (!ExtractAfterDownload)
             return;
 
-        if (!_archiveFileTypes.Contains(Path.GetExtension(archiveFile).ToLower()))
+        if (!ArchiveFileTypes.Contains(Path.GetExtension(archiveFile).ToLower()))
             return;
 
         var archiveDir = Path.GetDirectoryName(archiveFile)!;
