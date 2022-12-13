@@ -240,9 +240,24 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         if (DownloadDirectory == "")
             return Failed("Download directory is empty.");
         if (!Directory.Exists(DownloadDirectory))
-            return Failed("Download directory does not exist.");
+            try
+            {
+                Directory.CreateDirectory(DownloadDirectory);
+            }
+            catch (Exception)
+            {
+                return Failed("Download directory does not exist, and failed to create.");
+            }
+
         if (DownloadDirectory2 != "" && !Directory.Exists(DownloadDirectory2))
-            return Failed("Download directory 2 does not exist.");
+            try
+            {
+                Directory.CreateDirectory(DownloadDirectory2);
+            }
+            catch (Exception)
+            {
+                return Failed("Download directory 2 does not exist, and failed to create.");
+            }
 
         var fileName = string.Empty;
         var fileSize = 0L;
