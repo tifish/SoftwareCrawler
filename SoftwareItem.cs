@@ -459,7 +459,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
             if (File.Exists(downloadFile))
             {
-                DeleteOldFile(targetFile);
+                DeleteOtherFilesInSameDirectory(targetFile);
 
                 if (fileTime.HasValue)
                     File.SetLastWriteTime(downloadFile, fileTime.Value);
@@ -477,27 +477,29 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 return true;
 
             var targetFile2 = Path.Combine(DownloadDirectory2, fileName);
-            DeleteOldFile(targetFile2);
+            DeleteOtherFilesInSameDirectory(targetFile2);
             await CopyFileIfChanged(targetFile, targetFile2);
             await ExtractArchiveFile(targetFile2);
 
             return true;
         }
 
-        void DeleteOldFile(string targetFilePath)
+        void DeleteOtherFilesInSameDirectory(string targetFilePath)
         {
             if (testOnly || string.IsNullOrWhiteSpace(FilePatternToDelete))
                 return;
 
+            var dir = Path.GetDirectoryName(targetFilePath)!;
+
             try
             {
-                Directory.GetFiles(Path.GetDirectoryName(targetFilePath)!, FilePatternToDelete)
+                Directory.GetFiles(dir, FilePatternToDelete)
                     .Where(file => string.Compare(file, targetFilePath, StringComparison.OrdinalIgnoreCase) != 0)
                     .ToList().ForEach(File.Delete);
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Failed to delete old file.");
+                Logger.Error(ex, "Failed to delete other files in {Directory}", dir);
             }
         }
 
