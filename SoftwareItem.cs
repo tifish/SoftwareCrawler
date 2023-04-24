@@ -396,6 +396,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             fileName = item.SuggestedFileName;
             fileSize = item.TotalBytes;
             fileTime = item.EndTime;
+            downloadFile = Path.Combine(SystemDownloadFolder, item.SuggestedFileName);
 
             var ext = Path.GetExtension(fileName).ToLower();
             if (!ExecutableFileTypes.Contains(ext) && !ArchiveFileTypes.Contains(ext))
@@ -435,7 +436,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             }
 
             beginDownloadResult = BeginDownloadResult.Started;
-            item.FullPath = downloadFile = Path.Combine(SystemDownloadFolder, item.SuggestedFileName);
+            item.FullPath = downloadFile;
         }
 
         // Called when download progress changes.
@@ -465,21 +466,22 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                     File.SetLastWriteTime(downloadFile, fileTime.Value);
 
                 await CopyFileIfChanged(downloadFile, targetFile, true);
-                await ExtractArchiveFile(targetFile);
             }
-            else if (File.Exists(targetFile))
+
+            if (File.Exists(targetFile))
             {
                 if (fileTime.HasValue)
                     File.SetLastWriteTime(targetFile, fileTime.Value);
+                await ExtractArchiveFile(targetFile);
             }
 
-            if (string.IsNullOrEmpty(DownloadDirectory2))
-                return true;
-
-            var targetFile2 = Path.Combine(DownloadDirectory2, fileName);
-            DeleteOtherFilesInSameDirectory(targetFile2);
-            await CopyFileIfChanged(targetFile, targetFile2);
-            await ExtractArchiveFile(targetFile2);
+            if (!string.IsNullOrEmpty(DownloadDirectory2))
+            {
+                var targetFile2 = Path.Combine(DownloadDirectory2, fileName);
+                DeleteOtherFilesInSameDirectory(targetFile2);
+                await CopyFileIfChanged(targetFile, targetFile2);
+                await ExtractArchiveFile(targetFile2);
+            }
 
             return true;
         }
