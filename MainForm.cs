@@ -1,6 +1,6 @@
+﻿using CefSharp;
 using System.ComponentModel;
 using System.Diagnostics;
-using CefSharp;
 
 namespace SoftwareCrawler;
 
@@ -290,6 +290,15 @@ public partial class MainForm : Form
         if (softwareListDataGridView.CurrentRow?.DataBoundItem == null)
             return;
 
+        var item = softwareListDataGridView.CurrentRow?.DataBoundItem as SoftwareItem;
+        Browser.Load(item!.WebPage);
+    }
+
+    private void openWebPageInBrowserToolStripMenuItem_Click(object sender, EventArgs e)
+    {
+        if (softwareListDataGridView.CurrentRow?.DataBoundItem == null)
+            return;
+
         Process.Start(new ProcessStartInfo
         {
             FileName = (softwareListDataGridView.CurrentRow?.DataBoundItem as SoftwareItem)!.WebPage,
@@ -304,7 +313,7 @@ public partial class MainForm : Form
 
         var item = (softwareListDataGridView.CurrentRow?.DataBoundItem as SoftwareItem)!;
 
-        new[] {item.DownloadDirectory, item.DownloadDirectory2}
+        new[] { item.DownloadDirectory, item.DownloadDirectory2 }
             .Where(dir => !string.IsNullOrEmpty(dir))
             .ToList().ForEach(dir =>
             {
@@ -345,5 +354,11 @@ public partial class MainForm : Form
         if (softwareListDataGridView.IsCurrentCellDirty
             && softwareListDataGridView.CurrentCell.OwningColumn is DataGridViewCheckBoxColumn)
             softwareListDataGridView.EndEdit();
+    }
+
+    private void clearCookieButton_Click(object sender, EventArgs e)
+    {
+        // clear cache
+        Cef.GetGlobalCookieManager().DeleteCookies("", "");
     }
 }
