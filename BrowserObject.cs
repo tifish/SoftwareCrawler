@@ -1,9 +1,8 @@
 ﻿global using static SoftwareCrawler.BrowserObject;
-using System.Globalization;
 using CefSharp;
 using CefSharp.Handler;
-using CefSharp.Internals;
 using CefSharp.OffScreen;
+using System.Globalization;
 using Timer = System.Threading.Timer;
 
 namespace SoftwareCrawler;
@@ -116,7 +115,7 @@ public class BrowserObject
         task.ContinueWith(_ =>
         {
             timer.Dispose();
-            result.TrySetFromTask(task);
+            result.TrySetResult(task.Result);
         }, TaskContinuationOptions.ExecuteSynchronously);
         return result.Task;
     }
@@ -243,6 +242,11 @@ public class BrowserObject
         public MyDownloadHandler(BrowserObject owner)
         {
             _owner = owner;
+        }
+
+        public bool CanDownload(IWebBrowser chromiumWebBrowser, IBrowser browser, string url, string requestMethod)
+        {
+            return true;
         }
 
         public void OnBeforeDownload(IWebBrowser chromiumWebBrowser, IBrowser browser, DownloadItem downloadItem,
