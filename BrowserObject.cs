@@ -363,10 +363,10 @@ public class BrowserObject
         _downloadTaskCompletionSource = new TaskCompletionSource<bool>();
     }
 
-    public void Load(string url)
+    public async Task Load(string url)
     {
         PrepareLoadEvents();
-        WebBrowser.Load(url);
+        await WebBrowser.LoadUrlAsync(url);
     }
 
     public async Task<bool> TryClick(string xpath, string frameName, int count, int interval)

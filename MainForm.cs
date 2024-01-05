@@ -285,13 +285,13 @@ public partial class MainForm : Form
         Browser.WebBrowser.ShowDevTools();
     }
 
-    private void openWebPageToolStripMenuItem_Click(object sender, EventArgs e)
+    private async void openWebPageToolStripMenuItem_Click(object sender, EventArgs e)
     {
         if (softwareListDataGridView.CurrentRow?.DataBoundItem == null)
             return;
 
         var item = softwareListDataGridView.CurrentRow?.DataBoundItem as SoftwareItem;
-        Browser.Load(item!.WebPage);
+        await Browser.Load(item!.WebPage);
     }
 
     private void openWebPageInBrowserToolStripMenuItem_Click(object sender, EventArgs e)

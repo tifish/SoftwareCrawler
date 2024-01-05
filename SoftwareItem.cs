@@ -272,8 +272,10 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         // Download
         try
         {
+            await Browser.Load("about:blank");
+
             // Access download page.
-            Browser.Load(WebPage);
+            await Browser.Load(WebPage);
 
             // Click links, last link is the download link.
             if (!await ClickAndTriggerDownload())
@@ -350,8 +352,19 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                     .Select(x => x.Trim())
                     .ToList();
 
+            var url = "about:blank";
+
             for (var i = 0; i < xPathOrScripts.Count; i++)
             {
+                // Wait for URL change
+                while (Browser.WebBrowser.Address == url)
+                {
+                    await Task.Delay(100);
+                    if (_hasCancelled)
+                        return false;
+                }
+                url = Browser.WebBrowser.Address;
+
                 if (ClickAfterLoaded)
                 {
                     Status = DownloadStatus.WaitingForLoadEnd;
