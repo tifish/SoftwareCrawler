@@ -237,7 +237,7 @@ public class BrowserObject
         private readonly BrowserObject _owner;
         private int _latestDownloadID;
         private string _suggestedFileName = string.Empty;
-        private IDownloadItemCallback? _callback;
+        private IDownloadItemCallback? _downloadItemCallback;
 
         public MyDownloadHandler(BrowserObject owner)
         {
@@ -257,15 +257,15 @@ public class BrowserObject
 
             if (_owner._hasDownloadCancelled)
             {
-                if (_callback is { IsDisposed: false })
-                    _callback?.Cancel();
+                if (_downloadItemCallback is { IsDisposed: false })
+                    _downloadItemCallback?.Cancel();
                 return;
             }
 
             if (_owner.BeginDownloadHandler == null)
             {
-                if (_callback is { IsDisposed: false })
-                    _callback.Cancel();
+                if (_downloadItemCallback is { IsDisposed: false })
+                    _downloadItemCallback.Cancel();
                 return;
             }
 
@@ -276,14 +276,14 @@ public class BrowserObject
             {
                 if (downloadItem.IsCancelled)
                 {
-                    if (_callback is { IsDisposed: false })
-                        _callback?.Cancel();
+                    if (_downloadItemCallback is { IsDisposed: false })
+                        _downloadItemCallback?.Cancel();
                 }
                 else
                     callback.Continue(downloadItem.FullPath, false);
             }
 
-            _callback = null;
+            _downloadItemCallback = null;
         }
 
         public void OnDownloadUpdated(IWebBrowser chromiumWebBrowser, IBrowser browser, DownloadItem downloadItem,
@@ -297,9 +297,9 @@ public class BrowserObject
             }
 
             // Will be called once before OnBeforeDownload, keep callback to use in OnBeforeDownload.
-            if (_callback == null && downloadItem.Id > _latestDownloadID)
+            if (_downloadItemCallback == null && downloadItem.Id > _latestDownloadID)
             {
-                _callback = callback;
+                _downloadItemCallback = callback;
                 return;
             }
 

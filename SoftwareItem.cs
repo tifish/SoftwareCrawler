@@ -229,6 +229,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         return false;
     }
 
+    // 1-based download id from browser
+    private int _downloadingId;
+
     private async Task<bool> DownloadOnce(bool testOnly = false)
     {
         // Initialize
@@ -259,11 +262,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 return Failed("Download directory 2 does not exist, and failed to create.");
             }
 
-        var fileName = string.Empty;
-        var fileSize = 0L;
-        DateTime? fileTime = null;
-        var targetFile = string.Empty;
-        var downloadFile = string.Empty;
+        var downloadFileName = string.Empty;
+        var downloadFileSize = 0L;
+        DateTime? downloadFileTime = null;
+        var targetFilePath = string.Empty;
+        var downloadingFilePath = string.Empty;
         var beginDownloadResult = BeginDownloadResult.NoDownload;
 
         Browser.BeginDownloadHandler += OnBeginDownloadHandler;
@@ -317,13 +320,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         }
         finally
         {
-            if (!testOnly && !string.IsNullOrEmpty(downloadFile))
+            if (!testOnly && !string.IsNullOrEmpty(downloadingFilePath))
                 while (true)
                 {
                     try
                     {
-                        if (File.Exists(downloadFile))
-                            File.Delete(downloadFile);
+                        if (File.Exists(downloadingFilePath))
+                            File.Delete(downloadingFilePath);
                     }
                     catch
                     {
@@ -335,6 +338,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 }
 
             _uiSynchronizationContext = null;
+            _downloadingId = -1;
             Browser.BeginDownloadHandler -= OnBeginDownloadHandler;
             Browser.DownloadProgressHandler -= OnDownloadProgressHandler;
         }
@@ -363,6 +367,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                     if (_hasCancelled)
                         return false;
                 }
+
                 url = Browser.WebBrowser.Address;
 
                 if (ClickAfterLoaded)
@@ -404,38 +409,46 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         // Called when download starts, decide whether to download.
         void OnBeginDownloadHandler(object? o, DownloadItem item)
         {
-            Browser.BeginDownloadHandler -= OnBeginDownloadHandler;
+            downloadingFilePath = Path.Combine(SystemDownloadFolder, item.SuggestedFileName);
+            var ext = Path.GetExtension(item.SuggestedFileName).ToLower();
 
-            fileName = item.SuggestedFileName;
-            fileSize = item.TotalBytes;
-            fileTime = item.EndTime;
-            downloadFile = Path.Combine(SystemDownloadFolder, item.SuggestedFileName);
+            // Download is in progress, a new download begins
+            if (_downloadingId > 0)
+            {
+                // Use a new file to start the new download. The old file will be deleted by browser later.
+                var fileNameNoExt = Path.GetFileNameWithoutExtension(item.SuggestedFileName);
+                downloadingFilePath = Path.Combine(SystemDownloadFolder, $"{fileNameNoExt}_{_downloadingId}{ext}");
+            }
 
-            var ext = Path.GetExtension(fileName).ToLower();
+            _downloadingId = item.Id;
+            downloadFileName = item.SuggestedFileName;
+            downloadFileSize = item.TotalBytes;
+            downloadFileTime = item.EndTime;
+
             if (!ExecutableFileTypes.Contains(ext) && !ArchiveFileTypes.Contains(ext))
             {
-                Failed($"Unexpected file name: {fileName}");
+                Failed($"Unexpected file name: {downloadFileName}");
                 beginDownloadResult = BeginDownloadResult.Failed;
                 item.IsCancelled = true;
                 return;
             }
 
-            targetFile = Path.Combine(DownloadDirectory, fileName);
+            targetFilePath = Path.Combine(DownloadDirectory, downloadFileName);
 
             // Compare file size to determine download or not.
             // Epic Launcher download page may change its file name for each download.
             // Find the old file and check the size.
-            var oldFile = targetFile;
+            var oldFile = targetFilePath;
             if (!File.Exists(oldFile) && !string.IsNullOrWhiteSpace(FilePatternToDelete))
                 oldFile = Directory.GetFiles(DownloadDirectory, FilePatternToDelete).FirstOrDefault();
             if (File.Exists(oldFile))
             {
                 var fileInfo = new FileInfo(oldFile);
-                if (fileInfo.Length == fileSize)
+                if (fileInfo.Length == downloadFileSize)
                 {
                     beginDownloadResult = BeginDownloadResult.Downloaded;
-                    targetFile = oldFile;
-                    fileName = Path.GetFileName(targetFile);
+                    targetFilePath = oldFile;
+                    downloadFileName = Path.GetFileName(targetFilePath);
                     item.IsCancelled = true;
                     return;
                 }
@@ -449,14 +462,14 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             }
 
             beginDownloadResult = BeginDownloadResult.Started;
-            item.FullPath = downloadFile;
+            item.FullPath = downloadingFilePath;
         }
 
         // Called when download progress changes.
         void OnDownloadProgressHandler(object? o, DownloadItem item)
         {
             // Download file name may change if same file exists.
-            downloadFile = item.FullPath;
+            downloadingFilePath = item.FullPath;
 
             Progress = $"{item.SuggestedFileName} - {item.PercentComplete:00}% - {item.ReceivedBytes:#,###} / {item.TotalBytes:#,###} Bytes - {item.CurrentSpeed / 1024:#,###} KB/s";
         }
@@ -466,33 +479,33 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         {
             Status = finalStatus;
 
-            Progress = $"{fileName} - {(double)fileSize:#,###} Bytes";
+            Progress = $"{downloadFileName} - {(double)downloadFileSize:#,###} Bytes";
 
             if (testOnly)
                 return true;
 
-            if (File.Exists(downloadFile))
+            if (File.Exists(downloadingFilePath))
             {
-                DeleteOtherFilesInSameDirectory(targetFile);
+                DeleteOtherFilesInSameDirectory(targetFilePath);
 
-                if (fileTime.HasValue)
-                    File.SetLastWriteTime(downloadFile, fileTime.Value);
+                if (downloadFileTime.HasValue)
+                    File.SetLastWriteTime(downloadingFilePath, downloadFileTime.Value);
 
-                await CopyFileIfChanged(downloadFile, targetFile, true);
+                await CopyFileIfChanged(downloadingFilePath, targetFilePath, true);
             }
 
-            if (File.Exists(targetFile))
+            if (File.Exists(targetFilePath))
             {
-                if (fileTime.HasValue)
-                    File.SetLastWriteTime(targetFile, fileTime.Value);
-                await ExtractArchiveFile(targetFile);
+                if (downloadFileTime.HasValue)
+                    File.SetLastWriteTime(targetFilePath, downloadFileTime.Value);
+                await ExtractArchiveFile(targetFilePath);
             }
 
             if (!string.IsNullOrEmpty(DownloadDirectory2))
             {
-                var targetFile2 = Path.Combine(DownloadDirectory2, fileName);
+                var targetFile2 = Path.Combine(DownloadDirectory2, downloadFileName);
                 DeleteOtherFilesInSameDirectory(targetFile2);
-                await CopyFileIfChanged(targetFile, targetFile2);
+                await CopyFileIfChanged(targetFilePath, targetFile2);
                 await ExtractArchiveFile(targetFile2);
             }
 
