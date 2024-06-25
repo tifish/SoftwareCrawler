@@ -40,7 +40,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             {
                 _progress = value;
 
-                _uiSynchronizationContext?.Post(_ => { OnPropertyChanged(nameof(Progress)); }, null);
+                _uiSynchronizationContext?.Post(_ => { OnPropertyChanged(); }, null);
             }
         }
     }
@@ -69,7 +69,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             if (_errorMessage != value)
             {
                 _errorMessage = value;
-                _uiSynchronizationContext?.Post(_ => { OnPropertyChanged(nameof(ErrorMessage)); }, null);
+                _uiSynchronizationContext?.Post(_ => { OnPropertyChanged(); }, null);
             }
         }
     }
@@ -222,6 +222,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 return true;
             }
 
+            if (_hasCancelled)
+                return false;
+
             await Task.Delay(Settings.DownloadRetryInterval * 1000);
         }
 
@@ -289,6 +292,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             var waitCounter = Settings.StartDownloadTimeout * 2;
             while (beginDownloadResult == BeginDownloadResult.NoDownload)
             {
+                if (_hasCancelled)
+                    return false;
+
                 await Task.Delay(500);
                 waitCounter--;
                 if (waitCounter == 0)
@@ -373,14 +379,30 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 if (ClickAfterLoaded)
                 {
                     Status = DownloadStatus.WaitingForLoadEnd;
-                    if (!await Browser.WaitForLoadEnd(TimeSpan.FromSeconds(Settings.LoadPageEndTimeout)))
-                        return Failed("Failed to wait for page load end.");
+                    for (var seconds = 0; seconds < Settings.LoadPageEndTimeout; seconds++)
+                    {
+                        if (_hasCancelled)
+                            return false;
+                        if (await Browser.WaitForLoadEnd(TimeSpan.FromSeconds(1)))
+                            goto LoadPageEnd;
+                    }
+
+                    return Failed("Failed to wait for page load end.");
+                    LoadPageEnd: ;
                 }
                 else
                 {
                     Status = DownloadStatus.WaitingForLoadStart;
-                    if (!await Browser.WaitForLoadStart(TimeSpan.FromSeconds(Settings.LoadPageStartTimeout)))
-                        return Failed("Failed to wait for page load start.");
+                    for (var seconds = 0; seconds < Settings.LoadPageStartTimeout; seconds++)
+                    {
+                        if (_hasCancelled)
+                            return false;
+                        if (await Browser.WaitForLoadStart(TimeSpan.FromSeconds(1)))
+                            goto LoadStart;
+                    }
+
+                    return Failed("Failed to wait for page load start.");
+                    LoadStart: ;
                 }
 
                 Browser.PrepareLoadEvents();
@@ -611,6 +633,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     {
         _hasCancelled = true;
         Browser.Cancel();
+
+        Status = DownloadStatus.Cancelled;
     }
 }
 
@@ -627,4 +651,5 @@ public enum DownloadStatus
     Downloaded,
     HasUpdate,
     Failed,
+    Cancelled,
 }
