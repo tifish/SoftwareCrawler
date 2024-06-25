@@ -352,29 +352,28 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         async Task<bool> ClickAndTriggerDownload()
         {
             var xPathOrScripts = string.IsNullOrWhiteSpace(XPathOrScripts)
-                ? new List<string>()
+                ? []
                 : XPathOrScripts.Split('`')
                     .Select(x => x.Trim())
                     .ToList();
             var frameNames = string.IsNullOrWhiteSpace(Frames)
-                ? new List<string>()
+                ? []
                 : Frames.Split('`')
                     .Select(x => x.Trim())
                     .ToList();
 
-            var url = "about:blank";
-
             for (var i = 0; i < xPathOrScripts.Count; i++)
             {
-                // Wait for URL change
-                while (Browser.WebBrowser.Address == url)
+                for (var seconds = 0; seconds < Settings.LoadPageStartTimeout; seconds++)
                 {
-                    await Task.Delay(100);
                     if (_hasCancelled)
                         return false;
+                    if (await Browser.WaitForLoadStart(TimeSpan.FromSeconds(1)))
+                        goto LoadStart;
                 }
 
-                url = Browser.WebBrowser.Address;
+                return Failed("Failed to wait for page load start.");
+                LoadStart: ;
 
                 if (ClickAfterLoaded)
                 {
@@ -398,11 +397,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                         if (_hasCancelled)
                             return false;
                         if (await Browser.WaitForLoadStart(TimeSpan.FromSeconds(1)))
-                            goto LoadStart;
+                            goto LoadStartBeforeClick;
                     }
 
-                    return Failed("Failed to wait for page load start.");
-                    LoadStart: ;
+                    return Failed("Failed to wait for page load start before click.");
+                    LoadStartBeforeClick: ;
                 }
 
                 Browser.PrepareLoadEvents();
@@ -410,14 +409,24 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 var xpathOrScript = xPathOrScripts[i];
                 var frameName = i < frameNames.Count ? frameNames[i] : string.Empty;
 
+                // Is XPath
                 if (xpathOrScript.StartsWith('/'))
                 {
                     Status = DownloadStatus.Clicking;
+
+                    // Scroll to the element first
+                    var scrollScript = $"""
+                                        document.evaluate("{xpathOrScript}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue.scrollIntoView()
+                                        """;
+                    if (!await Browser.TryEvaluateJavascript(scrollScript, frameName))
+                        return Failed($"Failed to scroll to {xpathOrScript}");
+
+                    // Then click
                     if (!await Browser.TryClick(xpathOrScript, frameName,
                             Settings.TryClickCount, Settings.TryClickInterval * 1000))
                         return Failed($"Failed to click {xpathOrScript}");
                 }
-                else
+                else // Is JavaScript
                 {
                     Status = DownloadStatus.ExecutingScript;
                     if (!await Browser.TryEvaluateJavascript(xpathOrScript, frameName))
