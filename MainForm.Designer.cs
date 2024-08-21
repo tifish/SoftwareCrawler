@@ -39,6 +39,7 @@
             cancelToolStripMenuItem = new ToolStripMenuItem();
             toolStripSeparator4 = new ToolStripSeparator();
             reloadToolStripMenuItem = new ToolStripMenuItem();
+            editScriptToolStripMenuItem = new ToolStripMenuItem();
             toolStripSeparator3 = new ToolStripSeparator();
             openWebPageToolStripMenuItem = new ToolStripMenuItem();
             openWebPageInBrowserToolStripMenuItem = new ToolStripMenuItem();
@@ -59,9 +60,9 @@
             // 
             // dataGridViewContextMenuStrip
             // 
-            dataGridViewContextMenuStrip.Items.AddRange(new ToolStripItem[] { downloadSelectedToolStripMenuItem, downloadAllToolStripMenuItem, toolStripSeparator1, testSelectedToolStripMenuItem, testAllToolStripMenuItem, toolStripSeparator2, cancelToolStripMenuItem, toolStripSeparator4, reloadToolStripMenuItem, toolStripSeparator3, openWebPageToolStripMenuItem, openWebPageInBrowserToolStripMenuItem, openDownloadDirectoryToolStripMenuItem });
+            dataGridViewContextMenuStrip.Items.AddRange(new ToolStripItem[] { downloadSelectedToolStripMenuItem, downloadAllToolStripMenuItem, toolStripSeparator1, testSelectedToolStripMenuItem, testAllToolStripMenuItem, toolStripSeparator2, cancelToolStripMenuItem, toolStripSeparator4, reloadToolStripMenuItem, editScriptToolStripMenuItem, toolStripSeparator3, openWebPageToolStripMenuItem, openWebPageInBrowserToolStripMenuItem, openDownloadDirectoryToolStripMenuItem });
             dataGridViewContextMenuStrip.Name = "dataGridViewContextMenuStrip";
-            dataGridViewContextMenuStrip.Size = new Size(216, 226);
+            dataGridViewContextMenuStrip.Size = new Size(216, 248);
             // 
             // downloadSelectedToolStripMenuItem
             // 
@@ -93,7 +94,7 @@
             // 
             testAllToolStripMenuItem.Name = "testAllToolStripMenuItem";
             testAllToolStripMenuItem.Size = new Size(215, 22);
-            testAllToolStripMenuItem.Text = "T&est all";
+            testAllToolStripMenuItem.Text = "Test all";
             testAllToolStripMenuItem.Click += testAllToolStripMenuItem_Click;
             // 
             // toolStripSeparator2
@@ -119,6 +120,13 @@
             reloadToolStripMenuItem.Size = new Size(215, 22);
             reloadToolStripMenuItem.Text = "&Reload";
             reloadToolStripMenuItem.Click += reloadToolStripMenuItem_Click;
+            // 
+            // editScriptToolStripMenuItem
+            // 
+            editScriptToolStripMenuItem.Name = "editScriptToolStripMenuItem";
+            editScriptToolStripMenuItem.Size = new Size(215, 22);
+            editScriptToolStripMenuItem.Text = "&Edit script";
+            editScriptToolStripMenuItem.Click += editScriptToolStripMenuItem_Click;
             // 
             // toolStripSeparator3
             // 
@@ -179,7 +187,6 @@
             softwareListDataGridView.ContextMenuStrip = dataGridViewContextMenuStrip;
             softwareListDataGridView.Location = new Point(3, 3);
             softwareListDataGridView.Name = "softwareListDataGridView";
-            softwareListDataGridView.RowTemplate.Height = 25;
             softwareListDataGridView.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             softwareListDataGridView.Size = new Size(1258, 638);
             softwareListDataGridView.TabIndex = 3;
@@ -298,5 +305,6 @@
         private FlowLayoutPanel toolbarFlowLayoutPanel;
         private Button clearCookieButton;
         private ToolStripMenuItem openWebPageInBrowserToolStripMenuItem;
+        private ToolStripMenuItem editScriptToolStripMenuItem;
     }
 }

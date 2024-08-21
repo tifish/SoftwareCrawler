@@ -56,8 +56,7 @@ public class BrowserObject
     {
         _hasDownloadCancelled = false;
 
-        _loadStartTaskCompletionSource = null;
-        _loadEndTaskCompletionSource = null;
+        _frameLoadEndTaskCompletionSource = null;
         _downloadTaskCompletionSource = null;
 
         switch (Type)
@@ -81,8 +80,7 @@ public class BrowserObject
                 throw new ArgumentOutOfRangeException();
         }
 
-        WebBrowser.LoadingStateChanged += WebBrowserOnLoadingStateChanged;
-        WebBrowser.FrameLoadStart += WebBrowserOnFrameLoadStart;
+        WebBrowser.FrameLoadEnd += WebBrowserOnFrameLoadEnd;
         WebBrowser.LifeSpanHandler = new MyLifeSpanHandler(this);
         WebBrowser.RequestHandler = new MyRequestHandler(this);
         WebBrowser.DownloadHandler = new MyDownloadHandler(this);
@@ -92,18 +90,12 @@ public class BrowserObject
 
     #region Load events
 
-    private TaskCompletionSource<bool>? _loadStartTaskCompletionSource;
-    private TaskCompletionSource<bool>? _loadEndTaskCompletionSource;
+    private TaskCompletionSource<bool>? _frameLoadEndTaskCompletionSource;
 
-    private void WebBrowserOnFrameLoadStart(object? sender, FrameLoadStartEventArgs e)
+    private void WebBrowserOnFrameLoadEnd(object? sender, FrameLoadEndEventArgs e)
     {
-        _loadStartTaskCompletionSource?.TrySetResult(true);
-    }
-
-    private void WebBrowserOnLoadingStateChanged(object? sender, LoadingStateChangedEventArgs e)
-    {
-        if (!e.IsLoading)
-            _loadEndTaskCompletionSource?.TrySetResult(true);
+        if (e.Frame.IsMain)
+            _frameLoadEndTaskCompletionSource?.TrySetResult(true);
     }
 
     private static Task<bool> WithTimeout(Task<bool> task, TimeSpan timeout)
@@ -120,18 +112,10 @@ public class BrowserObject
         return result.Task;
     }
 
-    public async Task<bool> WaitForLoadStart(TimeSpan timeout)
+    public async Task<bool> WaitForMainFrameLoadEnd(TimeSpan timeout)
     {
-        if (_loadStartTaskCompletionSource != null)
-            return await WithTimeout(_loadStartTaskCompletionSource.Task, timeout);
-
-        return false;
-    }
-
-    public async Task<bool> WaitForLoadEnd(TimeSpan timeout)
-    {
-        if (_loadEndTaskCompletionSource != null)
-            return await WithTimeout(_loadEndTaskCompletionSource.Task, timeout);
+        if (_frameLoadEndTaskCompletionSource != null)
+            return await WithTimeout(_frameLoadEndTaskCompletionSource.Task, timeout);
 
         return false;
     }
@@ -249,8 +233,7 @@ public class BrowserObject
             return true;
         }
 
-        public void OnBeforeDownload(IWebBrowser chromiumWebBrowser, IBrowser browser, DownloadItem downloadItem,
-            IBeforeDownloadCallback callback)
+        public bool OnBeforeDownload(IWebBrowser chromiumWebBrowser, IBrowser browser, DownloadItem downloadItem, IBeforeDownloadCallback callback)
         {
             _latestDownloadID = downloadItem.Id;
             _suggestedFileName = downloadItem.SuggestedFileName;
@@ -259,14 +242,14 @@ public class BrowserObject
             {
                 if (_downloadItemCallback is { IsDisposed: false })
                     _downloadItemCallback?.Cancel();
-                return;
+                return false;
             }
 
             if (_owner.BeginDownloadHandler == null)
             {
                 if (_downloadItemCallback is { IsDisposed: false })
                     _downloadItemCallback.Cancel();
-                return;
+                return false;
             }
 
             downloadItem.EndTime = _owner._lastRespondTime;
@@ -284,6 +267,8 @@ public class BrowserObject
             }
 
             _downloadItemCallback = null;
+
+            return true;
         }
 
         public void OnDownloadUpdated(IWebBrowser chromiumWebBrowser, IBrowser browser, DownloadItem downloadItem,
@@ -358,8 +343,7 @@ public class BrowserObject
     {
         _hasDownloadCancelled = false;
 
-        _loadStartTaskCompletionSource = new TaskCompletionSource<bool>();
-        _loadEndTaskCompletionSource = new TaskCompletionSource<bool>();
+        _frameLoadEndTaskCompletionSource = new TaskCompletionSource<bool>();
         _downloadTaskCompletionSource = new TaskCompletionSource<bool>();
     }
 
@@ -375,7 +359,7 @@ public class BrowserObject
         for (var i = 0; i < count; i++)
         {
             if (WebBrowser.CanExecuteJavascriptInMainFrame)
-                if (string.IsNullOrWhiteSpace(frameName) || WebBrowser.GetBrowser().GetFrame(frameName) != null)
+                if (string.IsNullOrWhiteSpace(frameName) || WebBrowser.GetBrowser().GetFrameByName(frameName) != null)
                 {
                     success = await Click(xpath, frameName);
                     if (success)
@@ -401,7 +385,7 @@ public class BrowserObject
         for (var i = 0; i < count; i++)
         {
             if (WebBrowser.CanExecuteJavascriptInMainFrame)
-                if (string.IsNullOrWhiteSpace(frameName) || WebBrowser.GetBrowser().GetFrame(frameName) != null)
+                if (string.IsNullOrWhiteSpace(frameName) || WebBrowser.GetBrowser().GetFrameByName(frameName) != null)
                 {
                     success = await EvaluateJavascript(script, frameName);
                     if (success)
@@ -419,7 +403,7 @@ public class BrowserObject
         if (string.IsNullOrWhiteSpace(frameName))
             return (await WebBrowser.EvaluateScriptAsync(script)).Success;
 
-        var frame = WebBrowser.GetBrowser().GetFrame(frameName);
+        var frame = WebBrowser.GetBrowser().GetFrameByName(frameName);
         if (frame != null)
             return (await frame.EvaluateScriptAsync(script)).Success;
 
@@ -428,10 +412,8 @@ public class BrowserObject
 
     public void Cancel()
     {
-        _loadStartTaskCompletionSource?.TrySetResult(false);
-        _loadStartTaskCompletionSource = null;
-        _loadEndTaskCompletionSource?.TrySetResult(false);
-        _loadEndTaskCompletionSource = null;
+        _frameLoadEndTaskCompletionSource?.TrySetResult(false);
+        _frameLoadEndTaskCompletionSource = null;
         _downloadTaskCompletionSource?.TrySetResult(false);
         _downloadTaskCompletionSource = null;
 

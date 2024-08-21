@@ -239,6 +239,42 @@ public partial class MainForm : Form
         await Reload();
     }
 
+    private async void editScriptToolStripMenuItem_Click(object sender, EventArgs e)
+    {
+        var item = (SoftwareItem)softwareListDataGridView.CurrentRow.DataBoundItem;
+        // Unescape the return character
+        var script = item.XPathOrScripts.Replace("`n", "\r\n");
+
+        // Save script to a temp file
+        var tempScriptFilePath = Path.GetTempFileName() + ".js";
+        File.WriteAllText(tempScriptFilePath, script);
+
+        // Edit the script with an external editor
+        var editor = Settings.ExternalJavascriptEditor;
+        if (editor == "")
+            editor = "notepad.exe";
+
+        var proc = Process.Start(new ProcessStartInfo()
+        {
+            FileName = editor,
+            Arguments = tempScriptFilePath,
+            UseShellExecute = true,
+        });
+
+        if (proc == null)
+            return;
+
+        MessageBox.Show("Edit the script and save it. Then click OK to reload the script.");
+
+        // Read script from the temp file
+        script = File.ReadAllText(tempScriptFilePath);
+        File.Delete(tempScriptFilePath);
+        script = script.Replace("\r\n", "`n").Replace("\n", "`n");
+        item.XPathOrScripts = script;
+
+        await SoftwareManager.Save();
+    }
+
     private async void softwareListDataGridView_CellEndEdit(object sender, DataGridViewCellEventArgs e)
     {
         await SoftwareManager.Save();
@@ -361,4 +397,5 @@ public partial class MainForm : Form
         // clear cache
         Cef.GetGlobalCookieManager().DeleteCookies("", "");
     }
+
 }

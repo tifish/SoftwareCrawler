@@ -1,8 +1,8 @@
+﻿using CefSharp;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using CefSharp;
 
 namespace SoftwareCrawler;
 
@@ -50,7 +50,6 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public string WebPage { get; set; } = string.Empty;
     public string XPathOrScripts { get; set; } = string.Empty;
     public string Frames { get; set; } = string.Empty;
-    public bool ClickAfterLoaded { get; set; } = false;
     public bool UseProxy { get; set; } = false;
     public string DownloadDirectory { get; set; } = string.Empty;
     public string DownloadDirectory2 { get; set; } = string.Empty;
@@ -353,7 +352,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         {
             var xPathOrScripts = string.IsNullOrWhiteSpace(XPathOrScripts)
                 ? []
-                : XPathOrScripts.Split('`')
+                : XPathOrScripts.Replace("`n", "\n")
+                    .Split('`')
                     .Select(x => x.Trim())
                     .ToList();
             var frameNames = string.IsNullOrWhiteSpace(Frames)
@@ -364,45 +364,17 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
             for (var i = 0; i < xPathOrScripts.Count; i++)
             {
-                for (var seconds = 0; seconds < Settings.LoadPageStartTimeout; seconds++)
+                Status = DownloadStatus.WaitingForLoadEnd;
+                for (var seconds = 0; seconds < Settings.LoadPageEndTimeout; seconds++)
                 {
                     if (_hasCancelled)
                         return false;
-                    if (await Browser.WaitForLoadStart(TimeSpan.FromSeconds(1)))
-                        goto LoadStart;
+                    if (await Browser.WaitForMainFrameLoadEnd(TimeSpan.FromSeconds(1)))
+                        goto MainFrameLoadEndBeforeClick;
                 }
 
-                return Failed("Failed to wait for page load start.");
-                LoadStart: ;
-
-                if (ClickAfterLoaded)
-                {
-                    Status = DownloadStatus.WaitingForLoadEnd;
-                    for (var seconds = 0; seconds < Settings.LoadPageEndTimeout; seconds++)
-                    {
-                        if (_hasCancelled)
-                            return false;
-                        if (await Browser.WaitForLoadEnd(TimeSpan.FromSeconds(1)))
-                            goto LoadPageEnd;
-                    }
-
-                    return Failed("Failed to wait for page load end.");
-                    LoadPageEnd: ;
-                }
-                else
-                {
-                    Status = DownloadStatus.WaitingForLoadStart;
-                    for (var seconds = 0; seconds < Settings.LoadPageStartTimeout; seconds++)
-                    {
-                        if (_hasCancelled)
-                            return false;
-                        if (await Browser.WaitForLoadStart(TimeSpan.FromSeconds(1)))
-                            goto LoadStartBeforeClick;
-                    }
-
-                    return Failed("Failed to wait for page load start before click.");
-                    LoadStartBeforeClick: ;
-                }
+                return Failed("Failed to wait for page load end before click.");
+            MainFrameLoadEndBeforeClick:;
 
                 Browser.PrepareLoadEvents();
 
@@ -650,7 +622,6 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 public enum DownloadStatus
 {
     Idle,
-    WaitingForLoadStart,
     WaitingForLoadEnd,
     Clicking,
     ExecutingScript,
