@@ -53,9 +53,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public bool UseProxy { get; set; } = false;
     public string DownloadDirectory { get; set; } = string.Empty;
     public string DownloadDirectory2 { get; set; } = string.Empty;
-    public string FilePatternToDelete { get; set; } = string.Empty;
+    public string FilePatternToDeleteBeforeDownload { get; set; } = string.Empty;
     public bool ExtractAfterDownload { get; set; } = false;
-    public string FilePatternToDeleteBeforeExtraction { get; set; } = string.Empty;
+    public string FilePatternToDeleteBeforeExtractionAndExtractOnly { get; set; } = string.Empty;
 
     private string _errorMessage = string.Empty;
 
@@ -446,8 +446,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             // Epic Launcher download page may change its file name for each download.
             // Find the old file and check the size.
             var oldFile = targetFilePath;
-            if (!File.Exists(oldFile) && !string.IsNullOrWhiteSpace(FilePatternToDelete))
-                oldFile = Directory.GetFiles(DownloadDirectory, FilePatternToDelete).FirstOrDefault();
+            if (!File.Exists(oldFile) && !string.IsNullOrWhiteSpace(FilePatternToDeleteBeforeDownload))
+                oldFile = Directory.GetFiles(DownloadDirectory, FilePatternToDeleteBeforeDownload).FirstOrDefault();
             if (File.Exists(oldFile))
             {
                 var fileInfo = new FileInfo(oldFile);
@@ -521,14 +521,14 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
         void DeleteOtherFilesInSameDirectory(string targetFilePath)
         {
-            if (testOnly || string.IsNullOrWhiteSpace(FilePatternToDelete))
+            if (testOnly || string.IsNullOrWhiteSpace(FilePatternToDeleteBeforeDownload))
                 return;
 
             var dir = Path.GetDirectoryName(targetFilePath)!;
 
             try
             {
-                Directory.GetFiles(dir, FilePatternToDelete)
+                Directory.GetFiles(dir, FilePatternToDeleteBeforeDownload)
                     .Where(file => string.Compare(file, targetFilePath, StringComparison.OrdinalIgnoreCase) != 0)
                     .ToList().ForEach(File.Delete);
             }
@@ -583,15 +583,15 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             return;
 
         var archiveDir = Path.GetDirectoryName(archiveFile)!;
-        if (FilePatternToDeleteBeforeExtraction != "")
-            Directory.GetFiles(archiveDir, FilePatternToDeleteBeforeExtraction)
+        if (FilePatternToDeleteBeforeExtractionAndExtractOnly != "")
+            Directory.GetFiles(archiveDir, FilePatternToDeleteBeforeExtractionAndExtractOnly)
                 .ToList().ForEach(File.Delete);
 
         // extract files to root directory.
         using var process = Process.Start(new ProcessStartInfo
         {
             FileName = sevenZipPath,
-            Arguments = $@"e -y -o""{archiveDir}"" ""{archiveFile}"" {FilePatternToDeleteBeforeExtraction} -r",
+            Arguments = $@"e -y -o""{archiveDir}"" ""{archiveFile}"" {FilePatternToDeleteBeforeExtractionAndExtractOnly} -r",
             UseShellExecute = true,
         });
 
