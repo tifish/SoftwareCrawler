@@ -587,10 +587,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             Directory.GetFiles(archiveDir, FilePatternToDeleteBeforeExtraction)
                 .ToList().ForEach(File.Delete);
 
+        // extract files to root directory.
         using var process = Process.Start(new ProcessStartInfo
         {
             FileName = sevenZipPath,
-            Arguments = $@"x -y -o""{archiveDir}"" ""{archiveFile}""",
+            Arguments = $@"e -y -o""{archiveDir}"" ""{archiveFile}"" {FilePatternToDeleteBeforeExtraction} -r",
             UseShellExecute = true,
         });
 
@@ -598,6 +599,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             return;
 
         await process.WaitForExitAsync();
+
+        // Delete empty sub-directories in archiveDir
+        foreach (var subDirectory in Directory.GetDirectories(archiveDir))
+            if (Directory.GetFiles(subDirectory).Length == 0 && Directory.GetDirectories(subDirectory).Length == 0)
+                Directory.Delete(subDirectory);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
