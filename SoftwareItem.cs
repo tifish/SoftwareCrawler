@@ -388,7 +388,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
                     // Scroll to the element first
                     var scrollScript = $"""
-                                        document.evaluate("{xpathOrScript}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue.scrollIntoView()
+                                        const element = document.evaluate("{xpathOrScript}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                                        const elementRect = element.getBoundingClientRect();
+                                        const absoluteElementTop = elementRect.top + window.pageYOffset;
+                                        const middle = absoluteElementTop - (window.innerHeight / 2);
+                                        window.scrollTo(0, middle);
                                         """;
                     if (!await Browser.TryEvaluateJavascript(scrollScript, frameName))
                         return Failed($"Failed to scroll to {xpathOrScript}");
