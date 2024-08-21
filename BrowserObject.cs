@@ -94,7 +94,7 @@ public class BrowserObject
 
     private void WebBrowserOnFrameLoadEnd(object? sender, FrameLoadEndEventArgs e)
     {
-        if (e.Frame.IsMain)
+        if (e.Frame.IsMain && e.Url != "about:blank")
             _frameLoadEndTaskCompletionSource?.TrySetResult(true);
     }
 
@@ -342,8 +342,9 @@ public class BrowserObject
     public void PrepareLoadEvents()
     {
         _hasDownloadCancelled = false;
-
+        _frameLoadEndTaskCompletionSource?.TrySetResult(false);
         _frameLoadEndTaskCompletionSource = new TaskCompletionSource<bool>();
+        _downloadTaskCompletionSource?.TrySetResult(false);
         _downloadTaskCompletionSource = new TaskCompletionSource<bool>();
     }
 
