@@ -23,7 +23,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             if (_status != value)
             {
                 _status = value;
-                _uiSynchronizationContext?.Post(_ => { OnPropertyChanged(nameof(DownloadStatus)); }, null);
+
+                if (SynchronizationContext.Current == _uiSynchronizationContext)
+                    OnPropertyChanged();
+                else
+                    _uiSynchronizationContext?.Post(_ => { OnPropertyChanged(); }, null);
             }
         }
     }
@@ -40,7 +44,10 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             {
                 _progress = value;
 
-                _uiSynchronizationContext?.Post(_ => { OnPropertyChanged(); }, null);
+                if (SynchronizationContext.Current == _uiSynchronizationContext)
+                    OnPropertyChanged();
+                else
+                    _uiSynchronizationContext?.Post(_ => { OnPropertyChanged(); }, null);
             }
         }
     }
@@ -68,7 +75,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             if (_errorMessage != value)
             {
                 _errorMessage = value;
-                _uiSynchronizationContext?.Post(_ => { OnPropertyChanged(); }, null);
+
+                if (SynchronizationContext.Current == _uiSynchronizationContext)
+                    OnPropertyChanged();
+                else
+                    _uiSynchronizationContext?.Post(_ => { OnPropertyChanged(); }, null);
             }
         }
     }
