@@ -406,7 +406,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                                         window.scrollTo(0, middle);
                                         """;
                     if (!await Browser.TryEvaluateJavascript(scrollScript, frameName))
-                        return Failed($"Failed to scroll to {xpathOrScript}");
+                        Logger.Error("Failed to scroll to {XPathOrScript}", xpathOrScript);
+                    //return Failed($"Failed to scroll to {xpathOrScript}");
 
                     // Then click
                     if (!await Browser.TryClick(xpathOrScript, frameName,
