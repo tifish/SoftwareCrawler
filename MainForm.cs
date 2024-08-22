@@ -268,6 +268,7 @@ public partial class MainForm : Form
 
         // Read script from the temp file
         script = File.ReadAllText(tempScriptFilePath);
+        script = script.Trim(); // Trim end of file
         File.Delete(tempScriptFilePath);
         script = script.Replace("\r\n", "`n").Replace("\n", "`n");
         item.XPathOrScripts = script;
