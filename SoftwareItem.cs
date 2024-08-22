@@ -250,7 +250,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         // Initialize
         _uiSynchronizationContext = SynchronizationContext.Current;
 
-        Status = DownloadStatus.Downloading;
+        Status = DownloadStatus.Preparing;
         ErrorMessage = string.Empty;
 
         if (DownloadDirectory == "")
@@ -643,6 +643,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 public enum DownloadStatus
 {
     Idle,
+    Preparing,
     WaitingForLoadEnd,
     Clicking,
     ExecutingScript,
