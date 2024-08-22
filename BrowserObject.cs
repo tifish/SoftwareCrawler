@@ -376,7 +376,7 @@ public class BrowserObject
     public async Task<bool> Click(string xpath, string frameName = "")
     {
         xpath = xpath.Replace('\"', '\'');
-        var js = "document.evaluate(\"" + xpath + "\", document, null, XPathResult.ANY_TYPE, null).iterateNext().click()";
+        var js = $"""document.evaluate("{xpath}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue.click()""";
         return await EvaluateJavascript(js, frameName);
     }
 
