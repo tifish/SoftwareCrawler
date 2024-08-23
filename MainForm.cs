@@ -26,9 +26,6 @@ public partial class MainForm : Form
             _mainForm.reloadToolStripMenuItem.Enabled = false;
 
             _mainForm.cancelToolStripMenuItem.Enabled = true;
-
-            _mainForm.offScreenRadioButton.Enabled = false;
-            _mainForm.winFormRadioButton.Enabled = false;
         }
 
         public void Dispose()
@@ -40,9 +37,6 @@ public partial class MainForm : Form
             _mainForm.reloadToolStripMenuItem.Enabled = true;
 
             _mainForm.cancelToolStripMenuItem.Enabled = false;
-
-            _mainForm.offScreenRadioButton.Enabled = true;
-            _mainForm.winFormRadioButton.Enabled = true;
 
             _mainForm._currentDownloadItem = null;
         }
@@ -58,22 +52,7 @@ public partial class MainForm : Form
         {
             await Settings.Load();
 
-            Control? parentForm = null;
-            switch (Settings.BrowserType)
-            {
-                case BrowserType.OffScreen:
-                    offScreenRadioButton.Checked = true;
-                    break;
-                case BrowserType.WinForms:
-                    winFormRadioButton.Checked = true;
-
-                    parentForm = new Form();
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-
-            await Browser.SetType(Settings.BrowserType);
+            var parentForm = new Form();
             await Browser.Init(parentForm);
             if (parentForm != null)
                 parentForm.Size = new Size(1280, 720);
@@ -374,16 +353,6 @@ public partial class MainForm : Form
     {
         Process.Start(Application.ExecutablePath);
         Application.Exit();
-    }
-
-    private async void browserTypeRadioButton_Click(object sender, EventArgs e)
-    {
-        Settings.BrowserType = offScreenRadioButton.Checked
-            ? BrowserType.OffScreen
-            : BrowserType.WinForms;
-        await Settings.Save();
-
-        Restart();
     }
 
     private void softwareListDataGridView_CurrentCellDirtyStateChanged(object sender, EventArgs e)

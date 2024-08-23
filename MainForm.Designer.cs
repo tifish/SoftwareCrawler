@@ -47,8 +47,6 @@
             errorMessageLabel = new Label();
             showDevToolsButton = new Button();
             softwareListDataGridView = new DataGridView();
-            offScreenRadioButton = new RadioButton();
-            winFormRadioButton = new RadioButton();
             rootTableLayoutPanel = new TableLayoutPanel();
             toolbarFlowLayoutPanel = new FlowLayoutPanel();
             clearCookieButton = new Button();
@@ -167,7 +165,7 @@
             // showDevToolsButton
             // 
             showDevToolsButton.Anchor = AnchorStyles.Left;
-            showDevToolsButton.Location = new Point(176, 4);
+            showDevToolsButton.Location = new Point(3, 4);
             showDevToolsButton.Name = "showDevToolsButton";
             showDevToolsButton.Size = new Size(115, 23);
             showDevToolsButton.TabIndex = 4;
@@ -197,32 +195,6 @@
             softwareListDataGridView.UserDeletedRow += softwareListDataGridView_UserDeletedRow;
             softwareListDataGridView.MouseDown += softwareListDataGridView_MouseDown;
             // 
-            // offScreenRadioButton
-            // 
-            offScreenRadioButton.Anchor = AnchorStyles.Left;
-            offScreenRadioButton.AutoSize = true;
-            offScreenRadioButton.Checked = true;
-            offScreenRadioButton.Location = new Point(3, 6);
-            offScreenRadioButton.Name = "offScreenRadioButton";
-            offScreenRadioButton.Size = new Size(79, 19);
-            offScreenRadioButton.TabIndex = 6;
-            offScreenRadioButton.TabStop = true;
-            offScreenRadioButton.Text = "Off screen";
-            offScreenRadioButton.UseVisualStyleBackColor = true;
-            offScreenRadioButton.Click += browserTypeRadioButton_Click;
-            // 
-            // winFormRadioButton
-            // 
-            winFormRadioButton.Anchor = AnchorStyles.Left;
-            winFormRadioButton.AutoSize = true;
-            winFormRadioButton.Location = new Point(88, 6);
-            winFormRadioButton.Name = "winFormRadioButton";
-            winFormRadioButton.Size = new Size(82, 19);
-            winFormRadioButton.TabIndex = 7;
-            winFormRadioButton.Text = "Win Forms";
-            winFormRadioButton.UseVisualStyleBackColor = true;
-            winFormRadioButton.Click += browserTypeRadioButton_Click;
-            // 
             // rootTableLayoutPanel
             // 
             rootTableLayoutPanel.ColumnCount = 2;
@@ -244,20 +216,18 @@
             // 
             toolbarFlowLayoutPanel.AutoSize = true;
             toolbarFlowLayoutPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            toolbarFlowLayoutPanel.Controls.Add(offScreenRadioButton);
-            toolbarFlowLayoutPanel.Controls.Add(winFormRadioButton);
             toolbarFlowLayoutPanel.Controls.Add(showDevToolsButton);
             toolbarFlowLayoutPanel.Controls.Add(clearCookieButton);
-            toolbarFlowLayoutPanel.Location = new Point(874, 647);
+            toolbarFlowLayoutPanel.Location = new Point(1047, 647);
             toolbarFlowLayoutPanel.Name = "toolbarFlowLayoutPanel";
-            toolbarFlowLayoutPanel.Size = new Size(387, 31);
+            toolbarFlowLayoutPanel.Size = new Size(214, 31);
             toolbarFlowLayoutPanel.TabIndex = 6;
             toolbarFlowLayoutPanel.WrapContents = false;
             // 
             // clearCookieButton
             // 
             clearCookieButton.AutoSize = true;
-            clearCookieButton.Location = new Point(297, 3);
+            clearCookieButton.Location = new Point(124, 3);
             clearCookieButton.Name = "clearCookieButton";
             clearCookieButton.Size = new Size(87, 25);
             clearCookieButton.TabIndex = 8;
@@ -299,8 +269,6 @@
         private ToolStripMenuItem openDownloadDirectoryToolStripMenuItem;
         private ToolStripMenuItem cancelToolStripMenuItem;
         private ToolStripSeparator toolStripSeparator4;
-        private RadioButton offScreenRadioButton;
-        private RadioButton winFormRadioButton;
         private TableLayoutPanel rootTableLayoutPanel;
         private FlowLayoutPanel toolbarFlowLayoutPanel;
         private Button clearCookieButton;

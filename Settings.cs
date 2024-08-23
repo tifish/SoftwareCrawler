@@ -5,7 +5,6 @@ namespace SoftwareCrawler;
 
 public class SettingsObject
 {
-    public BrowserType BrowserType { get; set; }
     public string Proxy { get; set; } = "";
     public int DownloadRetryCount { get; set; } = 5;
     public int DownloadRetryInterval { get; set; } = 3;

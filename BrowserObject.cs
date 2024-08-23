@@ -1,7 +1,6 @@
 ﻿global using static SoftwareCrawler.BrowserObject;
 using CefSharp;
 using CefSharp.Handler;
-using CefSharp.OffScreen;
 using System.Globalization;
 using Timer = System.Threading.Timer;
 
@@ -17,68 +16,35 @@ public class BrowserObject
 {
     public static BrowserObject Browser { get; } = new();
 
-    public static BrowserType Type { get; private set; } = BrowserType.OffScreen;
-
-    public async Task<bool> SetType(BrowserType type)
-    {
-        if (Cef.IsInitialized)
-            return false;
-
-        Type = type;
-        switch (Type)
-        {
-            case BrowserType.OffScreen:
-                var offScreenSettings = new CefSettings();
-                offScreenSettings.CefCommandLineArgs.Add("disable-gpu", "1");
-                offScreenSettings.CefCommandLineArgs.Add("disable-image-loading", "1");
-                offScreenSettings.CachePath = Path.Combine(Path.GetFullPath("Cache"));
-                offScreenSettings.PersistSessionCookies = true;
-                await Cef.InitializeAsync(offScreenSettings);
-                break;
-            case BrowserType.WinForms:
-                var winFormsSettings = new CefSharp.WinForms.CefSettings();
-                winFormsSettings.CefCommandLineArgs.Add("disable-gpu", "1");
-                winFormsSettings.CefCommandLineArgs.Add("disable-image-loading", "1");
-                winFormsSettings.CachePath = Path.Combine(Path.GetFullPath("Cache"));
-                winFormsSettings.PersistSessionCookies = true;
-                await Cef.InitializeAsync(winFormsSettings);
-                break;
-            default:
-                throw new ArgumentOutOfRangeException();
-        }
-
-        return true;
-    }
-
     public IWebBrowser WebBrowser = null!;
 
     public async Task Init(Control? parentForm = null)
     {
+        if (!Cef.IsInitialized)
+        {
+            var cefSettings = new CefSharp.WinForms.CefSettings();
+            cefSettings.CefCommandLineArgs.Add("disable-gpu", "1");
+            cefSettings.CefCommandLineArgs.Add("disable-image-loading", "1");
+            cefSettings.CachePath = Path.Combine(Path.GetFullPath("Cache"));
+            cefSettings.PersistSessionCookies = true;
+            await Cef.InitializeAsync(cefSettings);
+        }
+
         _hasDownloadCancelled = false;
 
         _frameLoadEndTaskCompletionSource = null;
         _downloadTaskCompletionSource = null;
 
-        switch (Type)
+        var webBrowser = new CefSharp.WinForms.ChromiumWebBrowser("about:blank");
+
+        if (parentForm != null)
         {
-            case BrowserType.OffScreen:
-                WebBrowser = new ChromiumWebBrowser("about:blank");
-                break;
-            case BrowserType.WinForms:
-                var webBrowser = new CefSharp.WinForms.ChromiumWebBrowser("about:blank");
-
-                if (parentForm != null)
-                {
-                    webBrowser.Parent = parentForm;
-                    webBrowser.Dock = DockStyle.Fill;
-                    parentForm.Show();
-                }
-
-                WebBrowser = webBrowser;
-                break;
-            default:
-                throw new ArgumentOutOfRangeException();
+            webBrowser.Parent = parentForm;
+            webBrowser.Dock = DockStyle.Fill;
+            parentForm.Show();
         }
+
+        WebBrowser = webBrowser;
 
         WebBrowser.FrameLoadEnd += WebBrowserOnFrameLoadEnd;
         WebBrowser.LifeSpanHandler = new MyLifeSpanHandler(this);
