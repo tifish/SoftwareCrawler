@@ -68,6 +68,12 @@ public partial class MainForm : Form
         await SoftwareManager.Load();
         var bindingList = new BindingList<SoftwareItem>(SoftwareManager.Items);
         softwareListDataGridView.DataSource = new BindingSource(bindingList, null);
+        softwareListDataGridView.AutoResizeColumns(DataGridViewAutoSizeColumnsMode.AllCells);
+        foreach (DataGridViewColumn column in softwareListDataGridView.Columns)
+        {
+            if (column.Width > 400)
+                column.Width = 400;
+        }
     }
 
     private SoftwareItem? _currentDownloadItem;

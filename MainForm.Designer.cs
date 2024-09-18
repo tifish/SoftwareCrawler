@@ -178,7 +178,6 @@
             softwareListDataGridView.AllowUserToOrderColumns = true;
             softwareListDataGridView.AllowUserToResizeRows = false;
             softwareListDataGridView.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            softwareListDataGridView.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
             softwareListDataGridView.ClipboardCopyMode = DataGridViewClipboardCopyMode.Disable;
             softwareListDataGridView.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             rootTableLayoutPanel.SetColumnSpan(softwareListDataGridView, 2);
