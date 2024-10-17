@@ -250,6 +250,7 @@ public partial class MainForm : Form
                     MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
             {
                 item.XPathOrScripts = await File.ReadAllTextAsync(tempScriptFilePath);
+                await SoftwareManager.Save();
                 File.Delete(tempScriptFilePath);
                 return;
             }
