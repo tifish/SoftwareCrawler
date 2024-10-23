@@ -248,12 +248,7 @@ public partial class MainForm : Form
         if (File.Exists(tempScriptFilePath))
             if (MessageBox.Show("The script file already exists. Press Yes to reload or No to override?", "",
                     MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
-            {
-                item.XPathOrScripts = await File.ReadAllTextAsync(tempScriptFilePath);
-                await SoftwareManager.Save();
-                File.Delete(tempScriptFilePath);
-                return;
-            }
+                await GetScriptFromFile(tempScriptFilePath, item);
 
         await File.WriteAllTextAsync(tempScriptFilePath, script, new UTF8Encoding(true));
 
@@ -274,13 +269,20 @@ public partial class MainForm : Form
         MessageBox.Show("Edit the script and save it. Then click OK to reload the script.");
 
         // Read script from the temp file
-        script = await File.ReadAllTextAsync(tempScriptFilePath);
-        script = script.Trim(); // Trim end of file
-        File.Delete(tempScriptFilePath);
-        script = script.Replace("\r\n", "`n").Replace("\n", "`n");
-        item.XPathOrScripts = script;
+        await GetScriptFromFile(tempScriptFilePath, item);
+        return;
 
-        await SoftwareManager.Save();
+        async Task GetScriptFromFile(string scriptFile, SoftwareItem softwareItem)
+        {
+            script = await File.ReadAllTextAsync(scriptFile);
+            File.Delete(scriptFile);
+
+            script = script.Trim(); // Trim end of file
+            script = script.Replace("\r\n", "`n").Replace("\n", "`n");
+
+            softwareItem.XPathOrScripts = script;
+            await SoftwareManager.Save();
+        }
     }
 
     private async void softwareListDataGridView_CellEndEdit(object sender, DataGridViewCellEventArgs e)
