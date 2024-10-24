@@ -248,7 +248,10 @@ public partial class MainForm : Form
         if (File.Exists(tempScriptFilePath))
             if (MessageBox.Show("The script file already exists. Press Yes to reload or No to override?", "",
                     MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            {
                 await GetScriptFromFile(tempScriptFilePath, item);
+                return;
+            }
 
         await File.WriteAllTextAsync(tempScriptFilePath, script, new UTF8Encoding(true));
 
