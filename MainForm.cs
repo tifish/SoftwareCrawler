@@ -263,7 +263,7 @@ public partial class MainForm : Form
         var proc = Process.Start(new ProcessStartInfo
         {
             FileName = editor,
-            Arguments = tempScriptFilePath,
+            Arguments = $"\"{tempScriptFilePath}\"",
             UseShellExecute = true,
         });
         if (proc == null)
