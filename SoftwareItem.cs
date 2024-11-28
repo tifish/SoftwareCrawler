@@ -1,8 +1,8 @@
-﻿using CefSharp;
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using CefSharp;
 
 namespace SoftwareCrawler;
 
@@ -57,11 +57,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public string WebPage { get; set; } = string.Empty;
     public string XPathOrScripts { get; set; } = string.Empty;
     public string Frames { get; set; } = string.Empty;
-    public bool UseProxy { get; set; } = false;
+    public bool UseProxy { get; set; }
     public string DownloadDirectory { get; set; } = string.Empty;
     public string DownloadDirectory2 { get; set; } = string.Empty;
     public string FilePatternToDeleteBeforeDownload { get; set; } = string.Empty;
-    public bool ExtractAfterDownload { get; set; } = false;
+    public bool ExtractAfterDownload { get; set; }
     public string FilePatternToDeleteBeforeExtractionAndExtractOnly { get; set; } = string.Empty;
 
     private string _errorMessage = string.Empty;
@@ -103,7 +103,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             {
                 var type = typeof(SoftwareItem);
                 _serializableProperties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                    .Where(prop => prop.CanWrite && prop.CanRead)
+                    .Where(prop => prop is { CanWrite: true, CanRead: true })
                     .Where(prop => prop.GetCustomAttribute<NonSerializedAttribute>() == null)
                     .ToList();
             }
@@ -196,8 +196,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     private bool _hasCancelled;
 
-    private static readonly List<string> ExecutableFileTypes = new() { ".exe", ".msi" };
-    private static readonly List<string> ArchiveFileTypes = new() { ".zip", ".rar", ".7z" };
+    private static readonly List<string> ExecutableFileTypes = [".exe", ".msi"];
+    private static readonly List<string> ArchiveFileTypes = [".zip", ".rar", ".7z"];
 
     public async Task<bool> Download(bool testOnly = false, int retryCount = 0)
     {
@@ -385,7 +385,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 }
 
                 return Failed("Failed to wait for page load end before click.");
-            MainFrameLoadEndBeforeClick:;
+                MainFrameLoadEndBeforeClick: ;
 
                 Browser.PrepareLoadEvents();
 
@@ -531,17 +531,17 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             return true;
         }
 
-        void DeleteOtherFilesInSameDirectory(string targetFilePath)
+        void DeleteOtherFilesInSameDirectory(string filePath)
         {
             if (testOnly || string.IsNullOrWhiteSpace(FilePatternToDeleteBeforeDownload))
                 return;
 
-            var dir = Path.GetDirectoryName(targetFilePath)!;
+            var dir = Path.GetDirectoryName(filePath)!;
 
             try
             {
                 Directory.GetFiles(dir, FilePatternToDeleteBeforeDownload)
-                    .Where(file => string.Compare(file, targetFilePath, StringComparison.OrdinalIgnoreCase) != 0)
+                    .Where(file => string.Compare(file, filePath, StringComparison.OrdinalIgnoreCase) != 0)
                     .ToList().ForEach(File.Delete);
             }
             catch (Exception ex)
@@ -584,7 +584,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         File.SetLastWriteTime(targetFile, sourceFileInfo.LastWriteTime);
     }
 
-    private static readonly string sevenZipPath = Path.Combine(AppDomain.CurrentDomain.SetupInformation.ApplicationBase!, "7z.exe");
+    private static readonly string SevenZipPath = Path.Combine(AppDomain.CurrentDomain.SetupInformation.ApplicationBase!, "7z.exe");
 
     private async Task ExtractArchiveFile(string archiveFile)
     {
@@ -602,7 +602,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         // extract files to root directory.
         using var process = Process.Start(new ProcessStartInfo
         {
-            FileName = sevenZipPath,
+            FileName = SevenZipPath,
             Arguments = $@"e -y -o""{archiveDir}"" ""{archiveFile}"" {FilePatternToDeleteBeforeExtractionAndExtractOnly} -r",
             UseShellExecute = true,
         });

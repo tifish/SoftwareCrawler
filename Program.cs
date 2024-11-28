@@ -13,7 +13,7 @@ static class Program
         bool autoClose,
         bool forceClose)
     {
-        Logger.Information($"Program starts with arguments: downloadAll={downloadAll}, autoClose={autoClose}, forceClose={forceClose}.");
+        Logger.Information("Program starts with arguments: downloadAll={DownloadAll}, autoClose={AutoClose}, forceClose={ForceClose}", downloadAll, autoClose, forceClose);
 
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
@@ -24,18 +24,27 @@ static class Program
         Application.Idle += ApplicationOnIdle;
         Application.Run(mainForm);
 
+        Logger.Information("Program ends");
+        return;
+
         async void ApplicationOnIdle(object? sender, EventArgs e)
         {
-            Application.Idle -= ApplicationOnIdle;
-
-            if (downloadAll)
+            try
             {
-                var success = await mainForm.DownloadAll();
-                if (forceClose || (success && autoClose))
-                    mainForm.Close();
+                Application.Idle -= ApplicationOnIdle;
+
+                if (downloadAll)
+                {
+                    var success = await mainForm.DownloadAll();
+                    if (forceClose || (success && autoClose))
+                        mainForm.Close();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "An error occurred in ApplicationOnIdle");
+                MessageBox.Show(ex.Message, "", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-
-        Logger.Information("Program ends.");
     }
 }

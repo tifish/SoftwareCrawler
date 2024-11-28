@@ -46,23 +46,31 @@ public partial class MainForm : Form
 
     private readonly TaskCompletionSource<bool> _onLoadTaskCompletionSource = new();
 
-    protected override async void OnLoad(EventArgs e)
+    protected override async void OnLoad(EventArgs args)
     {
-        base.OnLoad(e);
-
-        using (new DownloadUIDisabler(this))
+        try
         {
-            await Settings.Load();
+            base.OnLoad(args);
 
-            var parentForm = new Form();
-            await Browser.Init(parentForm);
-            if (parentForm != null)
+            using (new DownloadUIDisabler(this))
+            {
+                await Settings.Load();
+
+                var parentForm = new Form();
+                await Browser.Init(parentForm);
                 parentForm.Size = new Size(1280, 720);
 
-            await Reload();
-        }
+                await Reload();
+            }
 
-        _onLoadTaskCompletionSource.TrySetResult(true);
+            _onLoadTaskCompletionSource.TrySetResult(true);
+        }
+        catch (Exception e)
+        {
+            Logger.Error(e, "An error occurred in OnLoad");
+            MessageBox.Show(e.Message, "", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            _onLoadTaskCompletionSource.TrySetResult(false);
+        }
     }
 
     private async Task Reload()
