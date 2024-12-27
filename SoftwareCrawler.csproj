@@ -7,6 +7,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <OutDir>bin</OutDir>
     <NoWarn>1701;1702;CA1416;1591</NoWarn>
   </PropertyGroup>
@@ -52,12 +53,12 @@
     <PackageReference Include="CefSharp.Common.NETCore" Version="125.0.210" />
     <PackageReference Include="CefSharp.OffScreen.NETCore" Version="125.0.210" />
     <PackageReference Include="CefSharp.WinForms.NETCore" Version="125.0.210" />
-    <PackageReference Include="HtmlAgilityPack" Version="1.11.64" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.11.71" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="nulastudio.NetBeauty" Version="2.1.4.5" />
+    <PackageReference Include="nulastudio.NetBeauty" Version="2.1.4.6" />
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
     <PackageReference Include="System.CommandLine.DragonFruit" Version="0.4.0-alpha.22272.1" />
-    <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.0-preview.7.24405.7" />
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>
