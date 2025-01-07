@@ -406,7 +406,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                                         window.scrollTo(0, middle);
                                         """;
                     if (!await Browser.TryEvaluateJavascript(scrollScript, frameName))
-                        Logger.Error("Failed to scroll to {XPathOrScript}", xpathOrScript);
+                        Logger.Error("Failed to scroll to {XPathOrScript}", Browser.LastJavascriptError);
                     //return Failed($"Failed to scroll to {xpathOrScript}");
 
                     // Then click
@@ -418,7 +418,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 {
                     Status = DownloadStatus.ExecutingScript;
                     if (!await Browser.TryEvaluateJavascript(xpathOrScript, frameName))
-                        return Failed($"Failed to execute {xpathOrScript}");
+                        return Failed($"Failed to execute script: {Browser.LastJavascriptError}");
                 }
             }
 

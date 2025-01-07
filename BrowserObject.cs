@@ -365,14 +365,25 @@ public class BrowserObject
         return success;
     }
 
+    public string LastJavascriptError { get; private set; } = "";
+
     public async Task<bool> EvaluateJavascript(string script, string frameName = "")
     {
+        JavascriptResponse? response = null;
+
         if (string.IsNullOrWhiteSpace(frameName))
-            return (await WebBrowser.EvaluateScriptAsync(script)).Success;
+            response = await WebBrowser.EvaluateScriptAsync(script);
 
         var frame = WebBrowser.GetBrowser().GetFrameByName(frameName);
         if (frame != null)
-            return (await frame.EvaluateScriptAsync(script)).Success;
+            response = await frame.EvaluateScriptAsync(script);
+
+        if (response != null)
+        {
+            if (!response.Success)
+                LastJavascriptError = response.Message;
+            return response.Success;
+        }
 
         return false;
     }
