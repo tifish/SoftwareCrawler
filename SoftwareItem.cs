@@ -393,7 +393,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 var frameName = i < frameNames.Count ? frameNames[i] : string.Empty;
 
                 // Is XPath
-                if (xpathOrScript.StartsWith('/'))
+                if (xpathOrScript.StartsWith("//") && xpathOrScript.Length >= 3 && char.IsLetter(xpathOrScript[2]))
                 {
                     Status = DownloadStatus.Clicking;
 
@@ -406,18 +406,17 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                                         window.scrollTo(0, middle);
                                         """;
                     if (!await Browser.TryEvaluateJavascript(scrollScript, frameName))
-                        Logger.Error("Failed to scroll to {XPathOrScript}", Browser.LastJavascriptError);
-                    //return Failed($"Failed to scroll to {xpathOrScript}");
+                        Logger.Error("Failed to scroll to, error: {LastJavascriptError}", Browser.LastJavascriptError);
 
                     // Then click
                     if (!await Browser.TryClick(xpathOrScript, frameName,
                             Settings.TryClickCount, Settings.TryClickInterval * 1000))
-                        return Failed($"Failed to click {xpathOrScript}");
+                        return Failed($"Failed to click, error: {Browser.LastJavascriptError}");
                 }
                 else // Is JavaScript
                 {
                     Status = DownloadStatus.ExecutingScript;
-                    if (!await Browser.TryEvaluateJavascript(xpathOrScript, frameName))
+                     if (!await Browser.TryEvaluateJavascript(xpathOrScript, frameName))
                         return Failed($"Failed to execute script: {Browser.LastJavascriptError}");
                 }
             }
