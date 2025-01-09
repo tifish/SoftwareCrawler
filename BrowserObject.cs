@@ -1,7 +1,8 @@
 ﻿global using static SoftwareCrawler.BrowserObject;
+using System.Globalization;
 using CefSharp;
 using CefSharp.Handler;
-using System.Globalization;
+using CefSharp.WinForms;
 using Timer = System.Threading.Timer;
 
 namespace SoftwareCrawler;
@@ -22,7 +23,7 @@ public class BrowserObject
     {
         if (!Cef.IsInitialized)
         {
-            var cefSettings = new CefSharp.WinForms.CefSettings();
+            var cefSettings = new CefSettings();
             cefSettings.CefCommandLineArgs.Add("disable-gpu", "1");
             cefSettings.CefCommandLineArgs.Add("disable-image-loading", "1");
             cefSettings.CachePath = Path.Combine(Path.GetFullPath("Cache"));
@@ -35,7 +36,7 @@ public class BrowserObject
         _frameLoadEndTaskCompletionSource = null;
         _downloadTaskCompletionSource = null;
 
-        var webBrowser = new CefSharp.WinForms.ChromiumWebBrowser("about:blank");
+        var webBrowser = new ChromiumWebBrowser("about:blank");
 
         if (parentForm != null)
         {
@@ -229,7 +230,9 @@ public class BrowserObject
                         _downloadItemCallback?.Cancel();
                 }
                 else
+                {
                     callback.Continue(downloadItem.FullPath, false);
+                }
             }
 
             _downloadItemCallback = null;
@@ -372,11 +375,15 @@ public class BrowserObject
         JavascriptResponse? response = null;
 
         if (string.IsNullOrWhiteSpace(frameName))
+        {
             response = await WebBrowser.EvaluateScriptAsync(script);
-
-        var frame = WebBrowser.GetBrowser().GetFrameByName(frameName);
-        if (frame != null)
-            response = await frame.EvaluateScriptAsync(script);
+        }
+        else
+        {
+            var frame = WebBrowser.GetBrowser().GetFrameByName(frameName);
+            if (frame != null)
+                response = await frame.EvaluateScriptAsync(script);
+        }
 
         if (response != null)
         {
