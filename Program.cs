@@ -1,4 +1,6 @@
+using System.CommandLine;
 using System.Text;
+using System.CommandLine.NamingConventionBinder;
 
 namespace SoftwareCrawler;
 
@@ -8,7 +10,19 @@ static class Program
     ///     The main entry point for the application.
     /// </summary>
     [STAThread]
-    private static void Main(
+    public static void Main(string[] args)
+    {
+        var rootCommand = new RootCommand("Software Crawler")
+        {
+            new Option<bool>("--download-all", "Download all software"),
+            new Option<bool>("--auto-close", "Auto close after download"),
+            new Option<bool>("--force-close", "Force close after download")
+        };
+        rootCommand.Handler = CommandHandler.Create<bool, bool, bool>(Run);
+        rootCommand.Invoke(args);
+    }
+
+    private static void Run(
         bool downloadAll,
         bool autoClose,
         bool forceClose)

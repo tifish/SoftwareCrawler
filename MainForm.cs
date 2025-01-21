@@ -11,6 +11,12 @@ public partial class MainForm : Form
     public MainForm()
     {
         InitializeComponent();
+
+        // Add drag and drop support
+        softwareListDataGridView.AllowDrop = true;
+        softwareListDataGridView.DragDrop += softwareListDataGridView_DragDrop;
+        softwareListDataGridView.DragOver += softwareListDataGridView_DragOver;
+        softwareListDataGridView.MouseMove += softwareListDataGridView_MouseMove;
     }
 
     private class DownloadUIDisabler : IDisposable
@@ -407,5 +413,95 @@ public partial class MainForm : Form
     {
         // clear cache
         Cef.GetGlobalCookieManager().DeleteCookies("", "");
+    }
+
+    private int dragRowIndex;
+
+    private void softwareListDataGridView_MouseMove(object? sender, MouseEventArgs e)
+    {
+        if (e.Button == MouseButtons.Left)
+        {
+            var dragSize = SystemInformation.DragSize;
+            var dragRect = new Rectangle(new Point(dragRowIndex, dragRowIndex), dragSize);
+
+            if (!dragRect.Contains(e.X, e.Y))
+            {
+                var row = softwareListDataGridView.HitTest(e.X, e.Y).RowIndex;
+                if (row >= 0)
+                {
+                    dragRowIndex = row;
+                    var draggedItem = softwareListDataGridView.Rows[row];
+                    softwareListDataGridView.DoDragDrop(draggedItem, DragDropEffects.Move);
+                }
+            }
+        }
+    }
+
+    private void softwareListDataGridView_DragOver(object? sender, DragEventArgs e)
+    {
+        e.Effect = DragDropEffects.Move;
+    }
+
+    private async void softwareListDataGridView_DragDrop(object? sender, DragEventArgs e)
+    {
+        var clientPoint = softwareListDataGridView.PointToClient(new Point(e.X, e.Y));
+        var targetRowIndex = softwareListDataGridView.HitTest(clientPoint.X, clientPoint.Y).RowIndex;
+
+        if (targetRowIndex < 0) return;
+        if (targetRowIndex == dragRowIndex) return;
+
+        var bindingList = (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource).List;
+        var item = bindingList[dragRowIndex];
+
+        bindingList.RemoveAt(dragRowIndex);
+        bindingList.Insert(targetRowIndex, item);
+
+        await SoftwareManager.Save();
+    }
+
+    private async void insertNewToolStripMenuItem_Click(object sender, EventArgs e)
+    {
+        if (softwareListDataGridView.CurrentRow == null) return;
+
+        var currentIndex = softwareListDataGridView.CurrentRow.Index;
+        var bindingList = (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource).List;
+
+        // Create a new SoftwareItem
+        var newItem = new SoftwareItem
+        {
+            Name = "New Software",
+            Enabled = true
+        };
+
+        // Insert new item at current position
+        bindingList.Insert(currentIndex, newItem);
+
+        // Select the newly inserted row
+        softwareListDataGridView.ClearSelection();
+        softwareListDataGridView.Rows[currentIndex].Selected = true;
+
+        await SoftwareManager.Save();
+    }
+
+    private async void deleteToolStripMenuItem_Click(object sender, EventArgs e)
+    {
+        if (softwareListDataGridView.CurrentRow == null) return;
+
+        // Confirm before deletion
+        if (MessageBox.Show("Are you sure you want to delete the selected items?", "Confirm Delete",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+            return;
+
+        var bindingList = (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource).List;
+        var selectedRows = softwareListDataGridView.SelectedRows.Cast<DataGridViewRow>()
+            .OrderByDescending(r => r.Index)  // Delete from bottom to top to maintain correct indices
+            .ToList();
+
+        foreach (var row in selectedRows)
+        {
+            bindingList.RemoveAt(row.Index);
+        }
+
+        await SoftwareManager.Save();
     }
 }

@@ -38,6 +38,8 @@
             toolStripSeparator2 = new ToolStripSeparator();
             cancelToolStripMenuItem = new ToolStripMenuItem();
             toolStripSeparator4 = new ToolStripSeparator();
+            insertNewToolStripMenuItem = new ToolStripMenuItem();
+            deleteToolStripMenuItem = new ToolStripMenuItem();
             reloadToolStripMenuItem = new ToolStripMenuItem();
             editScriptToolStripMenuItem = new ToolStripMenuItem();
             toolStripSeparator3 = new ToolStripSeparator();
@@ -58,9 +60,9 @@
             // 
             // dataGridViewContextMenuStrip
             // 
-            dataGridViewContextMenuStrip.Items.AddRange(new ToolStripItem[] { downloadSelectedToolStripMenuItem, downloadAllToolStripMenuItem, toolStripSeparator1, testSelectedToolStripMenuItem, testAllToolStripMenuItem, toolStripSeparator2, cancelToolStripMenuItem, toolStripSeparator4, reloadToolStripMenuItem, editScriptToolStripMenuItem, toolStripSeparator3, openWebPageToolStripMenuItem, openWebPageInBrowserToolStripMenuItem, openDownloadDirectoryToolStripMenuItem });
+            dataGridViewContextMenuStrip.Items.AddRange(new ToolStripItem[] { downloadSelectedToolStripMenuItem, downloadAllToolStripMenuItem, toolStripSeparator1, testSelectedToolStripMenuItem, testAllToolStripMenuItem, toolStripSeparator2, cancelToolStripMenuItem, toolStripSeparator4, insertNewToolStripMenuItem, deleteToolStripMenuItem, reloadToolStripMenuItem, editScriptToolStripMenuItem, toolStripSeparator3, openWebPageToolStripMenuItem, openWebPageInBrowserToolStripMenuItem, openDownloadDirectoryToolStripMenuItem });
             dataGridViewContextMenuStrip.Name = "dataGridViewContextMenuStrip";
-            dataGridViewContextMenuStrip.Size = new Size(216, 248);
+            dataGridViewContextMenuStrip.Size = new Size(216, 292);
             // 
             // downloadSelectedToolStripMenuItem
             // 
@@ -112,6 +114,19 @@
             toolStripSeparator4.Name = "toolStripSeparator4";
             toolStripSeparator4.Size = new Size(212, 6);
             // 
+            // insertNewToolStripMenuItem
+            // 
+            insertNewToolStripMenuItem.Name = "insertNewToolStripMenuItem";
+            insertNewToolStripMenuItem.Size = new Size(215, 22);
+            insertNewToolStripMenuItem.Text = "Insert &new";
+            insertNewToolStripMenuItem.Click += insertNewToolStripMenuItem_Click;
+            // 
+            // deleteToolStripMenuItem
+            // 
+            deleteToolStripMenuItem.Name = "deleteToolStripMenuItem";
+            deleteToolStripMenuItem.Size = new Size(215, 22);
+            deleteToolStripMenuItem.Text = "De&lete";
+            // 
             // reloadToolStripMenuItem
             // 
             reloadToolStripMenuItem.Name = "reloadToolStripMenuItem";
@@ -142,7 +157,7 @@
             // 
             openWebPageInBrowserToolStripMenuItem.Name = "openWebPageInBrowserToolStripMenuItem";
             openWebPageInBrowserToolStripMenuItem.Size = new Size(215, 22);
-            openWebPageInBrowserToolStripMenuItem.Text = "Open web page in browser";
+            openWebPageInBrowserToolStripMenuItem.Text = "Open web page in &browser";
             openWebPageInBrowserToolStripMenuItem.Click += openWebPageInBrowserToolStripMenuItem_Click;
             // 
             // openDownloadDirectoryToolStripMenuItem
@@ -273,5 +288,7 @@
         private Button clearCookieButton;
         private ToolStripMenuItem openWebPageInBrowserToolStripMenuItem;
         private ToolStripMenuItem editScriptToolStripMenuItem;
+        private ToolStripMenuItem insertNewToolStripMenuItem;
+        private ToolStripMenuItem deleteToolStripMenuItem;
     }
 }
