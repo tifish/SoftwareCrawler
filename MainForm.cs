@@ -411,7 +411,6 @@ public partial class MainForm : Form
 
     private void clearCookieButton_Click(object sender, EventArgs e)
     {
-        // clear cache
         Cef.GetGlobalCookieManager().DeleteCookies("", "");
     }
 
@@ -503,5 +502,11 @@ public partial class MainForm : Form
         }
 
         await SoftwareManager.Save();
+    }
+
+    private void settingsButton_Click(object sender, EventArgs e)
+    {
+        using var form = new SettingsForm();
+        form.ShowDialog(this);
     }
 }

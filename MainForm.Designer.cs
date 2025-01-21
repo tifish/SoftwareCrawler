@@ -52,6 +52,7 @@
             rootTableLayoutPanel = new TableLayoutPanel();
             toolbarFlowLayoutPanel = new FlowLayoutPanel();
             clearCookieButton = new Button();
+            settingsButton = new Button();
             dataGridViewContextMenuStrip.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)softwareListDataGridView).BeginInit();
             rootTableLayoutPanel.SuspendLayout();
@@ -232,9 +233,10 @@
             toolbarFlowLayoutPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             toolbarFlowLayoutPanel.Controls.Add(showDevToolsButton);
             toolbarFlowLayoutPanel.Controls.Add(clearCookieButton);
-            toolbarFlowLayoutPanel.Location = new Point(1047, 647);
+            toolbarFlowLayoutPanel.Controls.Add(settingsButton);
+            toolbarFlowLayoutPanel.Location = new Point(954, 647);
             toolbarFlowLayoutPanel.Name = "toolbarFlowLayoutPanel";
-            toolbarFlowLayoutPanel.Size = new Size(214, 31);
+            toolbarFlowLayoutPanel.Size = new Size(307, 31);
             toolbarFlowLayoutPanel.TabIndex = 6;
             toolbarFlowLayoutPanel.WrapContents = false;
             // 
@@ -248,6 +250,17 @@
             clearCookieButton.Text = "Clear cookies";
             clearCookieButton.UseVisualStyleBackColor = true;
             clearCookieButton.Click += clearCookieButton_Click;
+            // 
+            // settingsButton
+            // 
+            settingsButton.AutoSize = true;
+            settingsButton.Location = new Point(217, 3);
+            settingsButton.Name = "settingsButton";
+            settingsButton.Size = new Size(87, 25);
+            settingsButton.TabIndex = 9;
+            settingsButton.Text = "S&ettings";
+            settingsButton.UseVisualStyleBackColor = true;
+            settingsButton.Click += settingsButton_Click;
             // 
             // MainForm
             // 
@@ -290,5 +303,6 @@
         private ToolStripMenuItem editScriptToolStripMenuItem;
         private ToolStripMenuItem insertNewToolStripMenuItem;
         private ToolStripMenuItem deleteToolStripMenuItem;
+        private Button settingsButton;
     }
 }
