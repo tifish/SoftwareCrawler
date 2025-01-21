@@ -54,7 +54,7 @@ partial class SettingsForm
         // proxyTextBox
         // 
         proxyTextBox.Anchor = AnchorStyles.Left;
-        proxyTextBox.Location = new Point(161, 3);
+        proxyTextBox.Location = new Point(157, 3);
         proxyTextBox.Name = "proxyTextBox";
         proxyTextBox.Size = new Size(336, 23);
         proxyTextBox.TabIndex = 0;
@@ -72,7 +72,7 @@ partial class SettingsForm
         // downloadRetryCountNumericUpDown
         // 
         downloadRetryCountNumericUpDown.Anchor = AnchorStyles.Left;
-        downloadRetryCountNumericUpDown.Location = new Point(161, 32);
+        downloadRetryCountNumericUpDown.Location = new Point(157, 32);
         downloadRetryCountNumericUpDown.Maximum = new decimal(new int[] { -1, -1, -1, 0 });
         downloadRetryCountNumericUpDown.Name = "downloadRetryCountNumericUpDown";
         downloadRetryCountNumericUpDown.Size = new Size(72, 23);
@@ -84,14 +84,14 @@ partial class SettingsForm
         label2.AutoSize = true;
         label2.Location = new Point(3, 36);
         label2.Name = "label2";
-        label2.Size = new Size(127, 15);
+        label2.Size = new Size(122, 15);
         label2.TabIndex = 3;
-        label2.Text = "Download Retry Count";
+        label2.Text = "Download retry count";
         // 
         // downloadRetryIntervalNumericUpDown
         // 
         downloadRetryIntervalNumericUpDown.Anchor = AnchorStyles.Left;
-        downloadRetryIntervalNumericUpDown.Location = new Point(161, 61);
+        downloadRetryIntervalNumericUpDown.Location = new Point(157, 61);
         downloadRetryIntervalNumericUpDown.Maximum = new decimal(new int[] { -1, -1, -1, 0 });
         downloadRetryIntervalNumericUpDown.Name = "downloadRetryIntervalNumericUpDown";
         downloadRetryIntervalNumericUpDown.Size = new Size(72, 23);
@@ -103,14 +103,14 @@ partial class SettingsForm
         label3.AutoSize = true;
         label3.Location = new Point(3, 65);
         label3.Name = "label3";
-        label3.Size = new Size(149, 15);
+        label3.Size = new Size(146, 15);
         label3.TabIndex = 5;
-        label3.Text = "Download Retry Interval (s)";
+        label3.Text = "Download retry interval (s)";
         // 
         // loadPageEndTimeoutNumericUpDown
         // 
         loadPageEndTimeoutNumericUpDown.Anchor = AnchorStyles.Left;
-        loadPageEndTimeoutNumericUpDown.Location = new Point(161, 90);
+        loadPageEndTimeoutNumericUpDown.Location = new Point(157, 90);
         loadPageEndTimeoutNumericUpDown.Maximum = new decimal(new int[] { -1, -1, -1, 0 });
         loadPageEndTimeoutNumericUpDown.Name = "loadPageEndTimeoutNumericUpDown";
         loadPageEndTimeoutNumericUpDown.Size = new Size(72, 23);
@@ -122,14 +122,14 @@ partial class SettingsForm
         label4.AutoSize = true;
         label4.Location = new Point(3, 94);
         label4.Name = "label4";
-        label4.Size = new Size(126, 15);
+        label4.Size = new Size(120, 15);
         label4.TabIndex = 7;
-        label4.Text = "Page Load Timeout (s)";
+        label4.Text = "Page load timeout (s)";
         // 
         // tryClickCountNumericUpDown
         // 
         tryClickCountNumericUpDown.Anchor = AnchorStyles.Left;
-        tryClickCountNumericUpDown.Location = new Point(161, 119);
+        tryClickCountNumericUpDown.Location = new Point(157, 119);
         tryClickCountNumericUpDown.Maximum = new decimal(new int[] { -1, -1, -1, 0 });
         tryClickCountNumericUpDown.Name = "tryClickCountNumericUpDown";
         tryClickCountNumericUpDown.Size = new Size(72, 23);
@@ -141,14 +141,14 @@ partial class SettingsForm
         label5.AutoSize = true;
         label5.Location = new Point(3, 123);
         label5.Name = "label5";
-        label5.Size = new Size(99, 15);
+        label5.Size = new Size(94, 15);
         label5.TabIndex = 9;
-        label5.Text = "Click Retry Count";
+        label5.Text = "Click retry count";
         // 
         // tryClickIntervalNumericUpDown
         // 
         tryClickIntervalNumericUpDown.Anchor = AnchorStyles.Left;
-        tryClickIntervalNumericUpDown.Location = new Point(161, 148);
+        tryClickIntervalNumericUpDown.Location = new Point(157, 148);
         tryClickIntervalNumericUpDown.Maximum = new decimal(new int[] { -1, -1, -1, 0 });
         tryClickIntervalNumericUpDown.Name = "tryClickIntervalNumericUpDown";
         tryClickIntervalNumericUpDown.Size = new Size(72, 23);
@@ -160,14 +160,14 @@ partial class SettingsForm
         label6.AutoSize = true;
         label6.Location = new Point(3, 152);
         label6.Name = "label6";
-        label6.Size = new Size(121, 15);
+        label6.Size = new Size(118, 15);
         label6.TabIndex = 11;
-        label6.Text = "Click Retry Interval (s)";
+        label6.Text = "Click retry interval (s)";
         // 
         // startDownloadTimeoutNumericUpDown
         // 
         startDownloadTimeoutNumericUpDown.Anchor = AnchorStyles.Left;
-        startDownloadTimeoutNumericUpDown.Location = new Point(161, 177);
+        startDownloadTimeoutNumericUpDown.Location = new Point(157, 177);
         startDownloadTimeoutNumericUpDown.Maximum = new decimal(new int[] { -1, -1, -1, 0 });
         startDownloadTimeoutNumericUpDown.Name = "startDownloadTimeoutNumericUpDown";
         startDownloadTimeoutNumericUpDown.Size = new Size(72, 23);
@@ -179,14 +179,14 @@ partial class SettingsForm
         label7.AutoSize = true;
         label7.Location = new Point(3, 181);
         label7.Name = "label7";
-        label7.Size = new Size(152, 15);
+        label7.Size = new Size(148, 15);
         label7.TabIndex = 13;
-        label7.Text = "Start Download Timeout (s)";
+        label7.Text = "Start download timeout (s)";
         // 
         // downloadTimeoutNumericUpDown
         // 
         downloadTimeoutNumericUpDown.Anchor = AnchorStyles.Left;
-        downloadTimeoutNumericUpDown.Location = new Point(161, 206);
+        downloadTimeoutNumericUpDown.Location = new Point(157, 206);
         downloadTimeoutNumericUpDown.Maximum = new decimal(new int[] { -1, -1, -1, 0 });
         downloadTimeoutNumericUpDown.Name = "downloadTimeoutNumericUpDown";
         downloadTimeoutNumericUpDown.Size = new Size(72, 23);
@@ -198,9 +198,9 @@ partial class SettingsForm
         label8.AutoSize = true;
         label8.Location = new Point(3, 210);
         label8.Name = "label8";
-        label8.Size = new Size(125, 15);
+        label8.Size = new Size(122, 15);
         label8.TabIndex = 15;
-        label8.Text = "Download Timeout (s)";
+        label8.Text = "Download timeout (s)";
         // 
         // externalJavascriptEditorTextBox
         // 
@@ -216,9 +216,9 @@ partial class SettingsForm
         label9.AutoSize = true;
         label9.Location = new Point(3, 243);
         label9.Name = "label9";
-        label9.Size = new Size(137, 15);
+        label9.Size = new Size(136, 15);
         label9.TabIndex = 17;
-        label9.Text = "External JavaScript Editor";
+        label9.Text = "External Javascript editor";
         // 
         // browseButton
         // 
@@ -303,7 +303,7 @@ partial class SettingsForm
         flowLayoutPanel2.AutoSize = true;
         flowLayoutPanel2.Controls.Add(externalJavascriptEditorTextBox);
         flowLayoutPanel2.Controls.Add(browseButton);
-        flowLayoutPanel2.Location = new Point(161, 235);
+        flowLayoutPanel2.Location = new Point(157, 235);
         flowLayoutPanel2.Name = "flowLayoutPanel2";
         flowLayoutPanel2.Size = new Size(420, 31);
         flowLayoutPanel2.TabIndex = 23;
