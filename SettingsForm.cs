@@ -1,6 +1,4 @@
-﻿using System.ComponentModel;
-
-namespace SoftwareCrawler;
+﻿namespace SoftwareCrawler;
 
 public partial class SettingsForm : Form
 {
