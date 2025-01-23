@@ -456,6 +456,11 @@ public partial class MainForm : Form
         bindingList.Insert(targetRowIndex, item);
 
         await SoftwareManager.Save();
+
+        // Select the dragged item at its new position and move cursor to the cell
+        softwareListDataGridView.ClearSelection();
+        softwareListDataGridView.Rows[targetRowIndex].Selected = true;
+        softwareListDataGridView.CurrentCell = softwareListDataGridView[softwareListDataGridView.CurrentCell.ColumnIndex, targetRowIndex];
     }
 
     private async void insertNewToolStripMenuItem_Click(object sender, EventArgs e)
