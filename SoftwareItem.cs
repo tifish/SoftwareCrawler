@@ -111,7 +111,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     public SoftwareItem(string line)
     {
-        FromTabSplitLine(line);
+        FromDataLine(line);
     }
 
     private static List<PropertyInfo>? _serializableProperties;
@@ -132,12 +132,12 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         }
     }
 
-    public static string GetHeaderLine()
+    public static string GetDataHeaderLine()
     {
         return string.Join('\t', SerializableProperties.Select(prop => prop.Name));
     }
 
-    public void FromTabSplitLine(string line)
+    public void FromDataLine(string line)
     {
         var items = line.Split('\t');
         if (items.Length != SerializableProperties.Count)
@@ -169,7 +169,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         }
     }
 
-    public string ToTabSplitLine()
+    public string ToDataLine()
     {
         var items = SerializableProperties.Select(prop =>
             {

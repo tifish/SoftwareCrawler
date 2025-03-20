@@ -24,9 +24,9 @@ public static class SoftwareManager
     {
         var items = new List<string>(Items.Count + 1)
         {
-            SoftwareItem.GetHeaderLine(),
+            SoftwareItem.GetDataHeaderLine(),
         };
-        items.AddRange(Items.Select(item => item.ToTabSplitLine()));
+        items.AddRange(Items.Select(item => item.ToDataLine()));
         await File.WriteAllLinesAsync(ConfigPath, items, new UTF8Encoding(true));
     }
 }
