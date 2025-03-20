@@ -489,7 +489,8 @@ public partial class MainForm : Form
 
     private async void deleteToolStripMenuItem_Click(object sender, EventArgs e)
     {
-        if (softwareListDataGridView.CurrentRow == null) return;
+        if (softwareListDataGridView.CurrentRow == null)
+            return;
 
         // Confirm before deletion
         if (MessageBox.Show("Are you sure you want to delete the selected items?", "Confirm Delete",

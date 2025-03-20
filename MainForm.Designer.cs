@@ -127,6 +127,7 @@
             deleteToolStripMenuItem.Name = "deleteToolStripMenuItem";
             deleteToolStripMenuItem.Size = new Size(215, 22);
             deleteToolStripMenuItem.Text = "De&lete";
+            deleteToolStripMenuItem.Click += deleteToolStripMenuItem_Click;
             // 
             // reloadToolStripMenuItem
             // 
