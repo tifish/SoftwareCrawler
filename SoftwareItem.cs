@@ -109,43 +109,45 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     {
     }
 
-    public SoftwareItem(string line)
+    public SoftwareItem(string dataLine, string extraLine)
     {
-        FromDataLine(line);
+        FromDataLine(dataLine, DataProperties);
+        FromDataLine(extraLine, ExtraProperties);
     }
 
-    private static List<PropertyInfo>? _serializableProperties;
-
-    private static List<PropertyInfo> SerializableProperties
+    public static readonly List<PropertyInfo> DataProperties = [.. new []
     {
-        get
-        {
-            if (_serializableProperties == null)
-            {
-                var type = typeof(SoftwareItem);
-                _serializableProperties = [.. type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                    .Where(prop => prop is { CanWrite: true, CanRead: true })
-                    .Where(prop => prop.GetCustomAttribute<NonSerializedAttribute>() == null)];
-            }
+        nameof(Enabled),
+        nameof(Name),
+        nameof(WebPage),
+        nameof(XPathOrScripts),
+        nameof(Frames),
+        nameof(UseProxy),
+        nameof(FilePatternToDeleteBeforeDownload),
+        nameof(ExtractAfterDownload),
+        nameof(FilePatternToDeleteBeforeExtractionAndExtractOnly),
+    }.Select(name => typeof(SoftwareItem).GetProperty(name)!).ToList()];
 
-            return _serializableProperties;
-        }
+    public static readonly List<PropertyInfo> ExtraProperties = [.. new []
+    {
+        nameof(DownloadDirectory),
+        nameof(DownloadDirectory2),
+    }.Select(name => typeof(SoftwareItem).GetProperty(name)!).ToList()];
+
+    public static string GetDataHeaderLine(List<PropertyInfo> properties)
+    {
+        return string.Join('\t', properties.Select(prop => prop.Name));
     }
 
-    public static string GetDataHeaderLine()
-    {
-        return string.Join('\t', SerializableProperties.Select(prop => prop.Name));
-    }
-
-    public void FromDataLine(string line)
+    public void FromDataLine(string line, List<PropertyInfo> properties)
     {
         var items = line.Split('\t');
-        if (items.Length != SerializableProperties.Count)
-            throw new Exception("items.Length != SerializableProperties.Count");
+        if (items.Length != properties.Count)
+            throw new Exception("items.Length != properties.Count");
 
         for (var i = 0; i < items.Length; i++)
         {
-            var prop = SerializableProperties[i];
+            var prop = properties[i];
             var item = items[i];
             if (prop.PropertyType == typeof(string))
             {
@@ -169,9 +171,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         }
     }
 
-    public string ToDataLine()
+    public string ToDataLine(List<PropertyInfo> properties)
     {
-        var items = SerializableProperties.Select(prop =>
+        var items = properties.Select(prop =>
             {
                 var value = prop.GetValue(this);
 

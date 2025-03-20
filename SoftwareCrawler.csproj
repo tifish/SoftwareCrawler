@@ -10,6 +10,7 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <OutDir>bin</OutDir>
     <NoWarn>1701;1702;CA1416;1591</NoWarn>
+    <LangVersion>Preview</LangVersion>
   </PropertyGroup>
 
   <PropertyGroup>

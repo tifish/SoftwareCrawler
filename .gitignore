@@ -1,8 +1,15 @@
 /.idea
 /.vs
 /.vscode
-/bin
 /obj
 /*.user
 /*.DotSettings
 /Cache
+/bin/Libs
+/bin/locales
+/bin/Logs
+/bin/*.exe
+/bin/*.dll
+/bin/*.pdb
+/bin/*.json
+/bin/DownloadDirectory.tab
