@@ -20,6 +20,7 @@ public partial class SettingsForm : Form
         startDownloadTimeoutNumericUpDown.Value = _settings.StartDownloadTimeout;
         downloadTimeoutNumericUpDown.Value = _settings.DownloadTimeout;
         externalJavascriptEditorTextBox.Text = _settings.ExternalJavascriptEditor;
+        defaultDownloadDirectoryTextBox.Text = _settings.DefaultDownloadDirectory;
     }
 
     private async void okButton_Click(object sender, EventArgs e)
@@ -34,6 +35,7 @@ public partial class SettingsForm : Form
         _settings.StartDownloadTimeout = (int)startDownloadTimeoutNumericUpDown.Value;
         _settings.DownloadTimeout = (int)downloadTimeoutNumericUpDown.Value;
         _settings.ExternalJavascriptEditor = externalJavascriptEditorTextBox.Text;
+        _settings.DefaultDownloadDirectory = defaultDownloadDirectoryTextBox.Text;
 
         await _settings.Save();
         DialogResult = DialogResult.OK;

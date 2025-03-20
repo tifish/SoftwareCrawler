@@ -33,6 +33,8 @@ partial class SettingsForm
         label8 = new Label();
         externalJavascriptEditorTextBox = new TextBox();
         label9 = new Label();
+        defaultDownloadDirectoryTextBox = new TextBox();
+        defaultDownloadDirectoryLabel = new Label();
         browseButton = new Button();
         okButton = new Button();
         cancelButton = new Button();
@@ -54,9 +56,9 @@ partial class SettingsForm
         // proxyTextBox
         // 
         proxyTextBox.Anchor = AnchorStyles.Left;
-        proxyTextBox.Location = new Point(157, 3);
+        proxyTextBox.Location = new Point(160, 3);
         proxyTextBox.Name = "proxyTextBox";
-        proxyTextBox.Size = new Size(336, 23);
+        proxyTextBox.Size = new Size(337, 23);
         proxyTextBox.TabIndex = 0;
         // 
         // label1
@@ -72,7 +74,7 @@ partial class SettingsForm
         // downloadRetryCountNumericUpDown
         // 
         downloadRetryCountNumericUpDown.Anchor = AnchorStyles.Left;
-        downloadRetryCountNumericUpDown.Location = new Point(157, 32);
+        downloadRetryCountNumericUpDown.Location = new Point(160, 32);
         downloadRetryCountNumericUpDown.Maximum = new decimal(new int[] { -1, -1, -1, 0 });
         downloadRetryCountNumericUpDown.Name = "downloadRetryCountNumericUpDown";
         downloadRetryCountNumericUpDown.Size = new Size(72, 23);
@@ -91,7 +93,7 @@ partial class SettingsForm
         // downloadRetryIntervalNumericUpDown
         // 
         downloadRetryIntervalNumericUpDown.Anchor = AnchorStyles.Left;
-        downloadRetryIntervalNumericUpDown.Location = new Point(157, 61);
+        downloadRetryIntervalNumericUpDown.Location = new Point(160, 61);
         downloadRetryIntervalNumericUpDown.Maximum = new decimal(new int[] { -1, -1, -1, 0 });
         downloadRetryIntervalNumericUpDown.Name = "downloadRetryIntervalNumericUpDown";
         downloadRetryIntervalNumericUpDown.Size = new Size(72, 23);
@@ -110,7 +112,7 @@ partial class SettingsForm
         // loadPageEndTimeoutNumericUpDown
         // 
         loadPageEndTimeoutNumericUpDown.Anchor = AnchorStyles.Left;
-        loadPageEndTimeoutNumericUpDown.Location = new Point(157, 90);
+        loadPageEndTimeoutNumericUpDown.Location = new Point(160, 90);
         loadPageEndTimeoutNumericUpDown.Maximum = new decimal(new int[] { -1, -1, -1, 0 });
         loadPageEndTimeoutNumericUpDown.Name = "loadPageEndTimeoutNumericUpDown";
         loadPageEndTimeoutNumericUpDown.Size = new Size(72, 23);
@@ -129,7 +131,7 @@ partial class SettingsForm
         // tryClickCountNumericUpDown
         // 
         tryClickCountNumericUpDown.Anchor = AnchorStyles.Left;
-        tryClickCountNumericUpDown.Location = new Point(157, 119);
+        tryClickCountNumericUpDown.Location = new Point(160, 119);
         tryClickCountNumericUpDown.Maximum = new decimal(new int[] { -1, -1, -1, 0 });
         tryClickCountNumericUpDown.Name = "tryClickCountNumericUpDown";
         tryClickCountNumericUpDown.Size = new Size(72, 23);
@@ -148,7 +150,7 @@ partial class SettingsForm
         // tryClickIntervalNumericUpDown
         // 
         tryClickIntervalNumericUpDown.Anchor = AnchorStyles.Left;
-        tryClickIntervalNumericUpDown.Location = new Point(157, 148);
+        tryClickIntervalNumericUpDown.Location = new Point(160, 148);
         tryClickIntervalNumericUpDown.Maximum = new decimal(new int[] { -1, -1, -1, 0 });
         tryClickIntervalNumericUpDown.Name = "tryClickIntervalNumericUpDown";
         tryClickIntervalNumericUpDown.Size = new Size(72, 23);
@@ -167,7 +169,7 @@ partial class SettingsForm
         // startDownloadTimeoutNumericUpDown
         // 
         startDownloadTimeoutNumericUpDown.Anchor = AnchorStyles.Left;
-        startDownloadTimeoutNumericUpDown.Location = new Point(157, 177);
+        startDownloadTimeoutNumericUpDown.Location = new Point(160, 177);
         startDownloadTimeoutNumericUpDown.Maximum = new decimal(new int[] { -1, -1, -1, 0 });
         startDownloadTimeoutNumericUpDown.Name = "startDownloadTimeoutNumericUpDown";
         startDownloadTimeoutNumericUpDown.Size = new Size(72, 23);
@@ -186,7 +188,7 @@ partial class SettingsForm
         // downloadTimeoutNumericUpDown
         // 
         downloadTimeoutNumericUpDown.Anchor = AnchorStyles.Left;
-        downloadTimeoutNumericUpDown.Location = new Point(157, 206);
+        downloadTimeoutNumericUpDown.Location = new Point(160, 206);
         downloadTimeoutNumericUpDown.Maximum = new decimal(new int[] { -1, -1, -1, 0 });
         downloadTimeoutNumericUpDown.Name = "downloadTimeoutNumericUpDown";
         downloadTimeoutNumericUpDown.Size = new Size(72, 23);
@@ -219,6 +221,24 @@ partial class SettingsForm
         label9.Size = new Size(136, 15);
         label9.TabIndex = 17;
         label9.Text = "External Javascript editor";
+        // 
+        // defaultDownloadDirectoryTextBox
+        // 
+        defaultDownloadDirectoryTextBox.Anchor = AnchorStyles.Left;
+        defaultDownloadDirectoryTextBox.Location = new Point(160, 272);
+        defaultDownloadDirectoryTextBox.Name = "defaultDownloadDirectoryTextBox";
+        defaultDownloadDirectoryTextBox.Size = new Size(336, 23);
+        defaultDownloadDirectoryTextBox.TabIndex = 17;
+        // 
+        // defaultDownloadDirectoryLabel
+        // 
+        defaultDownloadDirectoryLabel.Anchor = AnchorStyles.Left;
+        defaultDownloadDirectoryLabel.AutoSize = true;
+        defaultDownloadDirectoryLabel.Location = new Point(3, 276);
+        defaultDownloadDirectoryLabel.Name = "defaultDownloadDirectoryLabel";
+        defaultDownloadDirectoryLabel.Size = new Size(151, 15);
+        defaultDownloadDirectoryLabel.TabIndex = 18;
+        defaultDownloadDirectoryLabel.Text = "Default download directory";
         // 
         // browseButton
         // 
@@ -280,10 +300,13 @@ partial class SettingsForm
         rootTableLayoutPanel.Controls.Add(downloadTimeoutNumericUpDown, 1, 7);
         rootTableLayoutPanel.Controls.Add(label9, 0, 8);
         rootTableLayoutPanel.Controls.Add(flowLayoutPanel2, 1, 8);
-        rootTableLayoutPanel.Controls.Add(toolButtonFlowLayoutPanel, 1, 9);
+        rootTableLayoutPanel.Controls.Add(defaultDownloadDirectoryLabel, 0, 9);
+        rootTableLayoutPanel.Controls.Add(defaultDownloadDirectoryTextBox, 1, 9);
+        rootTableLayoutPanel.Controls.Add(toolButtonFlowLayoutPanel, 1, 10);
         rootTableLayoutPanel.Location = new Point(0, 0);
         rootTableLayoutPanel.Name = "rootTableLayoutPanel";
-        rootTableLayoutPanel.RowCount = 10;
+        rootTableLayoutPanel.RowCount = 11;
+        rootTableLayoutPanel.RowStyles.Add(new RowStyle());
         rootTableLayoutPanel.RowStyles.Add(new RowStyle());
         rootTableLayoutPanel.RowStyles.Add(new RowStyle());
         rootTableLayoutPanel.RowStyles.Add(new RowStyle());
@@ -294,7 +317,7 @@ partial class SettingsForm
         rootTableLayoutPanel.RowStyles.Add(new RowStyle());
         rootTableLayoutPanel.RowStyles.Add(new RowStyle());
         rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
-        rootTableLayoutPanel.Size = new Size(584, 318);
+        rootTableLayoutPanel.Size = new Size(584, 347);
         rootTableLayoutPanel.TabIndex = 21;
         // 
         // flowLayoutPanel2
@@ -303,7 +326,7 @@ partial class SettingsForm
         flowLayoutPanel2.AutoSize = true;
         flowLayoutPanel2.Controls.Add(externalJavascriptEditorTextBox);
         flowLayoutPanel2.Controls.Add(browseButton);
-        flowLayoutPanel2.Location = new Point(157, 235);
+        flowLayoutPanel2.Location = new Point(160, 235);
         flowLayoutPanel2.Name = "flowLayoutPanel2";
         flowLayoutPanel2.Size = new Size(420, 31);
         flowLayoutPanel2.TabIndex = 23;
@@ -314,7 +337,7 @@ partial class SettingsForm
         toolButtonFlowLayoutPanel.AutoSize = true;
         toolButtonFlowLayoutPanel.Controls.Add(okButton);
         toolButtonFlowLayoutPanel.Controls.Add(cancelButton);
-        toolButtonFlowLayoutPanel.Location = new Point(419, 278);
+        toolButtonFlowLayoutPanel.Location = new Point(419, 307);
         toolButtonFlowLayoutPanel.Name = "toolButtonFlowLayoutPanel";
         toolButtonFlowLayoutPanel.Size = new Size(162, 31);
         toolButtonFlowLayoutPanel.TabIndex = 22;
@@ -324,7 +347,7 @@ partial class SettingsForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         AutoSize = true;
-        ClientSize = new Size(587, 320);
+        ClientSize = new Size(587, 347);
         Controls.Add(rootTableLayoutPanel);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -367,6 +390,8 @@ partial class SettingsForm
     private Label label8;
     private TextBox externalJavascriptEditorTextBox;
     private Label label9;
+    private TextBox defaultDownloadDirectoryTextBox;
+    private Label defaultDownloadDirectoryLabel;
     private Button browseButton;
     private Button okButton;
     private Button cancelButton;

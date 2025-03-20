@@ -14,6 +14,7 @@ public class SettingsObject
     public int StartDownloadTimeout { get; set; } = 60;
     public int DownloadTimeout { get; set; } = 7200;
     public string ExternalJavascriptEditor { get; set; } = "";
+    public string DefaultDownloadDirectory { get; set; } = "";
 
     private static readonly string AppPath = AppDomain.CurrentDomain.SetupInformation.ApplicationBase ?? string.Empty;
     private static readonly string SettingsFile = Path.Combine(AppPath, "Settings.json");
@@ -52,5 +53,5 @@ public class SettingsObject
 
 public static class SettingsSingletonContainer
 {
-    public static SettingsObject Settings = new();
+    public static SettingsObject Settings { get; set; } = new();
 }

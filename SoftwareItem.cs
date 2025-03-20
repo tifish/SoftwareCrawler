@@ -59,6 +59,27 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public string Frames { get; set; } = string.Empty;
     public bool UseProxy { get; set; }
     public string DownloadDirectory { get; set; } = string.Empty;
+    [Browsable(false)]
+    public string FinalDownloadDirectory
+    {
+        get
+        {
+            var validName = string.Join("", Name.Split(Path.GetInvalidFileNameChars()));
+
+            var downloadDirectory = DownloadDirectory;
+            if (string.IsNullOrWhiteSpace(downloadDirectory))
+            {
+                if (string.IsNullOrEmpty(Settings.DefaultDownloadDirectory))
+                    downloadDirectory = SystemDownloadFolder;
+                else
+                    downloadDirectory = Settings.DefaultDownloadDirectory;
+
+                downloadDirectory = Path.Join(downloadDirectory, validName);
+            }
+
+            return downloadDirectory;
+        }
+    }
     public string DownloadDirectory2 { get; set; } = string.Empty;
     public string FilePatternToDeleteBeforeDownload { get; set; } = string.Empty;
     public bool ExtractAfterDownload { get; set; }
@@ -102,10 +123,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             if (_serializableProperties == null)
             {
                 var type = typeof(SoftwareItem);
-                _serializableProperties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                _serializableProperties = [.. type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
                     .Where(prop => prop is { CanWrite: true, CanRead: true })
-                    .Where(prop => prop.GetCustomAttribute<NonSerializedAttribute>() == null)
-                    .ToList();
+                    .Where(prop => prop.GetCustomAttribute<NonSerializedAttribute>() == null)];
             }
 
             return _serializableProperties;
@@ -152,31 +172,31 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public string ToTabSplitLine()
     {
         var items = SerializableProperties.Select(prop =>
-        {
-            var value = prop.GetValue(this);
-
-            if (prop.PropertyType == typeof(string))
-                return (string)(value ?? string.Empty);
-
-            if (prop.PropertyType == typeof(int))
             {
-                var intValue = (int)value!;
-                return intValue switch
-                {
-                    0 => string.Empty,
-                    _ => intValue.ToString(),
-                };
-            }
+                var value = prop.GetValue(this);
 
-            if (prop.PropertyType == typeof(bool))
-                return (bool)value! switch
-                {
-                    true => "true",
-                    false => string.Empty,
-                };
+                if (prop.PropertyType == typeof(string))
+                    return (string)(value ?? string.Empty);
 
-            throw new Exception("Unexpected property type.");
-        });
+                if (prop.PropertyType == typeof(int))
+                {
+                    var intValue = (int)value!;
+                    return intValue switch
+                    {
+                        0 => string.Empty,
+                        _ => intValue.ToString(),
+                    };
+                }
+
+                if (prop.PropertyType == typeof(bool))
+                    return (bool)value! switch
+                    {
+                        true => "true",
+                        false => string.Empty,
+                    };
+
+                throw new Exception("Unexpected property type.");
+            });
 
         return string.Join('\t', items);
     }
@@ -253,12 +273,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         Status = DownloadStatus.Preparing;
         ErrorMessage = string.Empty;
 
-        if (DownloadDirectory == "")
+        if (string.IsNullOrEmpty(FinalDownloadDirectory))
             return Failed("Download directory is empty.");
-        if (!Directory.Exists(DownloadDirectory))
+
+        if (!Directory.Exists(FinalDownloadDirectory))
             try
             {
-                Directory.CreateDirectory(DownloadDirectory);
+                Directory.CreateDirectory(FinalDownloadDirectory);
             }
             catch (Exception)
             {
@@ -385,7 +406,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 }
 
                 return Failed("Failed to wait for page load end before click.");
-                MainFrameLoadEndBeforeClick: ;
+            MainFrameLoadEndBeforeClick:;
 
                 Browser.PrepareLoadEvents();
 
@@ -416,7 +437,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 else // Is JavaScript
                 {
                     Status = DownloadStatus.ExecutingScript;
-                     if (!await Browser.TryEvaluateJavascript(xpathOrScript, frameName))
+                    if (!await Browser.TryEvaluateJavascript(xpathOrScript, frameName))
                         return Failed($"Failed to execute script: {Browser.LastJavascriptError}");
                 }
             }
@@ -427,6 +448,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         // Called when download starts, decide whether to download.
         void OnBeginDownloadHandler(object? o, DownloadItem item)
         {
+            // Download to system download folder first, then move to download directory.
             downloadingFilePath = Path.Combine(SystemDownloadFolder, item.SuggestedFileName);
             var ext = Path.GetExtension(item.SuggestedFileName).ToLower();
 
@@ -451,14 +473,14 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 return;
             }
 
-            targetFilePath = Path.Combine(DownloadDirectory, downloadFileName);
+            targetFilePath = Path.Join(FinalDownloadDirectory, downloadFileName);
 
             // Compare file size to determine download or not.
             // Epic Launcher download page may change its file name for each download.
             // Find the old file and check the size.
             var oldFile = targetFilePath;
             if (!File.Exists(oldFile) && !string.IsNullOrWhiteSpace(FilePatternToDeleteBeforeDownload))
-                oldFile = Directory.GetFiles(DownloadDirectory, FilePatternToDeleteBeforeDownload).FirstOrDefault();
+                oldFile = Directory.GetFiles(FinalDownloadDirectory, FilePatternToDeleteBeforeDownload).FirstOrDefault();
             if (File.Exists(oldFile))
             {
                 var fileInfo = new FileInfo(oldFile);

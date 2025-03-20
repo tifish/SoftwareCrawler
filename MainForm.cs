@@ -376,16 +376,17 @@ public partial class MainForm : Form
 
         var item = (softwareListDataGridView.CurrentRow?.DataBoundItem as SoftwareItem)!;
 
-        new[] { item.DownloadDirectory, item.DownloadDirectory2 }
-            .Where(dir => !string.IsNullOrEmpty(dir))
-            .ToList().ForEach(dir =>
+        foreach (var dir in new[] { item.FinalDownloadDirectory, item.DownloadDirectory2 })
+        {
+            if (string.IsNullOrEmpty(dir))
+                continue;
+
+            Process.Start(new ProcessStartInfo
             {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = dir,
-                    UseShellExecute = true,
-                });
+                FileName = dir,
+                UseShellExecute = true,
             });
+        }
     }
 
     private bool _hasCancelled;
