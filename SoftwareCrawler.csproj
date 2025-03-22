@@ -77,4 +77,8 @@
     </EmbeddedResource>
   </ItemGroup>
 
+  <Target Name="MoveLocales" AfterTargets="Build">
+    <Exec Command="if exist &quot;$(OutDir)locales&quot; move /Y &quot;$(OutDir)locales&quot; &quot;$(OutDir)Libs\locales&quot;" />
+  </Target>
+
 </Project>
