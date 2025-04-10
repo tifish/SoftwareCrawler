@@ -94,4 +94,4 @@ true	Python 3.10	https://www.python.org/downloads/windows	//a[contains(@href, '-
 true	Go	https://go.dev/dl/	//a[contains(@href, '.windows-amd64.msi')]			*.msi		
 true	Flutter	https://docs.flutter.cn/get-started/install/windows/mobile	//a[contains(@href, '.zip')]			*.zip		
 true	Cursor	https://github.com/oslook/cursor-ai-downloads?tab=readme-ov-file#all-version-download-links	//a[contains(@href, 'win32/x64')]		true	*.exe		
-true	MSI Afterburner	https://www.msi.com/Landing/afterburner/graphics-cards	(//a[contains(@href, 'download')])[2]			*.exe		
+true	MSI Afterburner	https://www.msi.com/Landing/afterburner/graphics-cards	(//a[contains(@href, 'download')])[2]			*.zip	true	*.exe
