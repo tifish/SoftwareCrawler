@@ -81,13 +81,19 @@ public partial class MainForm : Form
 
     private async Task Reload()
     {
+        // Load software items and bind to data grid view
         await SoftwareManager.Load();
         var bindingList = new BindingList<SoftwareItem>(SoftwareManager.Items);
         softwareListDataGridView.DataSource = new BindingSource(bindingList, null);
         softwareListDataGridView.AutoResizeColumns(DataGridViewAutoSizeColumnsMode.AllCells);
+
+        // Set column width
         foreach (DataGridViewColumn column in softwareListDataGridView.Columns)
             if (column.Width > 400)
                 column.Width = 400;
+        softwareListDataGridView.Columns[0].Width = 3 * softwareListDataGridView.Columns[0].Width;
+        softwareListDataGridView.Columns[1].Width = 5 * softwareListDataGridView.Columns[1].Width;
+
     }
 
     private SoftwareItem? _currentDownloadItem;
