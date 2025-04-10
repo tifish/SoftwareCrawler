@@ -8,9 +8,7 @@ namespace SoftwareCrawler;
 
 public sealed class SoftwareItem : INotifyPropertyChanged
 {
-    private class NonSerializedAttribute : Attribute
-    {
-    }
+    private class NonSerializedAttribute : Attribute { }
 
     private DownloadStatus _status;
 
@@ -27,7 +25,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 if (SynchronizationContext.Current == _uiSynchronizationContext)
                     OnPropertyChanged();
                 else
-                    _uiSynchronizationContext?.Post(_ => { OnPropertyChanged(); }, null);
+                    _uiSynchronizationContext?.Post(
+                        _ =>
+                        {
+                            OnPropertyChanged();
+                        },
+                        null
+                    );
             }
         }
     }
@@ -47,7 +51,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 if (SynchronizationContext.Current == _uiSynchronizationContext)
                     OnPropertyChanged();
                 else
-                    _uiSynchronizationContext?.Post(_ => { OnPropertyChanged(); }, null);
+                    _uiSynchronizationContext?.Post(
+                        _ =>
+                        {
+                            OnPropertyChanged();
+                        },
+                        null
+                    );
             }
         }
     }
@@ -59,6 +69,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public string Frames { get; set; } = string.Empty;
     public bool UseProxy { get; set; }
     public string DownloadDirectory { get; set; } = string.Empty;
+
     [Browsable(false)]
     public string FinalDownloadDirectory
     {
@@ -100,14 +111,18 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 if (SynchronizationContext.Current == _uiSynchronizationContext)
                     OnPropertyChanged();
                 else
-                    _uiSynchronizationContext?.Post(_ => { OnPropertyChanged(); }, null);
+                    _uiSynchronizationContext?.Post(
+                        _ =>
+                        {
+                            OnPropertyChanged();
+                        },
+                        null
+                    );
             }
         }
     }
 
-    public SoftwareItem()
-    {
-    }
+    public SoftwareItem() { }
 
     public SoftwareItem(string dataLine, string extraLine)
     {
@@ -115,24 +130,30 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         FromDataLine(extraLine, ExtraProperties);
     }
 
-    public static readonly List<PropertyInfo> DataProperties = [.. new []
-    {
-        nameof(Enabled),
-        nameof(Name),
-        nameof(WebPage),
-        nameof(XPathOrScripts),
-        nameof(Frames),
-        nameof(UseProxy),
-        nameof(FilePatternToDeleteBeforeDownload),
-        nameof(ExtractAfterDownload),
-        nameof(FilePatternToDeleteBeforeExtractionAndExtractOnly),
-    }.Select(name => typeof(SoftwareItem).GetProperty(name)!).ToList()];
+    public static readonly List<PropertyInfo> DataProperties =
+    [
+        .. new[]
+        {
+            nameof(Enabled),
+            nameof(Name),
+            nameof(WebPage),
+            nameof(XPathOrScripts),
+            nameof(Frames),
+            nameof(UseProxy),
+            nameof(FilePatternToDeleteBeforeDownload),
+            nameof(ExtractAfterDownload),
+            nameof(FilePatternToDeleteBeforeExtractionAndExtractOnly),
+        }
+            .Select(name => typeof(SoftwareItem).GetProperty(name)!)
+            .ToList(),
+    ];
 
-    public static readonly List<PropertyInfo> ExtraProperties = [.. new []
-    {
-        nameof(DownloadDirectory),
-        nameof(DownloadDirectory2),
-    }.Select(name => typeof(SoftwareItem).GetProperty(name)!).ToList()];
+    public static readonly List<PropertyInfo> ExtraProperties =
+    [
+        .. new[] { nameof(DownloadDirectory), nameof(DownloadDirectory2) }
+            .Select(name => typeof(SoftwareItem).GetProperty(name)!)
+            .ToList(),
+    ];
 
     public static string GetDataHeaderLine(List<PropertyInfo> properties)
     {
@@ -161,12 +182,14 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             }
             else if (prop.PropertyType == typeof(bool))
             {
-                prop.SetValue(this,
+                prop.SetValue(
+                    this,
                     item.ToLower() switch
                     {
                         "true" or "1" => true,
                         _ => false,
-                    });
+                    }
+                );
             }
         }
     }
@@ -174,31 +197,31 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public string ToDataLine(List<PropertyInfo> properties)
     {
         var items = properties.Select(prop =>
+        {
+            var value = prop.GetValue(this);
+
+            if (prop.PropertyType == typeof(string))
+                return (string)(value ?? string.Empty);
+
+            if (prop.PropertyType == typeof(int))
             {
-                var value = prop.GetValue(this);
-
-                if (prop.PropertyType == typeof(string))
-                    return (string)(value ?? string.Empty);
-
-                if (prop.PropertyType == typeof(int))
+                var intValue = (int)value!;
+                return intValue switch
                 {
-                    var intValue = (int)value!;
-                    return intValue switch
-                    {
-                        0 => string.Empty,
-                        _ => intValue.ToString(),
-                    };
-                }
+                    0 => string.Empty,
+                    _ => intValue.ToString(),
+                };
+            }
 
-                if (prop.PropertyType == typeof(bool))
-                    return (bool)value! switch
-                    {
-                        true => "true",
-                        false => string.Empty,
-                    };
+            if (prop.PropertyType == typeof(bool))
+                return (bool)value! switch
+                {
+                    true => "true",
+                    false => string.Empty,
+                };
 
-                throw new Exception("Unexpected property type.");
-            });
+            throw new Exception("Unexpected property type.");
+        });
 
         return string.Join('\t', items);
     }
@@ -214,7 +237,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         Started,
     }
 
-    public static readonly string SystemDownloadFolder = KnownFolders.GetPath(KnownFolder.Downloads);
+    public static readonly string SystemDownloadFolder = KnownFolders.GetPath(
+        KnownFolder.Downloads
+    );
 
     private bool _hasCancelled;
 
@@ -242,15 +267,22 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                     proxyDict["server"] = Settings.Proxy;
                 }
 
-                if (!Browser.WebBrowser.GetBrowserHost().RequestContext.SetPreference(
-                        "proxy", proxyDict, out var error))
+                if (
+                    !Browser
+                        .WebBrowser.GetBrowserHost()
+                        .RequestContext.SetPreference("proxy", proxyDict, out var error)
+                )
                     Logger.Error("Set proxy error: {Error}", error!);
             });
 
             var success = await DownloadOnce(testOnly);
             if (success)
             {
-                Logger.Information("Download {Name} successfully, retryCount={RetryCount}", Name, i);
+                Logger.Information(
+                    "Download {Name} successfully, retryCount={RetryCount}",
+                    Name,
+                    i
+                );
                 return true;
             }
 
@@ -260,7 +292,12 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             await Task.Delay(Settings.DownloadRetryInterval * 1000);
         }
 
-        Logger.Warning("Download {Name} failed, retryCount={RetryCount}, error={ErrorMessage}", Name, retryCount, ErrorMessage);
+        Logger.Warning(
+            "Download {Name} failed, retryCount={RetryCount}, error={ErrorMessage}",
+            Name,
+            retryCount,
+            ErrorMessage
+        );
         return false;
     }
 
@@ -386,15 +423,10 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         {
             var xPathOrScripts = string.IsNullOrWhiteSpace(XPathOrScripts)
                 ? []
-                : XPathOrScripts.Replace("`n", "\n")
-                    .Split('`')
-                    .Select(x => x.Trim())
-                    .ToList();
+                : XPathOrScripts.Replace("`n", "\n").Split('`').Select(x => x.Trim()).ToList();
             var frameNames = string.IsNullOrWhiteSpace(Frames)
                 ? []
-                : Frames.Split('`')
-                    .Select(x => x.Trim())
-                    .ToList();
+                : Frames.Split('`').Select(x => x.Trim()).ToList();
 
             for (var i = 0; i < xPathOrScripts.Count; i++)
             {
@@ -408,7 +440,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 }
 
                 return Failed("Failed to wait for page load end before click.");
-            MainFrameLoadEndBeforeClick:;
+                MainFrameLoadEndBeforeClick:
+                ;
 
                 Browser.PrepareLoadEvents();
 
@@ -416,24 +449,40 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 var frameName = i < frameNames.Count ? frameNames[i] : string.Empty;
 
                 // Is XPath
-                if (xpathOrScript.StartsWith("//") && xpathOrScript.Length >= 3 && char.IsLetter(xpathOrScript[2]))
+                if (
+                    xpathOrScript.StartsWith("//")
+                        && xpathOrScript.Length >= 3
+                        && char.IsLetter(xpathOrScript[2])
+                    || xpathOrScript.StartsWith("(//")
+                        && xpathOrScript.Length >= 4
+                        && char.IsLetter(xpathOrScript[3])
+                )
                 {
                     Status = DownloadStatus.Clicking;
 
                     // Scroll to the element first
                     var scrollScript = $"""
-                                        const element = document.evaluate("{xpathOrScript}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                                        const elementRect = element.getBoundingClientRect();
-                                        const absoluteElementTop = elementRect.top + window.pageYOffset;
-                                        const middle = absoluteElementTop - (window.innerHeight / 2);
-                                        window.scrollTo(0, middle);
-                                        """;
+                        const element = document.evaluate("{xpathOrScript}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                        const elementRect = element.getBoundingClientRect();
+                        const absoluteElementTop = elementRect.top + window.pageYOffset;
+                        const middle = absoluteElementTop - (window.innerHeight / 2);
+                        window.scrollTo(0, middle);
+                        """;
                     if (!await Browser.TryEvaluateJavascript(scrollScript, frameName))
-                        Logger.Error("Failed to scroll to, error: {LastJavascriptError}", Browser.LastJavascriptError);
+                        Logger.Error(
+                            "Failed to scroll to, error: {LastJavascriptError}",
+                            Browser.LastJavascriptError
+                        );
 
                     // Then click
-                    if (!await Browser.TryClick(xpathOrScript, frameName,
-                            Settings.TryClickCount, Settings.TryClickInterval * 1000))
+                    if (
+                        !await Browser.TryClick(
+                            xpathOrScript,
+                            frameName,
+                            Settings.TryClickCount,
+                            Settings.TryClickInterval * 1000
+                        )
+                    )
                         return Failed($"Failed to click, error: {Browser.LastJavascriptError}");
                 }
                 else // Is JavaScript
@@ -459,7 +508,10 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             {
                 // Use a new file to start the new download. The old file will be deleted by browser later.
                 var fileNameNoExt = Path.GetFileNameWithoutExtension(item.SuggestedFileName);
-                downloadingFilePath = Path.Combine(SystemDownloadFolder, $"{fileNameNoExt}_{_downloadingId}{ext}");
+                downloadingFilePath = Path.Combine(
+                    SystemDownloadFolder,
+                    $"{fileNameNoExt}_{_downloadingId}{ext}"
+                );
             }
 
             _downloadingId = item.Id;
@@ -481,8 +533,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             // Epic Launcher download page may change its file name for each download.
             // Find the old file and check the size.
             var oldFile = targetFilePath;
-            if (!File.Exists(oldFile) && !string.IsNullOrWhiteSpace(FilePatternToDeleteBeforeDownload))
-                oldFile = Directory.GetFiles(FinalDownloadDirectory, FilePatternToDeleteBeforeDownload).FirstOrDefault();
+            if (
+                !File.Exists(oldFile)
+                && !string.IsNullOrWhiteSpace(FilePatternToDeleteBeforeDownload)
+            )
+                oldFile = Directory
+                    .GetFiles(FinalDownloadDirectory, FilePatternToDeleteBeforeDownload)
+                    .FirstOrDefault();
             if (File.Exists(oldFile))
             {
                 var fileInfo = new FileInfo(oldFile);
@@ -513,7 +570,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             // Download file name may change if same file exists.
             downloadingFilePath = item.FullPath;
 
-            Progress = $"{item.SuggestedFileName} - {item.PercentComplete:00}% - {item.ReceivedBytes:#,###} / {item.TotalBytes:#,###} Bytes - {item.CurrentSpeed / 1024:#,###} KB/s";
+            Progress =
+                $"{item.SuggestedFileName} - {item.PercentComplete:00}% - {item.ReceivedBytes:#,###} / {item.TotalBytes:#,###} Bytes - {item.CurrentSpeed / 1024:#,###} KB/s";
         }
 
         // When download is complete, move file to target directory.
@@ -563,9 +621,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
             try
             {
-                Directory.GetFiles(dir, FilePatternToDeleteBeforeDownload)
-                    .Where(file => string.Compare(file, filePath, StringComparison.OrdinalIgnoreCase) != 0)
-                    .ToList().ForEach(File.Delete);
+                Directory
+                    .GetFiles(dir, FilePatternToDeleteBeforeDownload)
+                    .Where(file =>
+                        string.Compare(file, filePath, StringComparison.OrdinalIgnoreCase) != 0
+                    )
+                    .ToList()
+                    .ForEach(File.Delete);
             }
             catch (Exception ex)
             {
@@ -584,13 +646,20 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         }
     }
 
-    private static async Task CopyFileIfChanged(string sourceFile, string targetFile, bool move = false)
+    private static async Task CopyFileIfChanged(
+        string sourceFile,
+        string targetFile,
+        bool move = false
+    )
     {
         var sourceFileInfo = new FileInfo(sourceFile);
         var targetFileInfo = new FileInfo(targetFile);
 
         if (targetFileInfo.Exists)
-            if (sourceFileInfo.Length == targetFileInfo.Length && sourceFileInfo.LastWriteTime == targetFileInfo.LastWriteTime)
+            if (
+                sourceFileInfo.Length == targetFileInfo.Length
+                && sourceFileInfo.LastWriteTime == targetFileInfo.LastWriteTime
+            )
                 return;
 
         await using (var source = File.Open(sourceFile, FileMode.Open, FileAccess.Read))
@@ -607,7 +676,10 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         File.SetLastWriteTime(targetFile, sourceFileInfo.LastWriteTime);
     }
 
-    private static readonly string SevenZipPath = Path.Combine(AppDomain.CurrentDomain.SetupInformation.ApplicationBase!, "7z.exe");
+    private static readonly string SevenZipPath = Path.Combine(
+        AppDomain.CurrentDomain.SetupInformation.ApplicationBase!,
+        "7z.exe"
+    );
 
     private async Task ExtractArchiveFile(string archiveFile)
     {
@@ -619,16 +691,21 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
         var archiveDir = Path.GetDirectoryName(archiveFile)!;
         if (FilePatternToDeleteBeforeExtractionAndExtractOnly != "")
-            Directory.GetFiles(archiveDir, FilePatternToDeleteBeforeExtractionAndExtractOnly)
-                .ToList().ForEach(File.Delete);
+            Directory
+                .GetFiles(archiveDir, FilePatternToDeleteBeforeExtractionAndExtractOnly)
+                .ToList()
+                .ForEach(File.Delete);
 
         // extract files to root directory.
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = SevenZipPath,
-            Arguments = $@"e -y -o""{archiveDir}"" ""{archiveFile}"" {FilePatternToDeleteBeforeExtractionAndExtractOnly} -r",
-            UseShellExecute = true,
-        });
+        using var process = Process.Start(
+            new ProcessStartInfo
+            {
+                FileName = SevenZipPath,
+                Arguments =
+                    $@"e -y -o""{archiveDir}"" ""{archiveFile}"" {FilePatternToDeleteBeforeExtractionAndExtractOnly} -r",
+                UseShellExecute = true,
+            }
+        );
 
         if (process == null)
             return;
@@ -637,7 +714,10 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
         // Delete empty sub-directories in archiveDir
         foreach (var subDirectory in Directory.GetDirectories(archiveDir))
-            if (Directory.GetFiles(subDirectory).Length == 0 && Directory.GetDirectories(subDirectory).Length == 0)
+            if (
+                Directory.GetFiles(subDirectory).Length == 0
+                && Directory.GetDirectories(subDirectory).Length == 0
+            )
                 Directory.Delete(subDirectory);
     }
 

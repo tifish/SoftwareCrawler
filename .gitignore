@@ -1,13 +1,16 @@
 /.idea
 /.vs
 /.vscode
+/.config
 /obj
+*.log
 /*.user
 /*.DotSettings
 /Cache
 /bin/Libs
 /bin/locales
 /bin/Logs
+/bin/Cache
 /bin/*.exe
 /bin/*.dll
 /bin/*.pdb
