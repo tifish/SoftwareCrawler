@@ -45,8 +45,8 @@ true	VC Runtime 2013 x64	https://aka.ms/highdpimfc2013x64enu			true	*x64.exe
 true	Subversion	https://sliksvn.com/download/	//a[contains(@href, 'x64.zip')]			*.zip	true	*.msi
 true	Plastic SCM Server	https://www.plasticscm.com/download	//a[@title='Enterprise Edition installer']`//a[@class='text-light']		true	*.exe		
 true	Plastic SCM Client	https://www.plasticscm.com/download	//small[text()='More installers and other Operating Systems']`//strong[text()='Client installer']/parent::div/following-sibling::div[2]/a[normalize-space()='Download']		true	*.exe		
-true	.NET 9 Runtime x64	https://dotnet.microsoft.com/en-us/download/dotnet/9.0	//a[contains(@href, 'runtime-desktop') and contains(@href, 'x64')]`//a[text()='click here to download manually']		true	*-8.*-x64.exe		
-true	.NET 9 Runtime x86	https://dotnet.microsoft.com/en-us/download/dotnet/9.0	//a[contains(@href, 'runtime-desktop') and contains(@href, 'x86')]`//a[text()='click here to download manually']		true	*-8.*-x86.exe		
+true	.NET 9 Runtime x64	https://dotnet.microsoft.com/en-us/download/dotnet/9.0	//a[contains(@href, 'runtime-desktop') and contains(@href, 'x64')]`//a[text()='click here to download manually']		true	*-9.*-x64.exe		
+true	.NET 9 Runtime x86	https://dotnet.microsoft.com/en-us/download/dotnet/9.0	//a[contains(@href, 'runtime-desktop') and contains(@href, 'x86')]`//a[text()='click here to download manually']		true	*-9.*-x86.exe		
 true	.NET 8 Runtime x64	https://dotnet.microsoft.com/en-us/download/dotnet/8.0	//a[contains(@href, 'runtime-desktop') and contains(@href, 'x64')]`//a[text()='click here to download manually']		true	*-8.*-x64.exe		
 true	.NET 8 Runtime x86	https://dotnet.microsoft.com/en-us/download/dotnet/8.0	//a[contains(@href, 'runtime-desktop') and contains(@href, 'x86')]`//a[text()='click here to download manually']		true	*-8.*-x86.exe		
 true	.NET 6 Runtime x64	https://dotnet.microsoft.com/en-us/download/dotnet/6.0	//a[contains(@href, 'runtime-desktop') and contains(@href, 'x64')]`//a[text()='click here to download manually']		true	*-6.*-x64.exe		
