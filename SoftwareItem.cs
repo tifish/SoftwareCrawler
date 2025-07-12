@@ -440,7 +440,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 }
 
                 return Failed("Failed to wait for page load end before click.");
-                MainFrameLoadEndBeforeClick:
+            MainFrameLoadEndBeforeClick:
                 ;
 
                 Browser.PrepareLoadEvents();
@@ -592,6 +592,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                     File.SetLastWriteTime(downloadingFilePath, downloadFileTime.Value);
 
                 await CopyFileIfChanged(downloadingFilePath, targetFilePath, true);
+
+                await CallEventScript(FinalDownloadDirectory, "AfterDownload", targetFilePath);
             }
 
             if (File.Exists(targetFilePath))
@@ -599,6 +601,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 if (downloadFileTime.HasValue)
                     File.SetLastWriteTime(targetFilePath, downloadFileTime.Value);
                 await ExtractArchiveFile(targetFilePath);
+
+                await CallEventScript(FinalDownloadDirectory, "AfterExtract", targetFilePath);
             }
 
             if (!string.IsNullOrEmpty(DownloadDirectory2))
@@ -606,7 +610,12 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 var targetFile2 = Path.Combine(DownloadDirectory2, downloadFileName);
                 DeleteOtherFilesInSameDirectory(targetFile2);
                 await CopyFileIfChanged(targetFilePath, targetFile2);
+
+                await CallEventScript(DownloadDirectory2, "AfterDownload", targetFile2);
+
                 await ExtractArchiveFile(targetFile2);
+
+                await CallEventScript(DownloadDirectory2, "AfterExtract", targetFile2);
             }
 
             return true;
@@ -643,6 +652,45 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             Progress = string.Empty;
 
             return false;
+        }
+
+        async Task CallEventScript(string directory, string eventName, string filePath)
+        {
+            var script = Path.Join(directory, eventName + ".cmd");
+            if (File.Exists(script)) // Execute .cmd file
+            {
+                using var process = Process.Start(new ProcessStartInfo
+                {
+                    FileName = script,
+                    Arguments = $"\"{filePath}\"",
+                    WorkingDirectory = directory,
+                    UseShellExecute = true,
+                });
+                if (process == null)
+                    return;
+
+                await process.WaitForExitAsync();
+                return;
+            }
+            else // Execute .ps1 file
+            {
+                script = Path.Join(directory, eventName + ".ps1");
+
+                if (!File.Exists(script))
+                    return;
+
+                using var process = Process.Start(new ProcessStartInfo
+                {
+                    FileName = "powershell",
+                    Arguments = $"-ExecutionPolicy Bypass -File \"{script}\" \"{filePath}\"",
+                    WorkingDirectory = directory,
+                    UseShellExecute = true,
+                });
+                if (process == null)
+                    return;
+
+                await process.WaitForExitAsync();
+            }
         }
     }
 
