@@ -466,20 +466,17 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                         window.scrollTo(0, middle);
                         """;
                     if (!await Browser.TryEvaluateJavascript(scrollScript, frameName))
-                        Logger.Error(
-                            "Failed to scroll to, error: {LastJavascriptError}",
-                            Browser.LastJavascriptError
-                        );
+                    {
+                        // If scroll failed, try to click directly.
+                        Logger.Error("Failed to scroll to, error: {LastJavascriptError}", Browser.LastJavascriptError);
+                    }
 
                     // Then click
-                    if (
-                        !await Browser.TryClick(
+                    if (!await Browser.TryClick(
                             xpathOrScript,
                             frameName,
                             Settings.TryClickCount,
-                            Settings.TryClickInterval * 1000
-                        )
-                    )
+                            Settings.TryClickInterval * 1000))
                         return Failed($"Failed to click, error: {Browser.LastJavascriptError}");
                 }
                 else // Is JavaScript
