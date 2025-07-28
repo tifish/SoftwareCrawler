@@ -436,13 +436,10 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                     if (_hasCancelled)
                         return false;
                     if (await Browser.WaitForMainFrameLoadEnd(TimeSpan.FromSeconds(1)))
-                        goto MainFrameLoadEndBeforeClick;
+                        break;
                 }
 
-                return Failed("Failed to wait for page load end before click.");
-            MainFrameLoadEndBeforeClick:
-                ;
-
+                // If still not loaded, try to click the link directly.
                 Browser.PrepareLoadEvents();
 
                 var xpathOrScript = xPathOrScripts[i];
