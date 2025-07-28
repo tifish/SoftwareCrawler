@@ -54,12 +54,12 @@
     <PackageReference Include="CefSharp.Common.NETCore" Version="125.0.210" />
     <PackageReference Include="CefSharp.OffScreen.NETCore" Version="125.0.210" />
     <PackageReference Include="CefSharp.WinForms.NETCore" Version="125.0.210" />
-    <PackageReference Include="HtmlAgilityPack" Version="1.11.71" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="nulastudio.NetBeauty" Version="2.1.4.6" />
-    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
-    <PackageReference Include="System.CommandLine.NamingConventionBinder" Version="2.0.0-beta4.22272.1" />
-    <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.0" />
+    <PackageReference Include="nulastudio.NetBeauty" Version="2.1.5" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageReference Include="System.CommandLine.NamingConventionBinder"
+      Version="2.0.0-beta4.22272.1" />
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.7" />
   </ItemGroup>
 
   <ItemGroup>
@@ -78,7 +78,8 @@
   </ItemGroup>
 
   <Target Name="MoveLocales" AfterTargets="Build">
-    <Exec Command="if exist &quot;$(OutDir)locales&quot; ( ( if exist &quot;$(OutDir)Libs\locales&quot; rd /s /q &quot;$(OutDir)Libs\locales&quot; ) &amp; move /y &quot;$(OutDir)locales&quot; &quot;$(OutDir)Libs\&quot; )" />
+    <Exec
+      Command="if exist &quot;$(OutDir)locales&quot; ( ( if exist &quot;$(OutDir)Libs\locales&quot; rd /s /q &quot;$(OutDir)Libs\locales&quot; ) &amp; move /y &quot;$(OutDir)locales&quot; &quot;$(OutDir)Libs\&quot; )" />
   </Target>
 
 </Project>
