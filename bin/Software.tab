@@ -4,7 +4,7 @@ true	百度输入法	https://shurufa.baidu.com/	a = document.evaluate(`n    "//a
 true	TortoiseSVN	https://tortoisesvn.net/downloads.html	//table[@class='downloads-table']//a[contains(@href, 'x64')]			TortoiseSVN*.msi		
 true	XnViewMP	https://download.xnview.com/XnViewMP-win-x64.exe				*.exe		
 true	Notepad++	https://notepad-plus-plus.org/downloads/	//main[@id='main']//a ` //main[@id='main']//a[contains(@href, 'x64.exe')]			*.exe		
-	完美解码	https://www.wmzhe.com/soft-13163.html	//a[text()='北京联通网络下载']			*.7z	true	*.exe
+true	完美解码	https://545c.com/d/7369060-41216504-216008	//a[contains(text(), '.zip')]`//button[text()='立即下载']			*.zip	true	*.exe
 true	QQ	https://im.qq.com/pcqq/index.shtml	//a[@title='下载']			*.exe		
 true	Epic Installer	https://store.epicgames.com/en-US/download	//a[contains(@href, '.msi')]			*.msi		
 true	TIM	https://office.qq.com/download.html	//a[contains(@href, '.exe')]			*.exe		
