@@ -397,6 +397,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         finally
         {
             if (!testOnly && !string.IsNullOrEmpty(downloadingFilePath))
+            {
                 while (true)
                 {
                     try
@@ -412,6 +413,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
                     break;
                 }
+            }
 
             _uiSynchronizationContext = null;
             _downloadingId = -1;
@@ -534,6 +536,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 oldFile = Directory
                     .GetFiles(FinalDownloadDirectory, FilePatternToDeleteBeforeDownload)
                     .FirstOrDefault();
+
             if (File.Exists(oldFile))
             {
                 var fileInfo = new FileInfo(oldFile);
@@ -578,10 +581,12 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             if (testOnly)
                 return true;
 
+            // Delete other old files in the same directory.
+            DeleteOtherFilesInSameDirectory(targetFilePath);
+
+            // Copy file from downloading folder to target directory.
             if (File.Exists(downloadingFilePath))
             {
-                DeleteOtherFilesInSameDirectory(targetFilePath);
-
                 if (downloadFileTime.HasValue)
                     File.SetLastWriteTime(downloadingFilePath, downloadFileTime.Value);
 
@@ -590,6 +595,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 await CallEventScript(FinalDownloadDirectory, "AfterDownload", targetFilePath);
             }
 
+            // Extract target file.
             if (File.Exists(targetFilePath))
             {
                 if (downloadFileTime.HasValue)
@@ -599,6 +605,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 await CallEventScript(FinalDownloadDirectory, "AfterExtract", targetFilePath);
             }
 
+            // Copy file from downloading folder to download directory 2.
             if (!string.IsNullOrEmpty(DownloadDirectory2))
             {
                 var targetFile2 = Path.Combine(DownloadDirectory2, downloadFileName);
