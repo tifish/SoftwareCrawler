@@ -453,8 +453,16 @@ public partial class MainForm : Form
         var clientPoint = softwareListDataGridView.PointToClient(new Point(e.X, e.Y));
         var targetRowIndex = softwareListDataGridView.HitTest(clientPoint.X, clientPoint.Y).RowIndex;
 
-        if (targetRowIndex < 0) return;
-        if (targetRowIndex == dragRowIndex) return;
+        if (targetRowIndex < 0)
+            return;
+        if (targetRowIndex == dragRowIndex)
+            return;
+
+        if (MessageBox.Show($"Move item from {dragRowIndex + 1} to {targetRowIndex + 1}?",
+            "Confirm Move",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question) != DialogResult.Yes)
+            return;
 
         var bindingList = (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource).List;
         var item = bindingList[dragRowIndex];
