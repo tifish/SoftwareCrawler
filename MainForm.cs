@@ -77,6 +77,8 @@ public partial class MainForm : Form
                 await Browser.Init(parentForm);
                 parentForm.Size = new Size(1280, 720);
 
+                BringToFront();
+
                 await Reload();
             }
 
