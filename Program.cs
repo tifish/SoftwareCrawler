@@ -1,7 +1,7 @@
 using System.CommandLine;
 using System.Text;
 using System.CommandLine.NamingConventionBinder;
-
+using System.Windows.Forms;
 namespace SoftwareCrawler;
 
 static class Program
@@ -31,9 +31,12 @@ static class Program
 
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
+        Settings.Load();
+
         // To customize application configuration such as set high DPI settings or default font,
         // see https://aka.ms/applicationconfiguration.
         ApplicationConfiguration.Initialize();
+        Application.SetColorMode(Settings.ColorMode);
         var mainForm = new MainForm();
         Application.Idle += ApplicationOnIdle;
         Application.Run(mainForm);

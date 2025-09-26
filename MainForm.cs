@@ -73,8 +73,6 @@ public partial class MainForm : Form
 
             using (new DownloadUIDisabler(this))
             {
-                await Settings.Load();
-
                 var parentForm = new Form();
                 await Browser.Init(parentForm);
                 parentForm.Size = new Size(1280, 720);
@@ -425,7 +423,7 @@ public partial class MainForm : Form
     private void softwareListDataGridView_CurrentCellDirtyStateChanged(object sender, EventArgs e)
     {
         if (softwareListDataGridView.IsCurrentCellDirty
-            && softwareListDataGridView.CurrentCell.OwningColumn is DataGridViewCheckBoxColumn)
+            && softwareListDataGridView.CurrentCell!.OwningColumn is DataGridViewCheckBoxColumn)
             softwareListDataGridView.EndEdit();
     }
 

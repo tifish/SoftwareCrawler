@@ -1,14 +1,29 @@
-﻿namespace SoftwareCrawler;
+using System.Diagnostics;
+using System.Reflection;
+using System.Threading;
+namespace SoftwareCrawler;
 
 public partial class SettingsForm : Form
 {
     private readonly SettingsObject _settings;
+    private sealed record ColorModeOption(string DisplayName, SystemColorMode Mode);
 
+    private static readonly ColorModeOption[] ColorModeOptions =
+    {
+        new("Follow system", SystemColorMode.System),
+        new("Dark", SystemColorMode.Dark),
+        new("Light", SystemColorMode.Classic)
+    };
 
     public SettingsForm()
     {
         InitializeComponent();
         _settings = Settings;
+
+        colorModeComboBox.DisplayMember = nameof(ColorModeOption.DisplayName);
+        colorModeComboBox.ValueMember = nameof(ColorModeOption.Mode);
+        colorModeComboBox.DataSource = ColorModeOptions;
+        colorModeComboBox.SelectedValue = _settings.ColorMode;
 
         // Load settings into controls
         proxyTextBox.Text = _settings.Proxy;
@@ -37,7 +52,32 @@ public partial class SettingsForm : Form
         _settings.ExternalJavascriptEditor = externalJavascriptEditorTextBox.Text;
         _settings.DefaultDownloadDirectory = defaultDownloadDirectoryTextBox.Text;
 
+        var colorMode = (SystemColorMode)colorModeComboBox.SelectedValue!;
+        var colorModeChanged = _settings.ColorMode != colorMode;
+        _settings.ColorMode = colorMode;
+
+
         await _settings.Save();
+        Application.SetColorMode(_settings.ColorMode);
+
+        if (colorModeChanged)
+        {
+            var messageBoxResult = MessageBox.Show(this, "Theme settings have been changed. The application needs to restart to apply the new theme. Would you like to restart now?", "Theme Changed", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (messageBoxResult == DialogResult.Yes)
+            {
+                SynchronizationContext.Current?.Post(_ =>
+                {
+                    var executablePath = Path.ChangeExtension(Assembly.GetEntryAssembly()!.Location, ".exe");
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = executablePath,
+                        UseShellExecute = true,
+                    });
+                    Application.Exit();
+                }, null);
+            }
+        }
+
         DialogResult = DialogResult.OK;
         Close();
     }

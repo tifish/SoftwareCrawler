@@ -1,4 +1,5 @@
-﻿global using static SoftwareCrawler.SettingsSingletonContainer;
+global using static SoftwareCrawler.SettingsSingletonContainer;
+using System.Windows.Forms;
 using Newtonsoft.Json;
 
 namespace SoftwareCrawler;
@@ -15,30 +16,32 @@ public class SettingsObject
     public int DownloadTimeout { get; set; } = 7200;
     public string ExternalJavascriptEditor { get; set; } = "";
     public string DefaultDownloadDirectory { get; set; } = "";
+    public SystemColorMode ColorMode { get; set; } = SystemColorMode.System;
 
     private static readonly string AppPath = AppDomain.CurrentDomain.SetupInformation.ApplicationBase ?? string.Empty;
     private static readonly string SettingsFile = Path.Combine(AppPath, "Settings.json");
 
-    public async Task Load()
+    public void Load()
     {
-        if (!File.Exists(SettingsFile))
-            return;
-
-        SettingsObject? settings = null;
-        await Task.Run(() =>
+        if (File.Exists(SettingsFile))
         {
-            settings = JsonConvert.DeserializeObject<SettingsObject>(
-                File.ReadAllText(SettingsFile)
-            );
-        });
-
-        if (settings == null)
-        {
-            Settings = new SettingsObject();
-            return;
+            try
+            {
+                var json = File.ReadAllText(SettingsFile);
+                Settings = JsonConvert.DeserializeObject<SettingsObject>(json) ?? new SettingsObject();
+                return;
+            }
+            catch (JsonException ex)
+            {
+                Logger.Error(ex, "Failed to parse settings from {SettingsFile}", SettingsFile);
+            }
+            catch (IOException ex)
+            {
+                Logger.Error(ex, "Failed to read settings from {SettingsFile}", SettingsFile);
+            }
         }
 
-        Settings = settings;
+        Settings = new SettingsObject();
     }
 
     public async Task Save()
