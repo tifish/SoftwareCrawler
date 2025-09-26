@@ -8,15 +8,28 @@ namespace SoftwareCrawler;
 
 public partial class MainForm : Form
 {
+    private SearchForm? _searchForm;
+    private List<(int RowIndex, int ColumnIndex)> _searchResults = [];
+    private int _currentSearchResultIndex = -1;
+
     public MainForm()
     {
         InitializeComponent();
+
+        // Enable double buffering for the data grid view to prevent flickering
+        typeof(DataGridView)
+            .GetProperty("DoubleBuffered", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .SetValue(softwareListDataGridView, true, null);
 
         // Add drag and drop support
         softwareListDataGridView.AllowDrop = true;
         softwareListDataGridView.DragDrop += softwareListDataGridView_DragDrop;
         softwareListDataGridView.DragOver += softwareListDataGridView_DragOver;
         softwareListDataGridView.MouseMove += softwareListDataGridView_MouseMove;
+
+        // Enable key events
+        KeyPreview = true;
+        KeyDown += MainForm_KeyDown;
     }
 
     private class DownloadUIDisabler : IDisposable
@@ -529,5 +542,176 @@ public partial class MainForm : Form
     {
         using var form = new SettingsForm();
         form.ShowDialog(this);
+    }
+
+    private void MainForm_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Control && e.KeyCode == Keys.F)
+        {
+            ShowSearchForm();
+            e.Handled = true;
+        }
+        else if (e.KeyCode == Keys.Escape && _searchForm != null)
+        {
+            CloseSearchForm();
+            e.Handled = true;
+        }
+    }
+
+    private void ShowSearchForm()
+    {
+        if (_searchForm == null || _searchForm.IsDisposed)
+        {
+            _searchForm = new SearchForm();
+            _searchForm.SearchNext += SearchForm_SearchNext;
+            _searchForm.SearchPrevious += SearchForm_SearchPrevious;
+            _searchForm.SearchTextChanged += SearchForm_SearchTextChanged;
+            _searchForm.FormClosed += SearchForm_FormClosed;
+
+            // Position the search form at the top-right of the main form
+            var location = new Point(
+                Location.X + Width - _searchForm.Width - 20,
+                Location.Y + 50
+            );
+            _searchForm.Location = location;
+        }
+
+        _searchForm.Show();
+        _searchForm.BringToFront();
+        _searchForm.FocusSearchBox();
+    }
+
+    private void CloseSearchForm()
+    {
+        if (_searchForm != null && !_searchForm.IsDisposed)
+        {
+            _searchForm.Close();
+        }
+    }
+
+    private void SearchForm_FormClosed(object? sender, FormClosedEventArgs e)
+    {
+        ClearSearchHighlight();
+        _searchResults.Clear();
+        _currentSearchResultIndex = -1;
+    }
+
+    private void SearchForm_SearchTextChanged(object? sender, EventArgs e)
+    {
+        if (_searchForm == null) return;
+
+        var searchText = _searchForm.SearchText;
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            ClearSearchHighlight();
+            _searchResults.Clear();
+            _currentSearchResultIndex = -1;
+            _searchForm.UpdateResults(0, 0);
+            return;
+        }
+
+        PerformSearch(searchText, _searchForm.MatchCase, _searchForm.FirstMatchPerRow);
+    }
+
+    private void SearchForm_SearchNext(object? sender, EventArgs e)
+    {
+        if (_searchResults.Count == 0) return;
+
+        _currentSearchResultIndex = (_currentSearchResultIndex + 1) % _searchResults.Count;
+        NavigateToSearchResult();
+    }
+
+    private void SearchForm_SearchPrevious(object? sender, EventArgs e)
+    {
+        if (_searchResults.Count == 0) return;
+
+        _currentSearchResultIndex = _currentSearchResultIndex <= 0
+            ? _searchResults.Count - 1
+            : _currentSearchResultIndex - 1;
+        NavigateToSearchResult();
+    }
+
+    private void PerformSearch(string searchText, bool matchCase, bool firstMatchPerRow)
+    {
+        _searchResults.Clear();
+        _currentSearchResultIndex = -1;
+
+        var comparison = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+
+        // Search through all visible cells
+        for (int rowIndex = 0; rowIndex < softwareListDataGridView.Rows.Count; rowIndex++)
+        {
+            var row = softwareListDataGridView.Rows[rowIndex];
+            if (row.IsNewRow) continue;
+
+            for (int columnIndex = 0; columnIndex < softwareListDataGridView.Columns.Count; columnIndex++)
+            {
+                var cell = row.Cells[columnIndex];
+                var cellValue = cell.Value?.ToString() ?? "";
+
+                if (cellValue.Contains(searchText, comparison))
+                {
+                    _searchResults.Add((rowIndex, columnIndex));
+
+                    // If firstMatchPerRow is true, only add the first match in each row
+                    if (firstMatchPerRow)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (_searchResults.Count > 0)
+        {
+            _currentSearchResultIndex = 0;
+            NavigateToSearchResult();
+        }
+
+        _searchForm?.UpdateResults(_currentSearchResultIndex + 1, _searchResults.Count);
+    }
+
+    private void NavigateToSearchResult()
+    {
+        if (_currentSearchResultIndex < 0 || _currentSearchResultIndex >= _searchResults.Count)
+            return;
+
+        var (rowIndex, columnIndex) = _searchResults[_currentSearchResultIndex];
+
+        // Clear previous selection
+        softwareListDataGridView.ClearSelection();
+
+        // Select and focus the found cell
+        softwareListDataGridView.CurrentCell = softwareListDataGridView[columnIndex, rowIndex];
+        softwareListDataGridView.Rows[rowIndex].Selected = true;
+
+        // Ensure the cell is visible
+        softwareListDataGridView.FirstDisplayedScrollingRowIndex = Math.Max(0, rowIndex - 5);
+
+        // Highlight the row
+        HighlightSearchResult(rowIndex);
+
+        _searchForm?.UpdateResults(_currentSearchResultIndex + 1, _searchResults.Count);
+    }
+
+    private void HighlightSearchResult(int rowIndex)
+    {
+        ClearSearchHighlight();
+
+        if (rowIndex >= 0 && rowIndex < softwareListDataGridView.Rows.Count)
+        {
+            var row = softwareListDataGridView.Rows[rowIndex];
+            row.DefaultCellStyle.BackColor = Color.Yellow;
+            row.DefaultCellStyle.SelectionBackColor = Color.Orange;
+        }
+    }
+
+    private void ClearSearchHighlight()
+    {
+        foreach (DataGridViewRow row in softwareListDataGridView.Rows)
+        {
+            row.DefaultCellStyle.BackColor = Color.Empty;
+            row.DefaultCellStyle.SelectionBackColor = Color.Empty;
+        }
     }
 }
