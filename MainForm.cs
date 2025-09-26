@@ -95,7 +95,7 @@ public partial class MainForm : Form
         // Load software items and bind to data grid view
         await SoftwareManager.Load();
         var bindingList = new BindingList<SoftwareItem>(SoftwareManager.Items);
-        softwareListDataGridView.DataSource = new BindingSource(bindingList, null);
+        softwareListDataGridView.DataSource = new BindingSource(bindingList, "");
         softwareListDataGridView.AutoResizeColumns(DataGridViewAutoSizeColumnsMode.AllCells);
 
         // Set column width
@@ -475,7 +475,7 @@ public partial class MainForm : Form
             MessageBoxIcon.Question) != DialogResult.Yes)
             return;
 
-        var bindingList = (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource).List;
+        var bindingList = (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource!).List;
         var item = bindingList[dragRowIndex];
 
         bindingList.RemoveAt(dragRowIndex);
@@ -486,7 +486,7 @@ public partial class MainForm : Form
         // Select the dragged item at its new position and move cursor to the cell
         softwareListDataGridView.ClearSelection();
         softwareListDataGridView.Rows[targetRowIndex].Selected = true;
-        softwareListDataGridView.CurrentCell = softwareListDataGridView[softwareListDataGridView.CurrentCell.ColumnIndex, targetRowIndex];
+        softwareListDataGridView.CurrentCell = softwareListDataGridView[softwareListDataGridView.CurrentCell!.ColumnIndex, targetRowIndex];
     }
 
     private async void insertNewToolStripMenuItem_Click(object sender, EventArgs e)
@@ -494,7 +494,7 @@ public partial class MainForm : Form
         if (softwareListDataGridView.CurrentRow == null) return;
 
         var currentIndex = softwareListDataGridView.CurrentRow.Index;
-        var bindingList = (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource).List;
+        var bindingList = (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource!).List;
 
         // Create a new SoftwareItem
         var newItem = new SoftwareItem
@@ -523,7 +523,7 @@ public partial class MainForm : Form
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
             return;
 
-        var bindingList = (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource).List;
+        var bindingList = (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource!).List;
         var selectedRows = softwareListDataGridView.SelectedRows.Cast<DataGridViewRow>()
             .OrderByDescending(r => r.Index)  // Delete from bottom to top to maintain correct indices
             .ToList();
