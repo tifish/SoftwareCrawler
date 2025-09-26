@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Reflection;
-using System.Threading;
 namespace SoftwareCrawler;
 
 public partial class SettingsForm : Form
@@ -9,11 +8,11 @@ public partial class SettingsForm : Form
     private sealed record ColorModeOption(string DisplayName, SystemColorMode Mode);
 
     private static readonly ColorModeOption[] ColorModeOptions =
-    {
+    [
         new("Follow system", SystemColorMode.System),
         new("Dark", SystemColorMode.Dark),
         new("Light", SystemColorMode.Classic)
-    };
+    ];
 
     public SettingsForm()
     {
