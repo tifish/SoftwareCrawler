@@ -371,15 +371,15 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                     return Failed("Failed to start download.");
             }
 
-            // Wrong file name or already downloaded.
+            // Do not download.
             switch (beginDownloadResult)
             {
-                case BeginDownloadResult.Failed:
+                case BeginDownloadResult.Failed: // Failed to download
                     return false;
-                case BeginDownloadResult.Downloaded:
-                    return await Downloaded(DownloadStatus.SameFileAlreadyDownloaded);
-                case BeginDownloadResult.HasUpdate:
-                    return await Downloaded(DownloadStatus.HasUpdate);
+                case BeginDownloadResult.Downloaded: // Same file already downloaded
+                    return await Succeeded(DownloadStatus.SameFileAlreadyDownloaded);
+                case BeginDownloadResult.HasUpdate: // Has update but test only
+                    return await Succeeded(DownloadStatus.HasUpdate);
             }
 
             // Wait for download to complete.
@@ -387,7 +387,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             if (!await Browser.WaitForDownloaded(TimeSpan.FromSeconds(Settings.DownloadTimeout)))
                 return Failed("Failed to download file.");
 
-            return await Downloaded(DownloadStatus.Downloaded);
+            return await Succeeded(DownloadStatus.Downloaded);
         }
         catch (Exception ex)
         {
@@ -573,14 +573,15 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 $"{item.SuggestedFileName} - {item.PercentComplete:00}% - {item.ReceivedBytes:#,###} / {item.TotalBytes:#,###} Bytes - {item.CurrentSpeed / 1024:#,###} KB/s";
         }
 
-        // When download is complete, move file to target directory.
-        async Task<bool> Downloaded(DownloadStatus finalStatus)
+        // When download is completed, move file to target directory.
+        // finalStatus can be: Downloaded, SameFileAlreadyDownloaded, HasUpdate
+        async Task<bool> Succeeded(DownloadStatus finalStatus)
         {
             Status = finalStatus;
 
             Progress = $"{downloadFileName} - {(double)downloadFileSize:#,###} Bytes";
 
-            if (testOnly)
+            if (testOnly) // finalStatus == HasUpdate
                 return true;
 
             // Delete other old files in the same directory.
@@ -592,9 +593,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 if (downloadFileTime.HasValue)
                     File.SetLastWriteTime(downloadingFilePath, downloadFileTime.Value);
 
-                await CopyFileIfChanged(downloadingFilePath, targetFilePath, true);
-
-                await CallEventScript(FinalDownloadDirectory, "AfterDownload", targetFilePath);
+                if (await CopyFileIfChanged(downloadingFilePath, targetFilePath, true))
+                    await CallEventScript(FinalDownloadDirectory, "AfterDownload", targetFilePath);
             }
 
             // Extract target file.
@@ -602,9 +602,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             {
                 if (downloadFileTime.HasValue)
                     File.SetLastWriteTime(targetFilePath, downloadFileTime.Value);
-                await ExtractArchiveFile(targetFilePath);
 
-                await CallEventScript(FinalDownloadDirectory, "AfterExtract", targetFilePath);
+                // Extract only if the file is newly downloaded.
+                if (finalStatus == DownloadStatus.Downloaded)
+                {
+                    await ExtractArchiveFile(targetFilePath);
+                    await CallEventScript(FinalDownloadDirectory, "AfterExtract", targetFilePath);
+                }
             }
 
             // Copy file from downloading folder to download directory 2.
@@ -612,13 +616,15 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             {
                 var targetFile2 = Path.Combine(DownloadDirectory2, downloadFileName);
                 DeleteOtherFilesInSameDirectory(targetFile2);
-                await CopyFileIfChanged(targetFilePath, targetFile2);
 
-                await CallEventScript(DownloadDirectory2, "AfterDownload", targetFile2);
+                if (await CopyFileIfChanged(targetFilePath, targetFile2))
+                    await CallEventScript(DownloadDirectory2, "AfterDownload", targetFile2);
 
-                await ExtractArchiveFile(targetFile2);
-
-                await CallEventScript(DownloadDirectory2, "AfterExtract", targetFile2);
+                if (finalStatus == DownloadStatus.Downloaded)
+                {
+                    await ExtractArchiveFile(targetFile2);
+                    await CallEventScript(DownloadDirectory2, "AfterExtract", targetFile2);
+                }
             }
 
             return true;
@@ -697,7 +703,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         }
     }
 
-    private static async Task CopyFileIfChanged(
+    private static async Task<bool> CopyFileIfChanged(
         string sourceFile,
         string targetFile,
         bool move = false
@@ -711,7 +717,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 sourceFileInfo.Length == targetFileInfo.Length
                 && sourceFileInfo.LastWriteTime == targetFileInfo.LastWriteTime
             )
-                return;
+                return false;
 
         await using (var source = File.Open(sourceFile, FileMode.Open, FileAccess.Read))
         {
@@ -725,6 +731,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             File.Delete(sourceFile);
 
         File.SetLastWriteTime(targetFile, sourceFileInfo.LastWriteTime);
+
+        return true;
     }
 
     private static readonly string SevenZipPath = Path.Combine(
