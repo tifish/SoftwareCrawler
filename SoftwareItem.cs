@@ -472,15 +472,21 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                     if (!await Browser.TryEvaluateJavascript(scrollScript, frameName))
                     {
                         // If scroll failed, try to click directly.
-                        Logger.Error("Failed to scroll to, error: {LastJavascriptError}", Browser.LastJavascriptError);
+                        Logger.Error(
+                            "Failed to scroll to, error: {LastJavascriptError}",
+                            Browser.LastJavascriptError
+                        );
                     }
 
                     // Then click
-                    if (!await Browser.TryClick(
+                    if (
+                        !await Browser.TryClick(
                             xpathOrScript,
                             frameName,
                             Settings.TryClickCount,
-                            Settings.TryClickInterval * 1000))
+                            Settings.TryClickInterval * 1000
+                        )
+                    )
                         return Failed($"Failed to click, error: {Browser.LastJavascriptError}");
                 }
                 else // Is JavaScript
@@ -668,13 +674,15 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             var script = Path.Join(directory, eventName + ".cmd");
             if (File.Exists(script)) // Execute .cmd file
             {
-                using var process = Process.Start(new ProcessStartInfo
-                {
-                    FileName = script,
-                    Arguments = $"\"{filePath}\"",
-                    WorkingDirectory = directory,
-                    UseShellExecute = true,
-                });
+                using var process = Process.Start(
+                    new ProcessStartInfo
+                    {
+                        FileName = script,
+                        Arguments = $"\"{filePath}\"",
+                        WorkingDirectory = directory,
+                        UseShellExecute = true,
+                    }
+                );
                 if (process == null)
                     return;
 
@@ -688,13 +696,15 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 if (!File.Exists(script))
                     return;
 
-                using var process = Process.Start(new ProcessStartInfo
-                {
-                    FileName = "powershell",
-                    Arguments = $"-ExecutionPolicy Bypass -File \"{script}\" \"{filePath}\"",
-                    WorkingDirectory = directory,
-                    UseShellExecute = true,
-                });
+                using var process = Process.Start(
+                    new ProcessStartInfo
+                    {
+                        FileName = "powershell",
+                        Arguments = $"-ExecutionPolicy Bypass -File \"{script}\" \"{filePath}\"",
+                        WorkingDirectory = directory,
+                        UseShellExecute = true,
+                    }
+                );
                 if (process == null)
                     return;
 
@@ -713,18 +723,18 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         var targetFileInfo = new FileInfo(targetFile);
 
         if (targetFileInfo.Exists)
+        {
             if (
                 sourceFileInfo.Length == targetFileInfo.Length
                 && sourceFileInfo.LastWriteTime == targetFileInfo.LastWriteTime
             )
                 return false;
+        }
 
         await using (var source = File.Open(sourceFile, FileMode.Open, FileAccess.Read))
         {
-            await using (var target = File.Create(targetFile))
-            {
-                await source.CopyToAsync(target);
-            }
+            await using var target = File.Create(targetFile);
+            await source.CopyToAsync(target);
         }
 
         if (move)

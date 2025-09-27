@@ -14,12 +14,10 @@ namespace SoftwareCrawler
         public event EventHandler? SearchPrevious;
         public event EventHandler? SearchTextChanged;
 
-
         public SearchForm()
         {
             InitializeComponent();
         }
-
 
         private void SearchTextBox_TextChanged(object? sender, EventArgs e)
         {

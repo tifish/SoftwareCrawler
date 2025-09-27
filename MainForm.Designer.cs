@@ -58,119 +58,119 @@
             rootTableLayoutPanel.SuspendLayout();
             toolbarFlowLayoutPanel.SuspendLayout();
             SuspendLayout();
-            // 
+            //
             // dataGridViewContextMenuStrip
-            // 
+            //
             dataGridViewContextMenuStrip.Items.AddRange(new ToolStripItem[] { downloadSelectedToolStripMenuItem, downloadAllToolStripMenuItem, toolStripSeparator1, testSelectedToolStripMenuItem, testAllToolStripMenuItem, toolStripSeparator2, cancelToolStripMenuItem, toolStripSeparator4, insertNewToolStripMenuItem, deleteToolStripMenuItem, reloadToolStripMenuItem, editScriptToolStripMenuItem, toolStripSeparator3, openWebPageToolStripMenuItem, openWebPageInBrowserToolStripMenuItem, openDownloadDirectoryToolStripMenuItem });
             dataGridViewContextMenuStrip.Name = "dataGridViewContextMenuStrip";
             dataGridViewContextMenuStrip.Size = new Size(216, 292);
-            // 
+            //
             // downloadSelectedToolStripMenuItem
-            // 
+            //
             downloadSelectedToolStripMenuItem.Name = "downloadSelectedToolStripMenuItem";
             downloadSelectedToolStripMenuItem.Size = new Size(215, 22);
             downloadSelectedToolStripMenuItem.Text = "&Download selected";
             downloadSelectedToolStripMenuItem.Click += downloadSelectedToolStripMenuItem_Click;
-            // 
+            //
             // downloadAllToolStripMenuItem
-            // 
+            //
             downloadAllToolStripMenuItem.Name = "downloadAllToolStripMenuItem";
             downloadAllToolStripMenuItem.Size = new Size(215, 22);
             downloadAllToolStripMenuItem.Text = "Download &all";
             downloadAllToolStripMenuItem.Click += downloadAllToolStripMenuItem_Click;
-            // 
+            //
             // toolStripSeparator1
-            // 
+            //
             toolStripSeparator1.Name = "toolStripSeparator1";
             toolStripSeparator1.Size = new Size(212, 6);
-            // 
+            //
             // testSelectedToolStripMenuItem
-            // 
+            //
             testSelectedToolStripMenuItem.Name = "testSelectedToolStripMenuItem";
             testSelectedToolStripMenuItem.Size = new Size(215, 22);
             testSelectedToolStripMenuItem.Text = "&Test selected";
             testSelectedToolStripMenuItem.Click += testSelectedToolStripMenuItem_Click;
-            // 
+            //
             // testAllToolStripMenuItem
-            // 
+            //
             testAllToolStripMenuItem.Name = "testAllToolStripMenuItem";
             testAllToolStripMenuItem.Size = new Size(215, 22);
             testAllToolStripMenuItem.Text = "Test all";
             testAllToolStripMenuItem.Click += testAllToolStripMenuItem_Click;
-            // 
+            //
             // toolStripSeparator2
-            // 
+            //
             toolStripSeparator2.Name = "toolStripSeparator2";
             toolStripSeparator2.Size = new Size(212, 6);
-            // 
+            //
             // cancelToolStripMenuItem
-            // 
+            //
             cancelToolStripMenuItem.Name = "cancelToolStripMenuItem";
             cancelToolStripMenuItem.Size = new Size(215, 22);
             cancelToolStripMenuItem.Text = "&Cancel";
             cancelToolStripMenuItem.Click += cancelToolStripMenuItem_Click;
-            // 
+            //
             // toolStripSeparator4
-            // 
+            //
             toolStripSeparator4.Name = "toolStripSeparator4";
             toolStripSeparator4.Size = new Size(212, 6);
-            // 
+            //
             // insertNewToolStripMenuItem
-            // 
+            //
             insertNewToolStripMenuItem.Name = "insertNewToolStripMenuItem";
             insertNewToolStripMenuItem.Size = new Size(215, 22);
             insertNewToolStripMenuItem.Text = "Insert &new";
             insertNewToolStripMenuItem.Click += insertNewToolStripMenuItem_Click;
-            // 
+            //
             // deleteToolStripMenuItem
-            // 
+            //
             deleteToolStripMenuItem.Name = "deleteToolStripMenuItem";
             deleteToolStripMenuItem.Size = new Size(215, 22);
             deleteToolStripMenuItem.Text = "De&lete";
             deleteToolStripMenuItem.Click += deleteToolStripMenuItem_Click;
-            // 
+            //
             // reloadToolStripMenuItem
-            // 
+            //
             reloadToolStripMenuItem.Name = "reloadToolStripMenuItem";
             reloadToolStripMenuItem.Size = new Size(215, 22);
             reloadToolStripMenuItem.Text = "&Reload";
             reloadToolStripMenuItem.Click += reloadToolStripMenuItem_Click;
-            // 
+            //
             // editScriptToolStripMenuItem
-            // 
+            //
             editScriptToolStripMenuItem.Name = "editScriptToolStripMenuItem";
             editScriptToolStripMenuItem.Size = new Size(215, 22);
             editScriptToolStripMenuItem.Text = "&Edit script";
             editScriptToolStripMenuItem.Click += editScriptToolStripMenuItem_Click;
-            // 
+            //
             // toolStripSeparator3
-            // 
+            //
             toolStripSeparator3.Name = "toolStripSeparator3";
             toolStripSeparator3.Size = new Size(212, 6);
-            // 
+            //
             // openWebPageToolStripMenuItem
-            // 
+            //
             openWebPageToolStripMenuItem.Name = "openWebPageToolStripMenuItem";
             openWebPageToolStripMenuItem.Size = new Size(215, 22);
             openWebPageToolStripMenuItem.Text = "Open &web page";
             openWebPageToolStripMenuItem.Click += openWebPageToolStripMenuItem_Click;
-            // 
+            //
             // openWebPageInBrowserToolStripMenuItem
-            // 
+            //
             openWebPageInBrowserToolStripMenuItem.Name = "openWebPageInBrowserToolStripMenuItem";
             openWebPageInBrowserToolStripMenuItem.Size = new Size(215, 22);
             openWebPageInBrowserToolStripMenuItem.Text = "Open web page in &browser";
             openWebPageInBrowserToolStripMenuItem.Click += openWebPageInBrowserToolStripMenuItem_Click;
-            // 
+            //
             // openDownloadDirectoryToolStripMenuItem
-            // 
+            //
             openDownloadDirectoryToolStripMenuItem.Name = "openDownloadDirectoryToolStripMenuItem";
             openDownloadDirectoryToolStripMenuItem.Size = new Size(215, 22);
             openDownloadDirectoryToolStripMenuItem.Text = "&Open download directory";
             openDownloadDirectoryToolStripMenuItem.Click += openDownloadDirectoryToolStripMenuItem_Click;
-            // 
+            //
             // errorMessageLabel
-            // 
+            //
             errorMessageLabel.Anchor = AnchorStyles.Left;
             errorMessageLabel.AutoSize = true;
             errorMessageLabel.Location = new Point(3, 655);
@@ -178,9 +178,9 @@
             errorMessageLabel.Size = new Size(81, 15);
             errorMessageLabel.TabIndex = 5;
             errorMessageLabel.Text = "Error message";
-            // 
+            //
             // showDevToolsButton
-            // 
+            //
             showDevToolsButton.Anchor = AnchorStyles.Left;
             showDevToolsButton.Location = new Point(3, 4);
             showDevToolsButton.Name = "showDevToolsButton";
@@ -189,9 +189,9 @@
             showDevToolsButton.Text = "&Show DevTools";
             showDevToolsButton.UseVisualStyleBackColor = true;
             showDevToolsButton.Click += showDevToolsButton_Click;
-            // 
+            //
             // softwareListDataGridView
-            // 
+            //
             softwareListDataGridView.AllowUserToOrderColumns = true;
             softwareListDataGridView.AllowUserToResizeRows = false;
             softwareListDataGridView.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
@@ -210,9 +210,9 @@
             softwareListDataGridView.UserAddedRow += softwareListDataGridView_UserAddedRow;
             softwareListDataGridView.UserDeletedRow += softwareListDataGridView_UserDeletedRow;
             softwareListDataGridView.MouseDown += softwareListDataGridView_MouseDown;
-            // 
+            //
             // rootTableLayoutPanel
-            // 
+            //
             rootTableLayoutPanel.ColumnCount = 2;
             rootTableLayoutPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             rootTableLayoutPanel.ColumnStyles.Add(new ColumnStyle());
@@ -227,9 +227,9 @@
             rootTableLayoutPanel.RowStyles.Add(new RowStyle());
             rootTableLayoutPanel.Size = new Size(1264, 681);
             rootTableLayoutPanel.TabIndex = 8;
-            // 
+            //
             // toolbarFlowLayoutPanel
-            // 
+            //
             toolbarFlowLayoutPanel.AutoSize = true;
             toolbarFlowLayoutPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             toolbarFlowLayoutPanel.Controls.Add(showDevToolsButton);
@@ -240,9 +240,9 @@
             toolbarFlowLayoutPanel.Size = new Size(307, 31);
             toolbarFlowLayoutPanel.TabIndex = 6;
             toolbarFlowLayoutPanel.WrapContents = false;
-            // 
+            //
             // clearCookieButton
-            // 
+            //
             clearCookieButton.AutoSize = true;
             clearCookieButton.Location = new Point(124, 3);
             clearCookieButton.Name = "clearCookieButton";
@@ -251,9 +251,9 @@
             clearCookieButton.Text = "Clear cookies";
             clearCookieButton.UseVisualStyleBackColor = true;
             clearCookieButton.Click += clearCookieButton_Click;
-            // 
+            //
             // settingsButton
-            // 
+            //
             settingsButton.AutoSize = true;
             settingsButton.Location = new Point(217, 3);
             settingsButton.Name = "settingsButton";
@@ -262,9 +262,9 @@
             settingsButton.Text = "S&ettings";
             settingsButton.UseVisualStyleBackColor = true;
             settingsButton.Click += settingsButton_Click;
-            // 
+            //
             // MainForm
-            // 
+            //
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(1264, 681);

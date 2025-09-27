@@ -18,7 +18,10 @@ public partial class MainForm : Form
 
         // Enable double buffering for the data grid view to prevent flickering
         typeof(DataGridView)
-            .GetProperty("DoubleBuffered", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .GetProperty(
+                "DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance
+            )!
             .SetValue(softwareListDataGridView, true, null);
 
         // Add drag and drop support
@@ -106,7 +109,6 @@ public partial class MainForm : Form
                 column.Width = 400;
         softwareListDataGridView.Columns[0].Width = 3 * softwareListDataGridView.Columns[0].Width;
         softwareListDataGridView.Columns[1].Width = 5 * softwareListDataGridView.Columns[1].Width;
-
     }
 
     private SoftwareItem? _currentDownloadItem;
@@ -187,7 +189,9 @@ public partial class MainForm : Form
 
                 _currentDownloadItem = item;
                 if (!await item.Download(retryCount: Settings.DownloadRetryCount))
+                {
                     success = false;
+                }
             }
         }
 
@@ -197,7 +201,8 @@ public partial class MainForm : Form
 
     private List<SoftwareItem> GetSelectedItems()
     {
-        var items = softwareListDataGridView.SelectedRows.OfType<DataGridViewRow>()
+        var items = softwareListDataGridView
+            .SelectedRows.OfType<DataGridViewRow>()
             .OrderBy(row => row.Index)
             .Select(row => row.DataBoundItem)
             .OfType<SoftwareItem>()
@@ -279,12 +284,20 @@ public partial class MainForm : Form
         var tempScriptFilePath = Path.Join(tempScriptDir, SanitizeFileName(item.Name) + ".js");
 
         if (File.Exists(tempScriptFilePath))
-            if (MessageBox.Show("The script file already exists. Press Yes to reload or No to override?", "",
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+        {
+            if (
+                MessageBox.Show(
+                    "The script file already exists. Press Yes to reload or No to override?",
+                    "",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning
+                ) == DialogResult.Yes
+            )
             {
                 await GetScriptFromFile(tempScriptFilePath, item);
                 return;
             }
+        }
 
         await File.WriteAllTextAsync(tempScriptFilePath, script, new UTF8Encoding(true));
 
@@ -293,12 +306,14 @@ public partial class MainForm : Form
         if (editor == "")
             editor = "notepad.exe";
 
-        var proc = Process.Start(new ProcessStartInfo
-        {
-            FileName = editor,
-            Arguments = $"\"{tempScriptFilePath}\"",
-            UseShellExecute = true,
-        });
+        var proc = Process.Start(
+            new ProcessStartInfo
+            {
+                FileName = editor,
+                Arguments = $"\"{tempScriptFilePath}\"",
+                UseShellExecute = true,
+            }
+        );
         if (proc == null)
             return;
 
@@ -321,7 +336,10 @@ public partial class MainForm : Form
         }
     }
 
-    private async void softwareListDataGridView_CellEndEdit(object sender, DataGridViewCellEventArgs e)
+    private async void softwareListDataGridView_CellEndEdit(
+        object sender,
+        DataGridViewCellEventArgs e
+    )
     {
         await SoftwareManager.Save();
     }
@@ -341,12 +359,18 @@ public partial class MainForm : Form
             softwareListDataGridView.CurrentCell = rowUnderCursor.Cells[hit.ColumnIndex];
     }
 
-    private async void softwareListDataGridView_UserAddedRow(object sender, DataGridViewRowEventArgs e)
+    private async void softwareListDataGridView_UserAddedRow(
+        object sender,
+        DataGridViewRowEventArgs e
+    )
     {
         await SoftwareManager.Save();
     }
 
-    private async void softwareListDataGridView_UserDeletedRow(object sender, DataGridViewRowEventArgs e)
+    private async void softwareListDataGridView_UserDeletedRow(
+        object sender,
+        DataGridViewRowEventArgs e
+    )
     {
         await SoftwareManager.Save();
     }
@@ -359,7 +383,9 @@ public partial class MainForm : Form
         if (softwareListDataGridView.CurrentRow?.DataBoundItem == null)
             return;
 
-        errorMessageLabel.DataBindings.Add(new Binding("Text", softwareListDataGridView.CurrentRow.DataBoundItem, "ErrorMessage"));
+        errorMessageLabel.DataBindings.Add(
+            new Binding("Text", softwareListDataGridView.CurrentRow.DataBoundItem, "ErrorMessage")
+        );
     }
 
     private void showDevToolsButton_Click(object sender, EventArgs e)
@@ -381,11 +407,15 @@ public partial class MainForm : Form
         if (softwareListDataGridView.CurrentRow?.DataBoundItem == null)
             return;
 
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = (softwareListDataGridView.CurrentRow?.DataBoundItem as SoftwareItem)!.WebPage,
-            UseShellExecute = true,
-        });
+        Process.Start(
+            new ProcessStartInfo
+            {
+                FileName = (
+                    softwareListDataGridView.CurrentRow?.DataBoundItem as SoftwareItem
+                )!.WebPage,
+                UseShellExecute = true,
+            }
+        );
     }
 
     private void openDownloadDirectoryToolStripMenuItem_Click(object sender, EventArgs e)
@@ -400,11 +430,7 @@ public partial class MainForm : Form
             if (string.IsNullOrEmpty(dir))
                 continue;
 
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = dir,
-                UseShellExecute = true,
-            });
+            Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true });
         }
     }
 
@@ -424,8 +450,10 @@ public partial class MainForm : Form
 
     private void softwareListDataGridView_CurrentCellDirtyStateChanged(object sender, EventArgs e)
     {
-        if (softwareListDataGridView.IsCurrentCellDirty
-            && softwareListDataGridView.CurrentCell!.OwningColumn is DataGridViewCheckBoxColumn)
+        if (
+            softwareListDataGridView.IsCurrentCellDirty
+            && softwareListDataGridView.CurrentCell!.OwningColumn is DataGridViewCheckBoxColumn
+        )
             softwareListDataGridView.EndEdit();
     }
 
@@ -464,20 +492,27 @@ public partial class MainForm : Form
     private async void softwareListDataGridView_DragDrop(object? sender, DragEventArgs e)
     {
         var clientPoint = softwareListDataGridView.PointToClient(new Point(e.X, e.Y));
-        var targetRowIndex = softwareListDataGridView.HitTest(clientPoint.X, clientPoint.Y).RowIndex;
+        var targetRowIndex = softwareListDataGridView
+            .HitTest(clientPoint.X, clientPoint.Y)
+            .RowIndex;
 
         if (targetRowIndex < 0)
             return;
         if (targetRowIndex == dragRowIndex)
             return;
 
-        if (MessageBox.Show($"Move item from {dragRowIndex + 1} to {targetRowIndex + 1}?",
-            "Confirm Move",
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Question) != DialogResult.Yes)
+        if (
+            MessageBox.Show(
+                $"Move item from {dragRowIndex + 1} to {targetRowIndex + 1}?",
+                "Confirm Move",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question
+            ) != DialogResult.Yes
+        )
             return;
 
-        var bindingList = (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource!).List;
+        var bindingList =
+            (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource!).List;
         var item = bindingList[dragRowIndex];
 
         bindingList.RemoveAt(dragRowIndex);
@@ -488,22 +523,23 @@ public partial class MainForm : Form
         // Select the dragged item at its new position and move cursor to the cell
         softwareListDataGridView.ClearSelection();
         softwareListDataGridView.Rows[targetRowIndex].Selected = true;
-        softwareListDataGridView.CurrentCell = softwareListDataGridView[softwareListDataGridView.CurrentCell!.ColumnIndex, targetRowIndex];
+        softwareListDataGridView.CurrentCell = softwareListDataGridView[
+            softwareListDataGridView.CurrentCell!.ColumnIndex,
+            targetRowIndex
+        ];
     }
 
     private async void insertNewToolStripMenuItem_Click(object sender, EventArgs e)
     {
-        if (softwareListDataGridView.CurrentRow == null) return;
+        if (softwareListDataGridView.CurrentRow == null)
+            return;
 
         var currentIndex = softwareListDataGridView.CurrentRow.Index;
-        var bindingList = (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource!).List;
+        var bindingList =
+            (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource!).List;
 
         // Create a new SoftwareItem
-        var newItem = new SoftwareItem
-        {
-            Name = "New Software",
-            Enabled = true
-        };
+        var newItem = new SoftwareItem { Name = "New Software", Enabled = true };
 
         // Insert new item at current position
         bindingList.Insert(currentIndex, newItem);
@@ -521,13 +557,21 @@ public partial class MainForm : Form
             return;
 
         // Confirm before deletion
-        if (MessageBox.Show("Are you sure you want to delete the selected items?", "Confirm Delete",
-                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+        if (
+            MessageBox.Show(
+                "Are you sure you want to delete the selected items?",
+                "Confirm Delete",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question
+            ) != DialogResult.Yes
+        )
             return;
 
-        var bindingList = (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource!).List;
-        var selectedRows = softwareListDataGridView.SelectedRows.Cast<DataGridViewRow>()
-            .OrderByDescending(r => r.Index)  // Delete from bottom to top to maintain correct indices
+        var bindingList =
+            (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource!).List;
+        var selectedRows = softwareListDataGridView
+            .SelectedRows.Cast<DataGridViewRow>()
+            .OrderByDescending(r => r.Index) // Delete from bottom to top to maintain correct indices
             .ToList();
 
         foreach (var row in selectedRows)
@@ -569,10 +613,7 @@ public partial class MainForm : Form
             _searchForm.FormClosed += SearchForm_FormClosed;
 
             // Position the search form at the top-right of the main form
-            var location = new Point(
-                Location.X + Width - _searchForm.Width - 20,
-                Location.Y + 50
-            );
+            var location = new Point(Location.X + Width - _searchForm.Width - 20, Location.Y + 50);
             _searchForm.Location = location;
         }
 
@@ -598,7 +639,8 @@ public partial class MainForm : Form
 
     private void SearchForm_SearchTextChanged(object? sender, EventArgs e)
     {
-        if (_searchForm == null) return;
+        if (_searchForm == null)
+            return;
 
         var searchText = _searchForm.SearchText;
         if (string.IsNullOrWhiteSpace(searchText))
@@ -615,7 +657,8 @@ public partial class MainForm : Form
 
     private void SearchForm_SearchNext(object? sender, EventArgs e)
     {
-        if (_searchResults.Count == 0) return;
+        if (_searchResults.Count == 0)
+            return;
 
         _currentSearchResultIndex = (_currentSearchResultIndex + 1) % _searchResults.Count;
         NavigateToSearchResult();
@@ -623,11 +666,13 @@ public partial class MainForm : Form
 
     private void SearchForm_SearchPrevious(object? sender, EventArgs e)
     {
-        if (_searchResults.Count == 0) return;
+        if (_searchResults.Count == 0)
+            return;
 
-        _currentSearchResultIndex = _currentSearchResultIndex <= 0
-            ? _searchResults.Count - 1
-            : _currentSearchResultIndex - 1;
+        _currentSearchResultIndex =
+            _currentSearchResultIndex <= 0
+                ? _searchResults.Count - 1
+                : _currentSearchResultIndex - 1;
         NavigateToSearchResult();
     }
 
@@ -642,9 +687,14 @@ public partial class MainForm : Form
         for (int rowIndex = 0; rowIndex < softwareListDataGridView.Rows.Count; rowIndex++)
         {
             var row = softwareListDataGridView.Rows[rowIndex];
-            if (row.IsNewRow) continue;
+            if (row.IsNewRow)
+                continue;
 
-            for (int columnIndex = 0; columnIndex < softwareListDataGridView.Columns.Count; columnIndex++)
+            for (
+                int columnIndex = 0;
+                columnIndex < softwareListDataGridView.Columns.Count;
+                columnIndex++
+            )
             {
                 var cell = row.Cells[columnIndex];
                 var cellValue = cell.Value?.ToString() ?? "";

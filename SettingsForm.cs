@@ -1,17 +1,19 @@
 using System.Diagnostics;
 using System.Reflection;
+
 namespace SoftwareCrawler;
 
 public partial class SettingsForm : Form
 {
     private readonly SettingsObject _settings;
+
     private sealed record ColorModeOption(string DisplayName, SystemColorMode Mode);
 
     private static readonly ColorModeOption[] ColorModeOptions =
     [
         new("Follow system", SystemColorMode.System),
         new("Dark", SystemColorMode.Dark),
-        new("Light", SystemColorMode.Classic)
+        new("Light", SystemColorMode.Classic),
     ];
 
     public SettingsForm()
@@ -55,25 +57,38 @@ public partial class SettingsForm : Form
         var colorModeChanged = _settings.ColorMode != colorMode;
         _settings.ColorMode = colorMode;
 
-
         await _settings.Save();
         Application.SetColorMode(_settings.ColorMode);
 
         if (colorModeChanged)
         {
-            var messageBoxResult = MessageBox.Show(this, "Theme settings have been changed. The application needs to restart to apply the new theme. Would you like to restart now?", "Theme Changed", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            var messageBoxResult = MessageBox.Show(
+                this,
+                "Theme settings have been changed. The application needs to restart to apply the new theme. Would you like to restart now?",
+                "Theme Changed",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question
+            );
             if (messageBoxResult == DialogResult.Yes)
             {
-                SynchronizationContext.Current?.Post(_ =>
-                {
-                    var executablePath = Path.ChangeExtension(Assembly.GetEntryAssembly()!.Location, ".exe");
-                    Process.Start(new ProcessStartInfo
+                SynchronizationContext.Current?.Post(
+                    _ =>
                     {
-                        FileName = executablePath,
-                        UseShellExecute = true,
-                    });
-                    Application.Exit();
-                }, null);
+                        var executablePath = Path.ChangeExtension(
+                            Assembly.GetEntryAssembly()!.Location,
+                            ".exe"
+                        );
+                        Process.Start(
+                            new ProcessStartInfo
+                            {
+                                FileName = executablePath,
+                                UseShellExecute = true,
+                            }
+                        );
+                        Application.Exit();
+                    },
+                    null
+                );
             }
         }
 
@@ -92,7 +107,7 @@ public partial class SettingsForm : Form
         using var dialog = new OpenFileDialog
         {
             Filter = "Executable files (*.exe)|*.exe|All files (*.*)|*.*",
-            Title = "Select External JavaScript Editor"
+            Title = "Select External JavaScript Editor",
         };
 
         if (dialog.ShowDialog() == DialogResult.OK)

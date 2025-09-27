@@ -70,12 +70,18 @@ public class BrowserObject
         var result = new TaskCompletionSource<bool>(task.AsyncState);
         var timer = new Timer(
             state => ((TaskCompletionSource<bool>)state!).TrySetResult(false),
-            result, timeout, TimeSpan.FromMilliseconds(-1));
-        task.ContinueWith(_ =>
-        {
-            timer.Dispose();
-            result.TrySetResult(task.Result);
-        }, TaskContinuationOptions.ExecuteSynchronously);
+            result,
+            timeout,
+            TimeSpan.FromMilliseconds(-1)
+        );
+        task.ContinueWith(
+            _ =>
+            {
+                timer.Dispose();
+                result.TrySetResult(task.Result);
+            },
+            TaskContinuationOptions.ExecuteSynchronously
+        );
         return result.Task;
     }
 
@@ -102,7 +108,20 @@ public class BrowserObject
             _owner = owner;
         }
 
-        protected override bool OnBeforePopup(IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame, string targetUrl, string targetFrameName, WindowOpenDisposition targetDisposition, bool userGesture, IPopupFeatures popupFeatures, IWindowInfo windowInfo, IBrowserSettings browserSettings, ref bool noJavascriptAccess, out IWebBrowser? newBrowser)
+        protected override bool OnBeforePopup(
+            IWebBrowser chromiumWebBrowser,
+            IBrowser browser,
+            IFrame frame,
+            string targetUrl,
+            string targetFrameName,
+            WindowOpenDisposition targetDisposition,
+            bool userGesture,
+            IPopupFeatures popupFeatures,
+            IWindowInfo windowInfo,
+            IBrowserSettings browserSettings,
+            ref bool noJavascriptAccess,
+            out IWebBrowser? newBrowser
+        )
         {
             // Prevent popup windows.
             // https://obsproject.com/ won't start download if I redirect the popup window.
@@ -125,17 +144,35 @@ public class BrowserObject
     {
         public MyRequestHandler(BrowserObject owner)
         {
-            _headersProcessingResourceRequestHandler = new HeadersProcessingResourceRequestHandler(owner);
+            _headersProcessingResourceRequestHandler = new HeadersProcessingResourceRequestHandler(
+                owner
+            );
         }
 
         private readonly HeadersProcessingResourceRequestHandler _headersProcessingResourceRequestHandler;
 
-        protected override IResourceRequestHandler GetResourceRequestHandler(IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame, IRequest request, bool isNavigation, bool isDownload, string requestInitiator, ref bool disableDefaultHandling)
+        protected override IResourceRequestHandler GetResourceRequestHandler(
+            IWebBrowser chromiumWebBrowser,
+            IBrowser browser,
+            IFrame frame,
+            IRequest request,
+            bool isNavigation,
+            bool isDownload,
+            string requestInitiator,
+            ref bool disableDefaultHandling
+        )
         {
             return _headersProcessingResourceRequestHandler;
         }
 
-        protected override bool OnCertificateError(IWebBrowser chromiumWebBrowser, IBrowser browser, CefErrorCode errorCode, string requestUrl, ISslInfo sslInfo, IRequestCallback callback)
+        protected override bool OnCertificateError(
+            IWebBrowser chromiumWebBrowser,
+            IBrowser browser,
+            CefErrorCode errorCode,
+            string requestUrl,
+            ISslInfo sslInfo,
+            IRequestCallback callback
+        )
         {
             callback.Continue(true);
             return true;
@@ -151,10 +188,23 @@ public class BrowserObject
             _owner = owner;
         }
 
-        protected override bool OnResourceResponse(IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame, IRequest request, IResponse response)
+        protected override bool OnResourceResponse(
+            IWebBrowser chromiumWebBrowser,
+            IBrowser browser,
+            IFrame frame,
+            IRequest request,
+            IResponse response
+        )
         {
             var dateString = response.GetHeaderByName("last-modified");
-            if (DateTime.TryParse(dateString, CultureInfo.InvariantCulture.DateTimeFormat, DateTimeStyles.AssumeUniversal, out var date))
+            if (
+                DateTime.TryParse(
+                    dateString,
+                    CultureInfo.InvariantCulture.DateTimeFormat,
+                    DateTimeStyles.AssumeUniversal,
+                    out var date
+                )
+            )
                 _owner._lastRespondTime = date;
             else
                 _owner._lastRespondTime = null;
@@ -162,7 +212,13 @@ public class BrowserObject
             return false;
         }
 
-        protected override CefReturnValue OnBeforeResourceLoad(IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame, IRequest request, IRequestCallback callback)
+        protected override CefReturnValue OnBeforeResourceLoad(
+            IWebBrowser chromiumWebBrowser,
+            IBrowser browser,
+            IFrame frame,
+            IRequest request,
+            IRequestCallback callback
+        )
         {
             if (_owner._referer != string.Empty)
             {
@@ -195,12 +251,22 @@ public class BrowserObject
             _owner = owner;
         }
 
-        public bool CanDownload(IWebBrowser chromiumWebBrowser, IBrowser browser, string url, string requestMethod)
+        public bool CanDownload(
+            IWebBrowser chromiumWebBrowser,
+            IBrowser browser,
+            string url,
+            string requestMethod
+        )
         {
             return true;
         }
 
-        public bool OnBeforeDownload(IWebBrowser chromiumWebBrowser, IBrowser browser, DownloadItem downloadItem, IBeforeDownloadCallback callback)
+        public bool OnBeforeDownload(
+            IWebBrowser chromiumWebBrowser,
+            IBrowser browser,
+            DownloadItem downloadItem,
+            IBeforeDownloadCallback callback
+        )
         {
             _latestDownloadID = downloadItem.Id;
             _suggestedFileName = downloadItem.SuggestedFileName;
@@ -240,8 +306,12 @@ public class BrowserObject
             return true;
         }
 
-        public void OnDownloadUpdated(IWebBrowser chromiumWebBrowser, IBrowser browser, DownloadItem downloadItem,
-            IDownloadItemCallback callback)
+        public void OnDownloadUpdated(
+            IWebBrowser chromiumWebBrowser,
+            IBrowser browser,
+            DownloadItem downloadItem,
+            IDownloadItemCallback callback
+        )
         {
             if (_owner._hasDownloadCancelled)
             {
@@ -258,7 +328,10 @@ public class BrowserObject
             }
 
             // If no download listener is registered then cancel the download.
-            if (_owner._downloadTaskCompletionSource == null || _owner._downloadTaskCompletionSource.Task.IsCompleted)
+            if (
+                _owner._downloadTaskCompletionSource == null
+                || _owner._downloadTaskCompletionSource.Task.IsCompleted
+            )
             {
                 if (callback is { IsDisposed: false })
                     callback.Cancel();
@@ -329,7 +402,10 @@ public class BrowserObject
         for (var i = 0; i < count; i++)
         {
             if (WebBrowser.CanExecuteJavascriptInMainFrame)
-                if (string.IsNullOrWhiteSpace(frameName) || WebBrowser.GetBrowser().GetFrameByName(frameName) != null)
+                if (
+                    string.IsNullOrWhiteSpace(frameName)
+                    || WebBrowser.GetBrowser().GetFrameByName(frameName) != null
+                )
                 {
                     success = await Click(xpath, frameName);
                     if (success)
@@ -345,17 +421,26 @@ public class BrowserObject
     public async Task<bool> Click(string xpath, string frameName = "")
     {
         xpath = xpath.Replace('\"', '\'');
-        var js = $"""document.evaluate("{xpath}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue.click()""";
+        var js =
+            $"""document.evaluate("{xpath}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue.click()""";
         return await EvaluateJavascript(js, frameName);
     }
 
-    public async Task<bool> TryEvaluateJavascript(string script, string frameName = "", int count = 10, int interval = 500)
+    public async Task<bool> TryEvaluateJavascript(
+        string script,
+        string frameName = "",
+        int count = 10,
+        int interval = 500
+    )
     {
         var success = false;
         for (var i = 0; i < count; i++)
         {
             if (WebBrowser.CanExecuteJavascriptInMainFrame)
-                if (string.IsNullOrWhiteSpace(frameName) || WebBrowser.GetBrowser().GetFrameByName(frameName) != null)
+                if (
+                    string.IsNullOrWhiteSpace(frameName)
+                    || WebBrowser.GetBrowser().GetFrameByName(frameName) != null
+                )
                 {
                     success = await EvaluateJavascript(script, frameName);
                     if (success)

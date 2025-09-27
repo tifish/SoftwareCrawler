@@ -5,10 +5,14 @@ namespace SoftwareCrawler;
 public static class SoftwareManager
 {
     private static readonly string ConfigPath = Path.Join(
-        AppDomain.CurrentDomain.SetupInformation.ApplicationBase ?? string.Empty, "Software.tab");
+        AppDomain.CurrentDomain.SetupInformation.ApplicationBase ?? string.Empty,
+        "Software.tab"
+    );
 
     private static readonly string DownloadDirectoryConfigPath = Path.Join(
-        AppDomain.CurrentDomain.SetupInformation.ApplicationBase ?? string.Empty, "DownloadDirectory.tab");
+        AppDomain.CurrentDomain.SetupInformation.ApplicationBase ?? string.Empty,
+        "DownloadDirectory.tab"
+    );
 
     public static List<SoftwareItem> Items { get; private set; } = [];
 
@@ -18,7 +22,10 @@ public static class SoftwareManager
             return;
 
         var dataLines = (await File.ReadAllLinesAsync(ConfigPath)).ToList().Skip(1).ToList();
-        var extraLines = (await File.ReadAllLinesAsync(DownloadDirectoryConfigPath)).ToList().Skip(1).ToList();
+        var extraLines = (await File.ReadAllLinesAsync(DownloadDirectoryConfigPath))
+            .ToList()
+            .Skip(1)
+            .ToList();
 
         Items.Clear();
         for (var i = 0; i < dataLines.Count; i++)
@@ -44,6 +51,10 @@ public static class SoftwareManager
             SoftwareItem.GetDataHeaderLine(SoftwareItem.ExtraProperties),
         };
         extraItems.AddRange(Items.Select(item => item.ToDataLine(SoftwareItem.ExtraProperties)));
-        await File.WriteAllLinesAsync(DownloadDirectoryConfigPath, extraItems, new UTF8Encoding(true));
+        await File.WriteAllLinesAsync(
+            DownloadDirectoryConfigPath,
+            extraItems,
+            new UTF8Encoding(true)
+        );
     }
 }

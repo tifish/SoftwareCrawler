@@ -18,7 +18,8 @@ public class SettingsObject
     public string DefaultDownloadDirectory { get; set; } = "";
     public SystemColorMode ColorMode { get; set; } = SystemColorMode.System;
 
-    private static readonly string AppPath = AppDomain.CurrentDomain.SetupInformation.ApplicationBase ?? string.Empty;
+    private static readonly string AppPath =
+        AppDomain.CurrentDomain.SetupInformation.ApplicationBase ?? string.Empty;
     private static readonly string SettingsFile = Path.Combine(AppPath, "Settings.json");
 
     public void Load()
@@ -28,7 +29,8 @@ public class SettingsObject
             try
             {
                 var json = File.ReadAllText(SettingsFile);
-                Settings = JsonConvert.DeserializeObject<SettingsObject>(json) ?? new SettingsObject();
+                Settings =
+                    JsonConvert.DeserializeObject<SettingsObject>(json) ?? new SettingsObject();
                 return;
             }
             catch (JsonException ex)
@@ -48,8 +50,7 @@ public class SettingsObject
     {
         await Task.Run(() =>
         {
-            File.WriteAllText(SettingsFile,
-                JsonConvert.SerializeObject(Settings));
+            File.WriteAllText(SettingsFile, JsonConvert.SerializeObject(Settings));
         });
     }
 }

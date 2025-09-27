@@ -54,11 +54,14 @@ public static class KnownFolders
         return GetPath(knownFolder, KnownFolderFlags.DontVerify, defaultUser);
     }
 
-    private static string GetPath(KnownFolder knownFolder, KnownFolderFlags flags,
-        bool defaultUser)
+    private static string GetPath(KnownFolder knownFolder, KnownFolderFlags flags, bool defaultUser)
     {
-        var result = SHGetKnownFolderPath(new Guid(_knownFolderGuids[(int) knownFolder]),
-            (uint) flags, new IntPtr(defaultUser ? -1 : 0), out var outPath);
+        var result = SHGetKnownFolderPath(
+            new Guid(_knownFolderGuids[(int)knownFolder]),
+            (uint)flags,
+            new IntPtr(defaultUser ? -1 : 0),
+            out var outPath
+        );
         if (result >= 0)
         {
             var path = Marshal.PtrToStringUni(outPath);
@@ -66,14 +69,20 @@ public static class KnownFolders
             return path ?? string.Empty;
         }
 
-        throw new ExternalException("Unable to retrieve the known folder path. It may not "
-                                    + "be available on this system.", result);
+        throw new ExternalException(
+            "Unable to retrieve the known folder path. It may not "
+                + "be available on this system.",
+            result
+        );
     }
 
     [DllImport("Shell32.dll")]
     private static extern int SHGetKnownFolderPath(
-        [MarshalAs(UnmanagedType.LPStruct)] Guid rfid, uint dwFlags, IntPtr hToken,
-        out IntPtr ppszPath);
+        [MarshalAs(UnmanagedType.LPStruct)] Guid rfid,
+        uint dwFlags,
+        IntPtr hToken,
+        out IntPtr ppszPath
+    );
 
     [Flags]
     private enum KnownFolderFlags : uint

@@ -1,7 +1,8 @@
 using System.CommandLine;
-using System.Text;
 using System.CommandLine.NamingConventionBinder;
+using System.Text;
 using System.Windows.Forms;
+
 namespace SoftwareCrawler;
 
 static class Program
@@ -16,18 +17,20 @@ static class Program
         {
             new Option<bool>("--download-all", "Download all software"),
             new Option<bool>("--auto-close", "Auto close after download"),
-            new Option<bool>("--force-close", "Force close after download")
+            new Option<bool>("--force-close", "Force close after download"),
         };
         rootCommand.Handler = CommandHandler.Create<bool, bool, bool>(Run);
         rootCommand.Invoke(args);
     }
 
-    private static void Run(
-        bool downloadAll,
-        bool autoClose,
-        bool forceClose)
+    private static void Run(bool downloadAll, bool autoClose, bool forceClose)
     {
-        Logger.Information("Program starts with arguments: downloadAll={DownloadAll}, autoClose={AutoClose}, forceClose={ForceClose}", downloadAll, autoClose, forceClose);
+        Logger.Information(
+            "Program starts with arguments: downloadAll={DownloadAll}, autoClose={AutoClose}, forceClose={ForceClose}",
+            downloadAll,
+            autoClose,
+            forceClose
+        );
 
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
