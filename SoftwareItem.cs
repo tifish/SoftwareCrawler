@@ -460,12 +460,14 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                     Status = DownloadStatus.Clicking;
 
                     // Scroll to the element first
-                    var scrollScript = $"""
-                        const element = document.evaluate("{xpathOrScript}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                        const elementRect = element.getBoundingClientRect();
-                        const absoluteElementTop = elementRect.top + window.pageYOffset;
-                        const middle = absoluteElementTop - (window.innerHeight / 2);
-                        window.scrollTo(0, middle);
+                    var scrollScript = $$"""
+                        {
+                            let element = document.evaluate("{{xpathOrScript}}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                            let elementRect = element.getBoundingClientRect();
+                            let absoluteElementTop = elementRect.top + window.pageYOffset;
+                            let middle = absoluteElementTop - (window.innerHeight / 2);
+                            window.scrollTo(0, middle);
+                        }
                         """;
                     if (!await Browser.TryEvaluateJavascript(scrollScript, frameName))
                     {
