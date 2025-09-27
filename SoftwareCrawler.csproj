@@ -52,7 +52,6 @@
 
   <ItemGroup>
     <PackageReference Include="CefSharp.Common.NETCore" Version="125.0.210" />
-    <PackageReference Include="CefSharp.OffScreen.NETCore" Version="125.0.210" />
     <PackageReference Include="CefSharp.WinForms.NETCore" Version="125.0.210" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="nulastudio.NetBeauty" Version="2.1.5" />
