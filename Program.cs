@@ -1,7 +1,6 @@
 using System.CommandLine;
 using System.CommandLine.NamingConventionBinder;
 using System.Text;
-using System.Windows.Forms;
 
 namespace SoftwareCrawler;
 
@@ -25,6 +24,8 @@ static class Program
 
     private static void Run(bool downloadAll, bool autoClose, bool forceClose)
     {
+        Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
+
         Logger.Information(
             "Program starts with arguments: downloadAll={DownloadAll}, autoClose={AutoClose}, forceClose={ForceClose}",
             downloadAll,

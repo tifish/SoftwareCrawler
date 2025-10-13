@@ -2,7 +2,6 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
-using CefSharp;
 
 namespace SoftwareCrawler;
 
@@ -77,7 +76,7 @@ public partial class MainForm : Form
             using (new DownloadUIDisabler(this))
             {
                 var parentForm = new Form();
-                await Browser.Init(parentForm);
+                await Browser.Init(parentForm, Settings.Proxy);
                 parentForm.Size = new Size(1280, 720);
 
                 BringToFront();
@@ -299,21 +298,14 @@ public partial class MainForm : Form
             }
         }
 
-        await File.WriteAllTextAsync(tempScriptFilePath, script, new UTF8Encoding(true));
+        await File.WriteAllTextAsync(tempScriptFilePath, script);
 
         // Edit the script with an external editor
         var editor = Settings.ExternalJavascriptEditor;
-        if (editor == "")
+        if (editor == "" || !File.Exists(editor))
             editor = "notepad.exe";
 
-        var proc = Process.Start(
-            new ProcessStartInfo
-            {
-                FileName = editor,
-                Arguments = $"\"{tempScriptFilePath}\"",
-                UseShellExecute = true,
-            }
-        );
+        using var proc = Process.Start(editor, $"\"{tempScriptFilePath}\"");
         if (proc == null)
             return;
 
@@ -390,7 +382,7 @@ public partial class MainForm : Form
 
     private void showDevToolsButton_Click(object sender, EventArgs e)
     {
-        Browser.WebBrowser.ShowDevTools();
+        Browser.ShowDevTools();
     }
 
     private async void openWebPageToolStripMenuItem_Click(object sender, EventArgs e)
@@ -457,9 +449,9 @@ public partial class MainForm : Form
             softwareListDataGridView.EndEdit();
     }
 
-    private void clearCookieButton_Click(object sender, EventArgs e)
+    private async void clearCookieButton_Click(object sender, EventArgs e)
     {
-        Cef.GetGlobalCookieManager().DeleteCookies("", "");
+        await Browser.ClearCookies();
     }
 
     private int dragRowIndex;

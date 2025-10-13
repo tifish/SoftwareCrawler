@@ -2,7 +2,6 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using CefSharp;
 
 namespace SoftwareCrawler;
 
@@ -258,23 +257,6 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             if (_hasCancelled)
                 return false;
 
-            await Cef.UIThreadTaskFactory.StartNew(() =>
-            {
-                var proxyDict = new Dictionary<string, object>();
-                if (UseProxy && !string.IsNullOrEmpty(Settings.Proxy))
-                {
-                    proxyDict["mode"] = "fixed_servers";
-                    proxyDict["server"] = Settings.Proxy;
-                }
-
-                if (
-                    !Browser
-                        .WebBrowser.GetBrowserHost()
-                        .RequestContext.SetPreference("proxy", proxyDict, out var error)
-                )
-                    Logger.Error("Set proxy error: {Error}", error!);
-            });
-
             var success = await DownloadOnce(testOnly);
             if (success)
             {
@@ -440,6 +422,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                     if (await Browser.WaitForMainFrameLoadEnd(TimeSpan.FromSeconds(1)))
                         break;
                 }
+
+                // Some script may be executed after page loaded, wait for it.
+                await Task.Delay(5000);
 
                 // If still not loaded, try to click the link directly.
                 Browser.PrepareLoadEvents();

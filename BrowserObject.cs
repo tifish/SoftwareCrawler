@@ -1,8 +1,7 @@
 ﻿global using static SoftwareCrawler.BrowserObject;
 using System.Globalization;
-using CefSharp;
-using CefSharp.Handler;
-using CefSharp.WinForms;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
 using Timer = System.Threading.Timer;
 
 namespace SoftwareCrawler;
@@ -17,52 +16,77 @@ public class BrowserObject
 {
     public static BrowserObject Browser { get; } = new();
 
-    public IWebBrowser WebBrowser = null!;
+    public WebView2 WebView2 = null!;
 
-    public async Task Init(Control? parentForm = null)
+    // Track frames for frame-specific script execution
+    private readonly Dictionary<string, CoreWebView2Frame> _frames = new();
+
+    private string? _proxyServer;
+
+    public async Task Init(Control? parentForm = null, string proxyServer = "")
     {
-        if (!Cef.IsInitialized)
-        {
-            var cefSettings = new CefSettings();
-            cefSettings.CefCommandLineArgs.Add("disable-gpu", "1");
-            cefSettings.CefCommandLineArgs.Add("disable-image-loading", "1");
-            cefSettings.CachePath = Path.Combine(Path.GetFullPath("Cache"));
-            cefSettings.PersistSessionCookies = true;
-            await Cef.InitializeAsync(cefSettings);
-        }
-
         _hasDownloadCancelled = false;
 
-        _frameLoadEndTaskCompletionSource = null;
+        _navigationCompletedTaskCompletionSource = null;
         _downloadTaskCompletionSource = null;
 
-        var webBrowser = new ChromiumWebBrowser("about:blank");
+        _lastRespondTime = null;
+        _proxyServer = proxyServer;
+
+        var webView2 = new WebView2();
 
         if (parentForm != null)
         {
-            webBrowser.Parent = parentForm;
-            webBrowser.Dock = DockStyle.Fill;
+            webView2.Parent = parentForm;
+            webView2.Dock = DockStyle.Fill;
             parentForm.Show();
         }
 
-        WebBrowser = webBrowser;
+        WebView2 = webView2;
 
-        WebBrowser.FrameLoadEnd += WebBrowserOnFrameLoadEnd;
-        WebBrowser.LifeSpanHandler = new MyLifeSpanHandler(this);
-        WebBrowser.RequestHandler = new MyRequestHandler(this);
-        WebBrowser.DownloadHandler = new MyDownloadHandler(this);
+        // Build command line arguments
+        var args = "--safebrowsing-disable-download-protection";
+        if (!string.IsNullOrWhiteSpace(proxyServer))
+        {
+            args += $" --proxy-server={proxyServer}";
+        }
 
-        await WebBrowser.WaitForInitialLoadAsync();
+        var environment = await CoreWebView2Environment.CreateAsync(
+            null,
+            Path.GetFullPath("Cache"),
+            new CoreWebView2EnvironmentOptions(args) { Language = "zh-CN" }
+        );
+        await WebView2.EnsureCoreWebView2Async(environment);
+
+        // Configure settings
+        WebView2.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
+        WebView2.CoreWebView2.Settings.AreDevToolsEnabled = true;
+
+        // Setup event handlers
+        WebView2.CoreWebView2.NavigationCompleted += WebView2OnNavigationCompleted;
+        WebView2.CoreWebView2.DownloadStarting += WebView2OnDownloadStarting;
+        WebView2.CoreWebView2.NewWindowRequested += WebView2OnNewWindowRequested;
+        WebView2.CoreWebView2.FrameCreated += WebView2OnFrameCreated;
+
+        // Setup DevTools Protocol to capture response headers
+        await SetupDevToolsProtocolForResponseHeaders();
+
+        // Navigate to blank page
+        WebView2.CoreWebView2.Navigate("about:blank");
+        await Task.Delay(100); // Give it time to navigate
     }
 
     #region Load events
 
-    private TaskCompletionSource<bool>? _frameLoadEndTaskCompletionSource;
+    private TaskCompletionSource<bool>? _navigationCompletedTaskCompletionSource;
 
-    private void WebBrowserOnFrameLoadEnd(object? sender, FrameLoadEndEventArgs e)
+    private void WebView2OnNavigationCompleted(
+        object? sender,
+        CoreWebView2NavigationCompletedEventArgs e
+    )
     {
-        if (e.Frame.IsMain && e.Url != "about:blank")
-            _frameLoadEndTaskCompletionSource?.TrySetResult(true);
+        if (e.IsSuccess && WebView2.Source.ToString() != "about:blank")
+            _navigationCompletedTaskCompletionSource?.TrySetResult(true);
     }
 
     private static Task<bool> WithTimeout(Task<bool> task, TimeSpan timeout)
@@ -87,8 +111,8 @@ public class BrowserObject
 
     public async Task<bool> WaitForMainFrameLoadEnd(TimeSpan timeout)
     {
-        if (_frameLoadEndTaskCompletionSource != null)
-            return await WithTimeout(_frameLoadEndTaskCompletionSource.Task, timeout);
+        if (_navigationCompletedTaskCompletionSource != null)
+            return await WithTimeout(_navigationCompletedTaskCompletionSource.Task, timeout);
 
         return false;
     }
@@ -99,134 +123,111 @@ public class BrowserObject
 
     private string _referer = string.Empty;
 
-    private class MyLifeSpanHandler : LifeSpanHandler
+    private void WebView2OnNewWindowRequested(
+        object? sender,
+        CoreWebView2NewWindowRequestedEventArgs e
+    )
     {
-        private readonly BrowserObject _owner;
-
-        public MyLifeSpanHandler(BrowserObject owner)
-        {
-            _owner = owner;
-        }
-
-        protected override bool OnBeforePopup(
-            IWebBrowser chromiumWebBrowser,
-            IBrowser browser,
-            IFrame frame,
-            string targetUrl,
-            string targetFrameName,
-            WindowOpenDisposition targetDisposition,
-            bool userGesture,
-            IPopupFeatures popupFeatures,
-            IWindowInfo windowInfo,
-            IBrowserSettings browserSettings,
-            ref bool noJavascriptAccess,
-            out IWebBrowser? newBrowser
-        )
-        {
-            // Prevent popup windows.
-            // https://obsproject.com/ won't start download if I redirect the popup window.
-            // Pass referer doesn't solve the problem.
-            // Can only be solve by get and open download url directly.
-            newBrowser = null;
-            _owner._referer = frame.Url;
-            chromiumWebBrowser.LoadUrl(targetUrl);
-            return true;
-        }
+        // Prevent popup windows and navigate to the target URL in the same window
+        e.Handled = true;
+        _referer = WebView2.Source.ToString();
+        WebView2.CoreWebView2.Navigate(e.Uri);
     }
 
     #endregion
 
-    #region Get download header / set referer
+    #region Get file time
 
-    private DateTime? _lastRespondTime;
+    private DateTime? _lastRespondTime = null;
 
-    private class MyRequestHandler : RequestHandler
+    private async Task SetupDevToolsProtocolForResponseHeaders()
     {
-        public MyRequestHandler(BrowserObject owner)
+        try
         {
-            _headersProcessingResourceRequestHandler = new HeadersProcessingResourceRequestHandler(
-                owner
+            // Enable Network domain to intercept network events
+            await WebView2.CoreWebView2.CallDevToolsProtocolMethodAsync("Network.enable", "{}");
+
+            // Subscribe to Network.responseReceived event
+            var receiver = WebView2.CoreWebView2.GetDevToolsProtocolEventReceiver(
+                "Network.responseReceived"
             );
+            receiver.DevToolsProtocolEventReceived += OnNetworkResponseReceived;
         }
-
-        private readonly HeadersProcessingResourceRequestHandler _headersProcessingResourceRequestHandler;
-
-        protected override IResourceRequestHandler GetResourceRequestHandler(
-            IWebBrowser chromiumWebBrowser,
-            IBrowser browser,
-            IFrame frame,
-            IRequest request,
-            bool isNavigation,
-            bool isDownload,
-            string requestInitiator,
-            ref bool disableDefaultHandling
-        )
+        catch (Exception ex)
         {
-            return _headersProcessingResourceRequestHandler;
-        }
-
-        protected override bool OnCertificateError(
-            IWebBrowser chromiumWebBrowser,
-            IBrowser browser,
-            CefErrorCode errorCode,
-            string requestUrl,
-            ISslInfo sslInfo,
-            IRequestCallback callback
-        )
-        {
-            callback.Continue(true);
-            return true;
+            Logger.Warning($"Failed to setup DevTools Protocol for response headers: {ex.Message}");
         }
     }
 
-    private class HeadersProcessingResourceRequestHandler : ResourceRequestHandler
+    private void OnNetworkResponseReceived(
+        object? sender,
+        CoreWebView2DevToolsProtocolEventReceivedEventArgs e
+    )
     {
-        private readonly BrowserObject _owner;
+        if (e.ParameterObjectAsJson == null)
+            return;
 
-        public HeadersProcessingResourceRequestHandler(BrowserObject owner)
+        try
         {
-            _owner = owner;
-        }
+            var json = System.Text.Json.JsonDocument.Parse(e.ParameterObjectAsJson);
 
-        protected override bool OnResourceResponse(
-            IWebBrowser chromiumWebBrowser,
-            IBrowser browser,
-            IFrame frame,
-            IRequest request,
-            IResponse response
-        )
-        {
-            var dateString = response.GetHeaderByName("last-modified");
-            if (
-                DateTime.TryParse(
-                    dateString,
-                    CultureInfo.InvariantCulture.DateTimeFormat,
-                    DateTimeStyles.AssumeUniversal,
-                    out var date
-                )
-            )
-                _owner._lastRespondTime = date;
-            else
-                _owner._lastRespondTime = null;
+            if (!json.RootElement.TryGetProperty("response", out var response))
+                return;
+            if (!response.TryGetProperty("url", out var urlElement))
+                return;
 
-            return false;
-        }
+            var url = urlElement.GetString();
+            if (string.IsNullOrEmpty(url))
+                return;
 
-        protected override CefReturnValue OnBeforeResourceLoad(
-            IWebBrowser chromiumWebBrowser,
-            IBrowser browser,
-            IFrame frame,
-            IRequest request,
-            IRequestCallback callback
-        )
-        {
-            if (_owner._referer != string.Empty)
+            // Get headers
+            if (!response.TryGetProperty("headers", out var headers))
+                return;
+
+            // Try to get Last-Modified header
+            DateTime? lastModified = null;
+
+            // Headers can be case-insensitive, check common variations
+            foreach (var headerName in new[] { "Last-Modified", "last-modified", "lastModified" })
             {
-                request.SetReferrer(_owner._referer, ReferrerPolicy.Origin);
-                _owner._referer = string.Empty;
+                if (headers.TryGetProperty(headerName, out var lastModifiedElement))
+                {
+                    var lastModifiedStr = lastModifiedElement.GetString();
+                    if (!string.IsNullOrEmpty(lastModifiedStr))
+                    {
+                        if (
+                            DateTime.TryParseExact(
+                                lastModifiedStr,
+                                "ddd, dd MMM yyyy HH:mm:ss 'GMT'",
+                                CultureInfo.InvariantCulture,
+                                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                                out var parsedDate
+                            )
+                        )
+                        {
+                            lastModified = parsedDate.ToLocalTime();
+                            break;
+                        }
+                        // Fallback to general parsing
+                        else if (DateTime.TryParse(lastModifiedStr, out parsedDate))
+                        {
+                            lastModified = parsedDate;
+                            break;
+                        }
+                    }
+                }
             }
 
-            return base.OnBeforeResourceLoad(chromiumWebBrowser, browser, frame, request, callback);
+            // Update _lastRespondTime for the most recent response
+            if (lastModified.HasValue)
+            {
+                _lastRespondTime = lastModified;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Silently ignore parsing errors to avoid spam
+            Logger.Debug($"Failed to parse DevTools Protocol event: {ex.Message}");
         }
     }
 
@@ -238,136 +239,96 @@ public class BrowserObject
     public EventHandler<DownloadItem>? DownloadProgressHandler;
 
     private bool _hasDownloadCancelled;
+    private CoreWebView2DownloadOperation? _currentDownloadOperation;
 
-    private class MyDownloadHandler : IDownloadHandler
+    private void WebView2OnDownloadStarting(object? sender, CoreWebView2DownloadStartingEventArgs e)
     {
-        private readonly BrowserObject _owner;
-        private int _latestDownloadID;
-        private string _suggestedFileName = string.Empty;
-        private IDownloadItemCallback? _downloadItemCallback;
-
-        public MyDownloadHandler(BrowserObject owner)
+        var downloadItem = new DownloadItem
         {
-            _owner = owner;
+            Id = _downloadIdCounter++,
+            Url = e.DownloadOperation.Uri,
+            SuggestedFileName = e.ResultFilePath.Split(Path.DirectorySeparatorChar).Last(),
+            TotalBytes = (long)(e.DownloadOperation.TotalBytesToReceive ?? 0),
+            EndTime = _lastRespondTime,
+            LastReceivedBytes = 0,
+            LastUpdateTime = DateTime.Now,
+        };
+
+        if (_hasDownloadCancelled)
+        {
+            e.Cancel = true;
+            return;
         }
 
-        public bool CanDownload(
-            IWebBrowser chromiumWebBrowser,
-            IBrowser browser,
-            string url,
-            string requestMethod
-        )
+        if (BeginDownloadHandler == null)
         {
-            return true;
+            e.Cancel = true;
+            return;
         }
 
-        public bool OnBeforeDownload(
-            IWebBrowser chromiumWebBrowser,
-            IBrowser browser,
-            DownloadItem downloadItem,
-            IBeforeDownloadCallback callback
-        )
+        BeginDownloadHandler?.Invoke(this, downloadItem);
+
+        if (downloadItem.IsCancelled)
         {
-            _latestDownloadID = downloadItem.Id;
-            _suggestedFileName = downloadItem.SuggestedFileName;
-
-            if (_owner._hasDownloadCancelled)
-            {
-                if (_downloadItemCallback is { IsDisposed: false })
-                    _downloadItemCallback?.Cancel();
-                return false;
-            }
-
-            if (_owner.BeginDownloadHandler == null)
-            {
-                if (_downloadItemCallback is { IsDisposed: false })
-                    _downloadItemCallback.Cancel();
-                return false;
-            }
-
-            downloadItem.EndTime = _owner._lastRespondTime;
-            _owner.BeginDownloadHandler?.Invoke(this, downloadItem);
-
-            using (callback)
-            {
-                if (downloadItem.IsCancelled)
-                {
-                    if (_downloadItemCallback is { IsDisposed: false })
-                        _downloadItemCallback?.Cancel();
-                }
-                else
-                {
-                    callback.Continue(downloadItem.FullPath, false);
-                }
-            }
-
-            _downloadItemCallback = null;
-
-            return true;
+            e.Cancel = true;
+            return;
         }
 
-        public void OnDownloadUpdated(
-            IWebBrowser chromiumWebBrowser,
-            IBrowser browser,
-            DownloadItem downloadItem,
-            IDownloadItemCallback callback
-        )
+        // Set download path
+        e.ResultFilePath = downloadItem.FullPath;
+        _currentDownloadOperation = e.DownloadOperation;
+
+        // Track download progress
+        e.DownloadOperation.BytesReceivedChanged += (s, args) =>
         {
-            if (_owner._hasDownloadCancelled)
+            if (_hasDownloadCancelled)
             {
-                if (callback is { IsDisposed: false })
-                    callback.Cancel();
+                e.DownloadOperation.Cancel();
                 return;
             }
 
-            // Will be called once before OnBeforeDownload, keep callback to use in OnBeforeDownload.
-            if (_downloadItemCallback == null && downloadItem.Id > _latestDownloadID)
+            var currentTime = DateTime.Now;
+            var currentBytes = (long)e.DownloadOperation.BytesReceived;
+
+            // Calculate download speed
+            var timeDiff = (currentTime - downloadItem.LastUpdateTime).TotalSeconds;
+            if (timeDiff > 0)
             {
-                _downloadItemCallback = callback;
-                return;
+                var bytesDiff = currentBytes - downloadItem.LastReceivedBytes;
+                downloadItem.CurrentSpeed = (long)(bytesDiff / timeDiff);
+
+                downloadItem.LastReceivedBytes = currentBytes;
+                downloadItem.LastUpdateTime = currentTime;
             }
 
-            // If no download listener is registered then cancel the download.
-            if (
-                _owner._downloadTaskCompletionSource == null
-                || _owner._downloadTaskCompletionSource.Task.IsCompleted
-            )
-            {
-                if (callback is { IsDisposed: false })
-                    callback.Cancel();
-                return;
-            }
+            downloadItem.ReceivedBytes = currentBytes;
+            downloadItem.TotalBytes = (long)(e.DownloadOperation.TotalBytesToReceive ?? 0);
+            downloadItem.PercentComplete =
+                downloadItem.TotalBytes > 0
+                    ? (int)((double)downloadItem.ReceivedBytes / downloadItem.TotalBytes * 100)
+                    : 0;
 
-            // Only keep the latest download.
-            if (downloadItem.Id < _latestDownloadID)
-            {
-                if (callback is { IsDisposed: false })
-                    callback.Cancel();
-                return;
-            }
+            DownloadProgressHandler?.Invoke(this, downloadItem);
+        };
 
-            if (string.IsNullOrEmpty(downloadItem.SuggestedFileName))
-                downloadItem.SuggestedFileName = _suggestedFileName;
-
-            if (downloadItem.IsComplete)
+        e.DownloadOperation.StateChanged += (s, args) =>
+        {
+            if (e.DownloadOperation.State == CoreWebView2DownloadState.Completed)
             {
-                _owner.DownloadProgressHandler?.Invoke(this, downloadItem);
-                _owner._downloadTaskCompletionSource.TrySetResult(true);
+                downloadItem.IsComplete = true;
+                downloadItem.FullPath = e.DownloadOperation.ResultFilePath;
+                DownloadProgressHandler?.Invoke(this, downloadItem);
+                _downloadTaskCompletionSource?.TrySetResult(true);
             }
-            else if (downloadItem.IsInProgress)
+            else if (e.DownloadOperation.State == CoreWebView2DownloadState.Interrupted)
             {
-                _owner.DownloadProgressHandler?.Invoke(this, downloadItem);
+                downloadItem.IsCancelled = true;
+                _downloadTaskCompletionSource?.TrySetResult(false);
             }
-            else if (downloadItem.IsCancelled)
-            {
-                _owner._downloadTaskCompletionSource.TrySetResult(false);
-            }
-            else // Download is interrupted unexpectedly
-            {
-                _owner._downloadTaskCompletionSource.TrySetResult(false);
-            }
-        }
+        };
     }
+
+    private int _downloadIdCounter = 1;
 
     private TaskCompletionSource<bool>? _downloadTaskCompletionSource;
 
@@ -384,8 +345,8 @@ public class BrowserObject
     public void PrepareLoadEvents()
     {
         _hasDownloadCancelled = false;
-        _frameLoadEndTaskCompletionSource?.TrySetResult(false);
-        _frameLoadEndTaskCompletionSource = new TaskCompletionSource<bool>();
+        _navigationCompletedTaskCompletionSource?.TrySetResult(false);
+        _navigationCompletedTaskCompletionSource = new TaskCompletionSource<bool>();
         _downloadTaskCompletionSource?.TrySetResult(false);
         _downloadTaskCompletionSource = new TaskCompletionSource<bool>();
     }
@@ -393,7 +354,13 @@ public class BrowserObject
     public async Task Load(string url)
     {
         PrepareLoadEvents();
-        await WebBrowser.LoadUrlAsync(url);
+        WebView2.CoreWebView2.Navigate(url);
+        await Task.Delay(100); // Give navigation time to start
+    }
+
+    public async Task LoadUrlAsync(string url)
+    {
+        await Load(url);
     }
 
     public async Task<bool> TryClick(string xpath, string frameName, int count, int interval)
@@ -401,16 +368,9 @@ public class BrowserObject
         var success = false;
         for (var i = 0; i < count; i++)
         {
-            if (WebBrowser.CanExecuteJavascriptInMainFrame)
-                if (
-                    string.IsNullOrWhiteSpace(frameName)
-                    || WebBrowser.GetBrowser().GetFrameByName(frameName) != null
-                )
-                {
-                    success = await Click(xpath, frameName);
-                    if (success)
-                        break;
-                }
+            success = await Click(xpath, frameName);
+            if (success)
+                break;
 
             await Task.Delay(interval);
         }
@@ -436,16 +396,9 @@ public class BrowserObject
         var success = false;
         for (var i = 0; i < count; i++)
         {
-            if (WebBrowser.CanExecuteJavascriptInMainFrame)
-                if (
-                    string.IsNullOrWhiteSpace(frameName)
-                    || WebBrowser.GetBrowser().GetFrameByName(frameName) != null
-                )
-                {
-                    success = await EvaluateJavascript(script, frameName);
-                    if (success)
-                        break;
-                }
+            success = await EvaluateJavascript(script, frameName);
+            if (success)
+                break;
 
             await Task.Delay(interval);
         }
@@ -457,38 +410,196 @@ public class BrowserObject
 
     public async Task<bool> EvaluateJavascript(string script, string frameName = "")
     {
-        JavascriptResponse? response = null;
-
-        if (string.IsNullOrWhiteSpace(frameName))
+        try
         {
-            response = await WebBrowser.EvaluateScriptAsync(script);
+            if (!string.IsNullOrWhiteSpace(frameName))
+            {
+                // Use official CoreWebView2Frame API to execute script in frame
+                return await ExecuteScriptInFrame(script, frameName);
+            }
+
+            var result = await WebView2.CoreWebView2.ExecuteScriptAsync(script);
+            LastJavascriptError = "";
+            return true;
         }
-        else
+        catch (Exception ex)
         {
-            var frame = WebBrowser.GetBrowser().GetFrameByName(frameName);
-            if (frame != null)
-                response = await frame.EvaluateScriptAsync(script);
+            LastJavascriptError = ex.Message;
+            return false;
+        }
+    }
+
+    private void WebView2OnFrameCreated(object? sender, CoreWebView2FrameCreatedEventArgs e)
+    {
+        var frame = e.Frame;
+        lock (_frames)
+        {
+            _frames[frame.Name] = frame;
         }
 
-        if (response != null)
+        // Clean up when frame is destroyed
+        frame.Destroyed += (s, args) =>
         {
-            if (!response.Success)
-                LastJavascriptError = response.Message;
-            return response.Success;
+            lock (_frames)
+            {
+                var keysToRemove = _frames
+                    .Where(kvp => kvp.Value == frame)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+                foreach (var key in keysToRemove)
+                {
+                    _frames.Remove(key);
+                    Logger.Debug($"Frame unregistered: {key}");
+                }
+            }
+        };
+    }
+
+    private async Task<bool> ExecuteScriptInFrame(string script, string frameName)
+    {
+        // First, try to find the frame in our tracked frames
+        CoreWebView2Frame? frame = null;
+        lock (_frames)
+        {
+            _frames.TryGetValue(frameName, out frame);
         }
 
-        return false;
+        if (frame == null)
+            return false;
+
+        try
+        {
+            // Execute script using CoreWebView2Frame API
+            var result = await frame.ExecuteScriptAsync(script);
+            LastJavascriptError = "";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning(
+                $"Failed to execute script in tracked frame '{frameName}': {ex.Message}. Falling back to JavaScript wrapper."
+            );
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Get all available frame names for debugging
+    /// </summary>
+    public async Task<List<string>> GetAllFrameNames()
+    {
+        var frameNames = new List<string>();
+
+        // Get from tracked frames
+        lock (_frames)
+        {
+            frameNames.AddRange(_frames.Keys);
+        }
+
+        // Also try to get from JavaScript
+        try
+        {
+            var script = """
+                (function() {
+                    var frames = [];
+
+                    // Get frames from window.frames
+                    for (var i = 0; i < window.frames.length; i++) {
+                        if (window.frames[i].name) {
+                            frames.push(window.frames[i].name);
+                        }
+                    }
+
+                    // Get iframe elements
+                    var iframes = document.getElementsByTagName('iframe');
+                    for (var i = 0; i < iframes.length; i++) {
+                        if (iframes[i].name && frames.indexOf(iframes[i].name) === -1) {
+                            frames.push(iframes[i].name);
+                        }
+                        if (iframes[i].id && frames.indexOf(iframes[i].id) === -1) {
+                            frames.push(iframes[i].id);
+                        }
+                    }
+
+                    return JSON.stringify(frames);
+                })()
+                """;
+
+            var result = await WebView2.CoreWebView2.ExecuteScriptAsync(script);
+
+            // Parse JSON array result
+            var jsFrameNames = Newtonsoft.Json.JsonConvert.DeserializeObject<List<string>>(result);
+            if (jsFrameNames != null)
+            {
+                foreach (var name in jsFrameNames)
+                {
+                    if (!frameNames.Contains(name))
+                    {
+                        frameNames.Add(name);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning($"Failed to get frame names from JavaScript: {ex.Message}");
+        }
+
+        return frameNames;
     }
 
     public void Cancel()
     {
-        _frameLoadEndTaskCompletionSource?.TrySetResult(false);
-        _frameLoadEndTaskCompletionSource = null;
+        _navigationCompletedTaskCompletionSource?.TrySetResult(false);
+        _navigationCompletedTaskCompletionSource = null;
         _downloadTaskCompletionSource?.TrySetResult(false);
         _downloadTaskCompletionSource = null;
 
         _hasDownloadCancelled = true;
 
-        WebBrowser.LoadUrl("about:blank");
+        if (
+            _currentDownloadOperation != null
+            && _currentDownloadOperation.State == CoreWebView2DownloadState.InProgress
+        )
+        {
+            _currentDownloadOperation.Cancel();
+        }
+
+        WebView2.CoreWebView2.Navigate("about:blank");
     }
+
+    public void ShowDevTools()
+    {
+        WebView2.CoreWebView2.OpenDevToolsWindow();
+    }
+
+    public async Task ClearCookies()
+    {
+        var cookieManager = WebView2.CoreWebView2.CookieManager;
+        var cookies = await cookieManager.GetCookiesAsync(null);
+        foreach (var cookie in cookies)
+        {
+            cookieManager.DeleteCookie(cookie);
+        }
+    }
+}
+
+public class DownloadItem
+{
+    public int Id { get; set; }
+    public string Url { get; set; } = string.Empty;
+    public string SuggestedFileName { get; set; } = string.Empty;
+    public string FullPath { get; set; } = string.Empty;
+    public long TotalBytes { get; set; }
+    public long ReceivedBytes { get; set; }
+    public long CurrentSpeed { get; set; }
+    public int PercentComplete { get; set; }
+    public bool IsComplete { get; set; }
+    public bool IsCancelled { get; set; }
+    public bool IsInProgress => !IsComplete && !IsCancelled;
+    public DateTime? EndTime { get; set; }
+
+    // For speed calculation
+    internal long LastReceivedBytes { get; set; }
+    internal DateTime LastUpdateTime { get; set; } = DateTime.Now;
 }
