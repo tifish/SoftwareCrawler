@@ -327,7 +327,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         // Download
         try
         {
-            await Browser.Load("about:blank");
+            await Browser.ResetToBlankPage();
 
             // Access download page.
             await Browser.Load(WebPage);

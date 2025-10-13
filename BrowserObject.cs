@@ -378,16 +378,14 @@ public class BrowserObject
         _downloadTaskCompletionSource = new TaskCompletionSource<bool>();
     }
 
-    public async Task Load(string url)
+    public async Task ResetToBlankPage()
     {
-        PrepareLoadEvents();
-        
         // Disable beforeunload event handlers to prevent "leave site" confirmation dialog
         try
         {
             await WebView2.CoreWebView2.ExecuteScriptAsync(
-                "window.onbeforeunload = null; " +
-                "document.querySelectorAll('*').forEach(el => el.onbeforeunload = null);"
+                "window.onbeforeunload = null; "
+                    + "document.querySelectorAll('*').forEach(el => el.onbeforeunload = null);"
             );
         }
         catch (Exception ex)
@@ -395,7 +393,13 @@ public class BrowserObject
             // Ignore errors if the page is not yet loaded or already navigating
             Logger.Debug($"Failed to disable beforeunload: {ex.Message}");
         }
-        
+
+        await Load("about:blank");
+    }
+
+    public async Task Load(string url)
+    {
+        PrepareLoadEvents();
         WebView2.CoreWebView2.Navigate(url);
         await Task.Delay(100); // Give navigation time to start
     }
