@@ -66,7 +66,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public string WebPage { get; set; } = string.Empty;
     public string XPathOrScripts { get; set; } = string.Empty;
     public string Frames { get; set; } = string.Empty;
-    public bool UseProxy { get; set; }
+    public int WaitSecondsBeforeClick { get; set; }
     public string DownloadDirectory { get; set; } = string.Empty;
 
     [Browsable(false)]
@@ -138,7 +138,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             nameof(WebPage),
             nameof(XPathOrScripts),
             nameof(Frames),
-            nameof(UseProxy),
+            nameof(WaitSecondsBeforeClick),
             nameof(FilePatternToDeleteBeforeDownload),
             nameof(ExtractAfterDownload),
             nameof(FilePatternToDeleteBeforeExtractionAndExtractOnly),
@@ -283,9 +283,6 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         return false;
     }
 
-    // 1-based download id from browser
-    private int _downloadingId;
-
     private async Task<bool> DownloadOnce(bool testOnly = false)
     {
         // Initialize
@@ -317,11 +314,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 return Failed("Download directory 2 does not exist, and failed to create.");
             }
 
-        var downloadFileName = string.Empty;
+        var suggestedFileName = string.Empty;
         var downloadFileSize = 0L;
         DateTime? downloadFileTime = null;
         var targetFilePath = string.Empty;
-        var downloadingFilePath = string.Empty;
+        var downloadedFilePath = string.Empty;
         var beginDownloadResult = BeginDownloadResult.NoDownload;
 
         Browser.BeginDownloadHandler += OnBeginDownloadHandler;
@@ -378,14 +375,14 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         }
         finally
         {
-            if (!testOnly && !string.IsNullOrEmpty(downloadingFilePath))
+            if (!testOnly && !string.IsNullOrEmpty(downloadedFilePath))
             {
                 while (true)
                 {
                     try
                     {
-                        if (File.Exists(downloadingFilePath))
-                            File.Delete(downloadingFilePath);
+                        if (File.Exists(downloadedFilePath))
+                            File.Delete(downloadedFilePath);
                     }
                     catch
                     {
@@ -398,7 +395,6 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             }
 
             _uiSynchronizationContext = null;
-            _downloadingId = -1;
             Browser.BeginDownloadHandler -= OnBeginDownloadHandler;
             Browser.DownloadProgressHandler -= OnDownloadProgressHandler;
         }
@@ -424,7 +420,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 }
 
                 // Some script may be executed after page loaded, wait for it.
-                await Task.Delay(5000);
+                await Task.Delay((WaitSecondsBeforeClick + 1) * 1000);
 
                 // If still not loaded, try to click the link directly.
                 Browser.PrepareLoadEvents();
@@ -488,35 +484,23 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         // Called when download starts, decide whether to download.
         void OnBeginDownloadHandler(object? o, DownloadItem item)
         {
-            // Download to system download folder first, then move to download directory.
-            downloadingFilePath = Path.Combine(SystemDownloadFolder, item.SuggestedFileName);
-            var ext = Path.GetExtension(item.SuggestedFileName).ToLower();
-
-            // Download is in progress, a new download begins
-            if (_downloadingId > 0)
-            {
-                // Use a new file to start the new download. The old file will be deleted by browser later.
-                var fileNameNoExt = Path.GetFileNameWithoutExtension(item.SuggestedFileName);
-                downloadingFilePath = Path.Combine(
-                    SystemDownloadFolder,
-                    $"{fileNameNoExt}_{_downloadingId}{ext}"
-                );
-            }
-
-            _downloadingId = item.Id;
-            downloadFileName = item.SuggestedFileName;
+            suggestedFileName = item.SuggestedFileName;
             downloadFileSize = item.TotalBytes;
             downloadFileTime = item.EndTime;
 
+            // Download to system download folder first, then move to download directory.
+            downloadedFilePath = Path.Combine(SystemDownloadFolder, suggestedFileName);
+            var ext = Path.GetExtension(item.SuggestedFileName).ToLower();
+
             if (!ExecutableFileTypes.Contains(ext) && !ArchiveFileTypes.Contains(ext))
             {
-                Failed($"Unexpected file name: {downloadFileName}");
+                Failed($"Unexpected file name: {suggestedFileName}");
                 beginDownloadResult = BeginDownloadResult.Failed;
                 item.IsCancelled = true;
                 return;
             }
 
-            targetFilePath = Path.Join(FinalDownloadDirectory, downloadFileName);
+            targetFilePath = Path.Join(FinalDownloadDirectory, suggestedFileName);
 
             // Compare file size to determine download or not.
             // Epic Launcher download page may change its file name for each download.
@@ -526,9 +510,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 !File.Exists(oldFile)
                 && !string.IsNullOrWhiteSpace(FilePatternToDeleteBeforeDownload)
             )
+            {
                 oldFile = Directory
                     .GetFiles(FinalDownloadDirectory, FilePatternToDeleteBeforeDownload)
                     .FirstOrDefault();
+            }
 
             if (File.Exists(oldFile))
             {
@@ -537,7 +523,6 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 {
                     beginDownloadResult = BeginDownloadResult.Downloaded;
                     targetFilePath = oldFile;
-                    downloadFileName = Path.GetFileName(targetFilePath);
                     item.IsCancelled = true;
                     return;
                 }
@@ -551,14 +536,15 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             }
 
             beginDownloadResult = BeginDownloadResult.Started;
-            item.FullPath = downloadingFilePath;
+            // Tell the browser to download to the downloadingFilePath.
+            item.DownloadedFilePath = downloadedFilePath;
         }
 
         // Called when download progress changes.
         void OnDownloadProgressHandler(object? o, DownloadItem item)
         {
             // Download file name may change if same file exists.
-            downloadingFilePath = item.FullPath;
+            downloadedFilePath = item.DownloadedFilePath;
 
             Progress =
                 $"{item.SuggestedFileName} - {item.PercentComplete:00}% - {item.ReceivedBytes:#,###} / {item.TotalBytes:#,###} Bytes - {item.CurrentSpeed / 1024:#,###} KB/s";
@@ -570,7 +556,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         {
             Status = finalStatus;
 
-            Progress = $"{downloadFileName} - {(double)downloadFileSize:#,###} Bytes";
+            Progress = $"{suggestedFileName} - {(double)downloadFileSize:#,###} Bytes";
 
             if (testOnly) // finalStatus == HasUpdate
                 return true;
@@ -579,12 +565,12 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             DeleteOtherFilesInSameDirectory(targetFilePath);
 
             // Copy file from downloading folder to target directory.
-            if (File.Exists(downloadingFilePath))
+            if (File.Exists(downloadedFilePath))
             {
                 if (downloadFileTime.HasValue)
-                    File.SetLastWriteTime(downloadingFilePath, downloadFileTime.Value);
+                    File.SetLastWriteTime(downloadedFilePath, downloadFileTime.Value);
 
-                if (await CopyFileIfChanged(downloadingFilePath, targetFilePath, true))
+                if (await CopyFileIfChanged(downloadedFilePath, targetFilePath, true))
                     await CallEventScript(FinalDownloadDirectory, "AfterDownload", targetFilePath);
             }
 
@@ -605,7 +591,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             // Copy file from downloading folder to download directory 2.
             if (!string.IsNullOrEmpty(DownloadDirectory2))
             {
-                var targetFile2 = Path.Combine(DownloadDirectory2, downloadFileName);
+                var targetFile2 = Path.Combine(DownloadDirectory2, suggestedFileName);
                 DeleteOtherFilesInSameDirectory(targetFile2);
 
                 if (await CopyFileIfChanged(targetFilePath, targetFile2))
@@ -707,6 +693,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         var sourceFileInfo = new FileInfo(sourceFile);
         var targetFileInfo = new FileInfo(targetFile);
 
+        // Ignore same file.
         if (targetFileInfo.Exists)
         {
             if (
@@ -716,14 +703,23 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 return false;
         }
 
-        await using (var source = File.Open(sourceFile, FileMode.Open, FileAccess.Read))
-        {
-            await using var target = File.Create(targetFile);
-            await source.CopyToAsync(target);
-        }
-
+        // Copy / move sourceFile to targetFile.
         if (move)
-            File.Delete(sourceFile);
+        {
+            try
+            {
+                File.Move(sourceFile, targetFile, true);
+            }
+            catch
+            {
+                // WebView2 download safe check may lock the file. Try to copy.
+                File.Copy(sourceFile, targetFile, true);
+            }
+        }
+        else
+        {
+            File.Copy(sourceFile, targetFile, true);
+        }
 
         File.SetLastWriteTime(targetFile, sourceFileInfo.LastWriteTime);
 

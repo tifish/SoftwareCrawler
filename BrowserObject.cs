@@ -1,5 +1,6 @@
 ﻿global using static SoftwareCrawler.BrowserObject;
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Timer = System.Threading.Timer;
@@ -45,16 +46,25 @@ public class BrowserObject
         WebView2 = webView2;
 
         // Build command line arguments
-        var args = "--safebrowsing-disable-download-protection";
+        List<string> args =
+        [
+            "--safebrowsing-disable-download-protection",
+            "--disable-features=SafetyTipUI,SafetyCheck,InsecureDownloadWarnings,DownloadBubble,DownloadBubbleV2",
+            // "--safebrowsing-disable-extension-blacklist",
+            // "--no-sandbox",
+            // "--disable-web-security",
+            // "--allow-running-insecure-content",
+            // "--disable-popup-blocking",
+        ];
         if (!string.IsNullOrWhiteSpace(proxyServer))
         {
-            args += $" --proxy-server={proxyServer}";
+            args.Add($"--proxy-server={proxyServer}");
         }
 
         var environment = await CoreWebView2Environment.CreateAsync(
             null,
             Path.GetFullPath("Cache"),
-            new CoreWebView2EnvironmentOptions(args) { Language = "zh-CN" }
+            new CoreWebView2EnvironmentOptions(string.Join(" ", args), "zh-CN")
         );
         await WebView2.EnsureCoreWebView2Async(environment);
 
@@ -243,9 +253,10 @@ public class BrowserObject
 
     private void WebView2OnDownloadStarting(object? sender, CoreWebView2DownloadStartingEventArgs e)
     {
+        Logger.Debug($"Download starting: {e.DownloadOperation.Uri}");
+
         var downloadItem = new DownloadItem
         {
-            Id = _downloadIdCounter++,
             Url = e.DownloadOperation.Uri,
             SuggestedFileName = e.ResultFilePath.Split(Path.DirectorySeparatorChar).Last(),
             TotalBytes = (long)(e.DownloadOperation.TotalBytesToReceive ?? 0),
@@ -254,28 +265,33 @@ public class BrowserObject
             LastUpdateTime = DateTime.Now,
         };
 
+        // Remove (n) prefix in downloaded file name.
+        var fileExt = Path.GetExtension(downloadItem.SuggestedFileName);
+        downloadItem.SuggestedFileName = Regex.Replace(
+            downloadItem.SuggestedFileName,
+            @$" \(\d+\)\{fileExt}$",
+            fileExt
+        );
+
         if (_hasDownloadCancelled)
         {
             e.Cancel = true;
+            e.Handled = true; // Suppress default download UI and security warnings
             return;
         }
 
         if (BeginDownloadHandler == null)
         {
             e.Cancel = true;
+            e.Handled = true; // Suppress default download UI and security warnings
             return;
         }
 
         BeginDownloadHandler?.Invoke(this, downloadItem);
 
-        if (downloadItem.IsCancelled)
-        {
-            e.Cancel = true;
-            return;
-        }
-
-        // Set download path
-        e.ResultFilePath = downloadItem.FullPath;
+        // Download directory may be changed in BeginDownloadHandler.
+        e.ResultFilePath = downloadItem.DownloadedFilePath;
+        e.Handled = true; // Suppress default download UI and security warnings
         _currentDownloadOperation = e.DownloadOperation;
 
         // Track download progress
@@ -288,7 +304,7 @@ public class BrowserObject
             }
 
             var currentTime = DateTime.Now;
-            var currentBytes = (long)e.DownloadOperation.BytesReceived;
+            var currentBytes = e.DownloadOperation.BytesReceived;
 
             // Calculate download speed
             var timeDiff = (currentTime - downloadItem.LastUpdateTime).TotalSeconds;
@@ -308,27 +324,38 @@ public class BrowserObject
                     ? (int)((double)downloadItem.ReceivedBytes / downloadItem.TotalBytes * 100)
                     : 0;
 
+            downloadItem.DownloadedFilePath = e.DownloadOperation.ResultFilePath;
             DownloadProgressHandler?.Invoke(this, downloadItem);
+
+            if (downloadItem.ReceivedBytes == downloadItem.TotalBytes)
+            {
+                downloadItem.IsComplete = true;
+                _downloadTaskCompletionSource?.TrySetResult(true);
+            }
         };
 
         e.DownloadOperation.StateChanged += (s, args) =>
         {
+            Logger.Debug(
+                $"Download state changed to: {e.DownloadOperation.State}, InterruptReason: {e.DownloadOperation.InterruptReason}"
+            );
+
             if (e.DownloadOperation.State == CoreWebView2DownloadState.Completed)
             {
-                downloadItem.IsComplete = true;
-                downloadItem.FullPath = e.DownloadOperation.ResultFilePath;
+                // Unreachable code unless safe check can be ignored.
+                downloadItem.DownloadedFilePath = e.DownloadOperation.ResultFilePath;
                 DownloadProgressHandler?.Invoke(this, downloadItem);
+                downloadItem.IsComplete = true;
                 _downloadTaskCompletionSource?.TrySetResult(true);
             }
             else if (e.DownloadOperation.State == CoreWebView2DownloadState.Interrupted)
             {
+                Logger.Debug($"Download interrupted: {e.DownloadOperation.InterruptReason}");
                 downloadItem.IsCancelled = true;
                 _downloadTaskCompletionSource?.TrySetResult(false);
             }
         };
     }
-
-    private int _downloadIdCounter = 1;
 
     private TaskCompletionSource<bool>? _downloadTaskCompletionSource;
 
@@ -483,71 +510,6 @@ public class BrowserObject
         }
     }
 
-    /// <summary>
-    /// Get all available frame names for debugging
-    /// </summary>
-    public async Task<List<string>> GetAllFrameNames()
-    {
-        var frameNames = new List<string>();
-
-        // Get from tracked frames
-        lock (_frames)
-        {
-            frameNames.AddRange(_frames.Keys);
-        }
-
-        // Also try to get from JavaScript
-        try
-        {
-            var script = """
-                (function() {
-                    var frames = [];
-
-                    // Get frames from window.frames
-                    for (var i = 0; i < window.frames.length; i++) {
-                        if (window.frames[i].name) {
-                            frames.push(window.frames[i].name);
-                        }
-                    }
-
-                    // Get iframe elements
-                    var iframes = document.getElementsByTagName('iframe');
-                    for (var i = 0; i < iframes.length; i++) {
-                        if (iframes[i].name && frames.indexOf(iframes[i].name) === -1) {
-                            frames.push(iframes[i].name);
-                        }
-                        if (iframes[i].id && frames.indexOf(iframes[i].id) === -1) {
-                            frames.push(iframes[i].id);
-                        }
-                    }
-
-                    return JSON.stringify(frames);
-                })()
-                """;
-
-            var result = await WebView2.CoreWebView2.ExecuteScriptAsync(script);
-
-            // Parse JSON array result
-            var jsFrameNames = Newtonsoft.Json.JsonConvert.DeserializeObject<List<string>>(result);
-            if (jsFrameNames != null)
-            {
-                foreach (var name in jsFrameNames)
-                {
-                    if (!frameNames.Contains(name))
-                    {
-                        frameNames.Add(name);
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.Warning($"Failed to get frame names from JavaScript: {ex.Message}");
-        }
-
-        return frameNames;
-    }
-
     public void Cancel()
     {
         _navigationCompletedTaskCompletionSource?.TrySetResult(false);
@@ -586,10 +548,9 @@ public class BrowserObject
 
 public class DownloadItem
 {
-    public int Id { get; set; }
     public string Url { get; set; } = string.Empty;
     public string SuggestedFileName { get; set; } = string.Empty;
-    public string FullPath { get; set; } = string.Empty;
+    public string DownloadedFilePath { get; set; } = string.Empty;
     public long TotalBytes { get; set; }
     public long ReceivedBytes { get; set; }
     public long CurrentSpeed { get; set; }
