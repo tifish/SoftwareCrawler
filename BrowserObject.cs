@@ -324,6 +324,8 @@ public class BrowserObject
                     ? (int)((double)downloadItem.ReceivedBytes / downloadItem.TotalBytes * 100)
                     : 0;
 
+            downloadItem.RemainingTime = e.DownloadOperation.EstimatedEndTime - currentTime;
+
             downloadItem.DownloadedFilePath = e.DownloadOperation.ResultFilePath;
             DownloadProgressHandler?.Invoke(this, downloadItem);
 
@@ -569,6 +571,7 @@ public class DownloadItem
     public long ReceivedBytes { get; set; }
     public long CurrentSpeed { get; set; }
     public int PercentComplete { get; set; }
+    public TimeSpan RemainingTime { get; set; }
     public bool IsComplete { get; set; }
     public bool IsCancelled { get; set; }
     public bool IsInProgress => !IsComplete && !IsCancelled;

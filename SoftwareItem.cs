@@ -549,7 +549,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             downloadedFilePath = item.DownloadedFilePath;
 
             Progress =
-                $"{item.SuggestedFileName} - {item.PercentComplete:00}% - {item.ReceivedBytes:#,###} / {item.TotalBytes:#,###} Bytes - {item.CurrentSpeed / 1024:#,###} KB/s";
+                $"{item.SuggestedFileName}"
+                + $" - {item.PercentComplete:00}%"
+                + $" - {item.ReceivedBytes:#,###} / {item.TotalBytes:#,###} Bytes"
+                + $" - {item.CurrentSpeed / 1024:#,###} KB/s"
+                + $" - {item.RemainingTime:hh\\:mm\\:ss}";
         }
 
         // When download is completed, move file to target directory.
