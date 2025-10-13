@@ -250,6 +250,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         if (!Enabled)
             return true;
 
+        Progress = "";
+
         _hasCancelled = false;
 
         for (var i = 0; i < retryCount + 1; i++)
