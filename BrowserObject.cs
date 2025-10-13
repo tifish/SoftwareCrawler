@@ -381,13 +381,23 @@ public class BrowserObject
     public async Task Load(string url)
     {
         PrepareLoadEvents();
+        
+        // Disable beforeunload event handlers to prevent "leave site" confirmation dialog
+        try
+        {
+            await WebView2.CoreWebView2.ExecuteScriptAsync(
+                "window.onbeforeunload = null; " +
+                "document.querySelectorAll('*').forEach(el => el.onbeforeunload = null);"
+            );
+        }
+        catch (Exception ex)
+        {
+            // Ignore errors if the page is not yet loaded or already navigating
+            Logger.Debug($"Failed to disable beforeunload: {ex.Message}");
+        }
+        
         WebView2.CoreWebView2.Navigate(url);
         await Task.Delay(100); // Give navigation time to start
-    }
-
-    public async Task LoadUrlAsync(string url)
-    {
-        await Load(url);
     }
 
     public async Task<bool> TryClick(string xpath, string frameName, int count, int interval)
