@@ -296,67 +296,80 @@ public class BrowserObject
 
         // Track download progress
         e.DownloadOperation.BytesReceivedChanged += (s, args) =>
-        {
-            if (_hasDownloadCancelled)
-            {
-                e.DownloadOperation.Cancel();
-                return;
-            }
-
-            var currentTime = DateTime.Now;
-            var currentBytes = e.DownloadOperation.BytesReceived;
-
-            // Calculate download speed
-            var timeDiff = (currentTime - downloadItem.LastUpdateTime).TotalSeconds;
-            if (timeDiff > 0)
-            {
-                var bytesDiff = currentBytes - downloadItem.LastReceivedBytes;
-                downloadItem.CurrentSpeed = (long)(bytesDiff / timeDiff);
-
-                downloadItem.LastReceivedBytes = currentBytes;
-                downloadItem.LastUpdateTime = currentTime;
-            }
-
-            downloadItem.ReceivedBytes = currentBytes;
-            downloadItem.TotalBytes = (long)(e.DownloadOperation.TotalBytesToReceive ?? 0);
-            downloadItem.PercentComplete =
-                downloadItem.TotalBytes > 0
-                    ? (int)((double)downloadItem.ReceivedBytes / downloadItem.TotalBytes * 100)
-                    : 0;
-
-            downloadItem.RemainingTime = e.DownloadOperation.EstimatedEndTime - currentTime;
-
-            downloadItem.DownloadedFilePath = e.DownloadOperation.ResultFilePath;
-            DownloadProgressHandler?.Invoke(this, downloadItem);
-
-            if (downloadItem.ReceivedBytes == downloadItem.TotalBytes)
-            {
-                downloadItem.IsComplete = true;
-                _downloadTaskCompletionSource?.TrySetResult(true);
-            }
-        };
+            WebView2OnDownloadBytesReceivedChanged(s, args, e.DownloadOperation, downloadItem);
 
         e.DownloadOperation.StateChanged += (s, args) =>
-        {
-            Logger.Debug(
-                $"Download state changed to: {e.DownloadOperation.State}, InterruptReason: {e.DownloadOperation.InterruptReason}"
-            );
+            WebView2OnDownloadStateChanged(s, args, e.DownloadOperation, downloadItem);
+    }
 
-            if (e.DownloadOperation.State == CoreWebView2DownloadState.Completed)
-            {
-                // Unreachable code unless safe check can be ignored.
-                downloadItem.DownloadedFilePath = e.DownloadOperation.ResultFilePath;
-                DownloadProgressHandler?.Invoke(this, downloadItem);
-                downloadItem.IsComplete = true;
-                _downloadTaskCompletionSource?.TrySetResult(true);
-            }
-            else if (e.DownloadOperation.State == CoreWebView2DownloadState.Interrupted)
-            {
-                Logger.Debug($"Download interrupted: {e.DownloadOperation.InterruptReason}");
-                downloadItem.IsCancelled = true;
-                _downloadTaskCompletionSource?.TrySetResult(false);
-            }
-        };
+    private void WebView2OnDownloadBytesReceivedChanged(
+        object? s,
+        object? args,
+        CoreWebView2DownloadOperation downloadOperation,
+        DownloadItem downloadItem
+    )
+    {
+        if (_hasDownloadCancelled)
+        {
+            downloadOperation.Cancel();
+            return;
+        }
+
+        var currentTime = DateTime.Now;
+        var currentBytes = downloadOperation.BytesReceived;
+
+        // Calculate download progress, speed, remaining time.
+        var timeDiff = (currentTime - downloadItem.LastUpdateTime).TotalSeconds;
+        if (timeDiff > 0)
+        {
+            var bytesDiff = currentBytes - downloadItem.LastReceivedBytes;
+            downloadItem.CurrentSpeed = (long)(bytesDiff / timeDiff);
+
+            downloadItem.LastReceivedBytes = currentBytes;
+            downloadItem.LastUpdateTime = currentTime;
+        }
+
+        downloadItem.ReceivedBytes = currentBytes;
+        downloadItem.TotalBytes = (long)(downloadOperation.TotalBytesToReceive ?? 0);
+        downloadItem.PercentComplete =
+            downloadItem.TotalBytes > 0
+                ? (int)((double)downloadItem.ReceivedBytes / downloadItem.TotalBytes * 100)
+                : 0;
+
+        downloadItem.RemainingTime = downloadOperation.EstimatedEndTime - currentTime;
+
+        // Call DownloadProgressHandler to update download progress.
+        downloadItem.DownloadedFilePath = downloadOperation.ResultFilePath;
+        DownloadProgressHandler?.Invoke(this, downloadItem);
+
+        // Edge may block downloading, so we need to check if the download is complete.
+        if (downloadItem.ReceivedBytes == downloadItem.TotalBytes)
+        {
+            downloadItem.IsComplete = true;
+            _downloadTaskCompletionSource?.TrySetResult(true);
+        }
+    }
+
+    private void WebView2OnDownloadStateChanged(
+        object? s,
+        object? args,
+        CoreWebView2DownloadOperation downloadOperation,
+        DownloadItem downloadItem
+    )
+    {
+        Logger.Debug(
+            $"Download state changed to: {downloadOperation.State}, InterruptReason: {downloadOperation.InterruptReason}"
+        );
+
+        if (downloadOperation.State == CoreWebView2DownloadState.Completed)
+        {
+            // Unreachable if edge block downloading.
+        }
+        else if (downloadOperation.State == CoreWebView2DownloadState.Interrupted)
+        {
+            downloadItem.IsCancelled = true;
+            _downloadTaskCompletionSource?.TrySetResult(false);
+        }
     }
 
     private TaskCompletionSource<bool>? _downloadTaskCompletionSource;
