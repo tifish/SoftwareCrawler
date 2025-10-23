@@ -1,5 +1,4 @@
 using System.CommandLine;
-using System.CommandLine.NamingConventionBinder;
 using System.Text;
 
 namespace SoftwareCrawler;
@@ -12,26 +11,33 @@ static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        var downloadAllOption = new Option<bool>("--download-all")
+        {
+            Description = "Download all software",
+        };
+        var autoCloseOption = new Option<bool>("--auto-close")
+        {
+            Description = "Auto close after download",
+        };
+        var forceCloseOption = new Option<bool>("--force-close")
+        {
+            Description = "Force close after download",
+        };
         var rootCommand = new RootCommand("Software Crawler")
         {
-            new Option<bool>("--download-all", "Download all software"),
-            new Option<bool>("--auto-close", "Auto close after download"),
-            new Option<bool>("--force-close", "Force close after download"),
+            downloadAllOption,
+            autoCloseOption,
+            forceCloseOption,
         };
-        rootCommand.Handler = CommandHandler.Create<bool, bool, bool>(Run);
-        rootCommand.Invoke(args);
-    }
-
-    private static void Run(bool downloadAll, bool autoClose, bool forceClose)
-    {
-        Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-
-        Logger.Information(
-            "Program starts with arguments: downloadAll={DownloadAll}, autoClose={AutoClose}, forceClose={ForceClose}",
-            downloadAll,
-            autoClose,
-            forceClose
-        );
+        var parseResult = rootCommand.Parse(args);
+        if (parseResult.Errors.Count > 0)
+        {
+            Console.WriteLine(parseResult.Errors[0].Message);
+            return;
+        }
+        var downloadAll = parseResult.GetValue(downloadAllOption);
+        var autoClose = parseResult.GetValue(autoCloseOption);
+        var forceClose = parseResult.GetValue(forceCloseOption);
 
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
