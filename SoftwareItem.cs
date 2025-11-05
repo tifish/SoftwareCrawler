@@ -67,6 +67,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public string XPathOrScripts { get; set; } = string.Empty;
     public string Frames { get; set; } = string.Empty;
     public int WaitSecondsBeforeClick { get; set; }
+    public int StartDownloadTimeout { get; set; }
     public string DownloadDirectory { get; set; } = string.Empty;
 
     [Browsable(false)]
@@ -139,6 +140,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             nameof(XPathOrScripts),
             nameof(Frames),
             nameof(WaitSecondsBeforeClick),
+            nameof(StartDownloadTimeout),
             nameof(FilePatternToDeleteBeforeDownload),
             nameof(ExtractAfterDownload),
             nameof(FilePatternToDeleteBeforeExtractionAndExtractOnly),
@@ -340,7 +342,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
             // Wait for download to start.
             Status = DownloadStatus.WaitingForDownload;
-            var waitCounter = Settings.StartDownloadTimeout * 2;
+            var startDownloadTimeout =
+                StartDownloadTimeout > 0 ? StartDownloadTimeout : Settings.StartDownloadTimeout;
+            var waitCounter = startDownloadTimeout * 2;
             while (beginDownloadResult == BeginDownloadResult.NoDownload)
             {
                 if (_hasCancelled)
