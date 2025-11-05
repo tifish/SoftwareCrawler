@@ -244,7 +244,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     private bool _hasCancelled;
 
-    private static readonly List<string> ExecutableFileTypes = [".exe", ".msi"];
+    private static readonly List<string> ExecutableFileTypes = [".exe", ".msi", ".vsix"];
     private static readonly List<string> ArchiveFileTypes = [".zip", ".rar", ".7z"];
 
     public async Task<bool> Download(bool testOnly = false, int retryCount = 0)
