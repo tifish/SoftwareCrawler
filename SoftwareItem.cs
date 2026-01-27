@@ -449,14 +449,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
         async Task<bool> ClickAndTriggerDownload()
         {
-            var xPathOrScripts = string.IsNullOrWhiteSpace(XPathOrScript1)
-                ? []
-                : XPathOrScript1.Replace("`n", "\n").Split('`').Select(x => x.Trim()).ToList();
             var frameNames = string.IsNullOrWhiteSpace(Frames)
                 ? []
                 : Frames.Split('`').Select(x => x.Trim()).ToList();
 
-            for (var i = 0; i < xPathOrScripts.Count; i++)
+            for (var i = 0; i < XPathOrScripts.Count; i++)
             {
                 Status = DownloadStatus.WaitingForLoadEnd;
                 for (var seconds = 0; seconds < Settings.LoadPageEndTimeout; seconds++)
@@ -473,7 +470,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 // If still not loaded, try to click the link directly.
                 Browser.PrepareLoadEvents();
 
-                var xpathOrScript = xPathOrScripts[i];
+                var xpathOrScript = XPathOrScripts[i];
                 var frameName = i < frameNames.Count ? frameNames[i] : string.Empty;
 
                 // Is XPath
