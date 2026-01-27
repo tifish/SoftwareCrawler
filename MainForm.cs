@@ -273,9 +273,13 @@ public partial class MainForm : Form
         if (softwareListDataGridView.CurrentRow?.DataBoundItem == null)
             return;
 
+        const string scriptSeparator = "\n// ``\n";
+
         var item = (SoftwareItem)softwareListDataGridView.CurrentRow.DataBoundItem;
-        // Unescape the return character
-        var script = item.XPathOrScripts.Replace("`n", "\r\n");
+        // Join scripts into one file
+        var script = string.Join(scriptSeparator, item.XPathOrScripts);
+        // Add a newline at the end of the script
+        script += '\n';
 
         // Save script to a temp file or reload from file
         var tempScriptDir = Path.Join(Path.GetTempPath(), "SoftwareCrawler");
@@ -320,10 +324,12 @@ public partial class MainForm : Form
             script = await File.ReadAllTextAsync(scriptFile);
             File.Delete(scriptFile);
 
-            script = script.Trim(); // Trim end of file
-            script = script.Replace("\r\n", "`n").Replace("\n", "`n");
+            // Trim end of file
+            script = script.Trim();
+            // Ensure line endings are \n
+            script = script.Replace("\r\n", "\n");
 
-            softwareItem.XPathOrScripts = script;
+            softwareItem.XPathOrScripts = script.Split(scriptSeparator).ToList();
             await SoftwareManager.Save();
         }
     }

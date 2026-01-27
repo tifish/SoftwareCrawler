@@ -64,7 +64,14 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public bool Enabled { get; set; } = true;
     public string Name { get; set; } = string.Empty;
     public string WebPage { get; set; } = string.Empty;
-    public string XPathOrScripts { get; set; } = string.Empty;
+
+    [NonSerialized]
+    public List<string> XPathOrScripts { get; set; } = [];
+    public string XPathOrScript1 { get; set; } = string.Empty;
+    public string XPathOrScript2 { get; set; } = string.Empty;
+    public string XPathOrScript3 { get; set; } = string.Empty;
+    public string XPathOrScript4 { get; set; } = string.Empty;
+    public string XPathOrScript5 { get; set; } = string.Empty;
     public string Frames { get; set; } = string.Empty;
     public int WaitSecondsBeforeClick { get; set; }
     public int StartDownloadTimeout { get; set; }
@@ -124,10 +131,30 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     public SoftwareItem() { }
 
+    private readonly List<PropertyInfo> XPathOrScriptProperties =
+    [
+        typeof(SoftwareItem).GetProperty(nameof(XPathOrScript1))!,
+        typeof(SoftwareItem).GetProperty(nameof(XPathOrScript2))!,
+        typeof(SoftwareItem).GetProperty(nameof(XPathOrScript3))!,
+        typeof(SoftwareItem).GetProperty(nameof(XPathOrScript4))!,
+        typeof(SoftwareItem).GetProperty(nameof(XPathOrScript5))!,
+    ];
+
     public SoftwareItem(string dataLine, string extraLine)
     {
         FromDataLine(dataLine, DataProperties);
         FromDataLine(extraLine, ExtraProperties);
+
+        // XPathOrScript1/2/3/4/5 -> XPathOrScripts
+        // `n -> \n
+        foreach (var property in XPathOrScriptProperties)
+        {
+            var value = (string)property.GetValue(this)!;
+            if (!string.IsNullOrEmpty(value))
+            {
+                XPathOrScripts.Add(value.Replace("`n", "\n"));
+            }
+        }
     }
 
     public static readonly List<PropertyInfo> DataProperties =
@@ -137,7 +164,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             nameof(Enabled),
             nameof(Name),
             nameof(WebPage),
-            nameof(XPathOrScripts),
+            nameof(XPathOrScript1),
+            nameof(XPathOrScript2),
+            nameof(XPathOrScript3),
+            nameof(XPathOrScript4),
+            nameof(XPathOrScript5),
             nameof(Frames),
             nameof(WaitSecondsBeforeClick),
             nameof(StartDownloadTimeout),
@@ -197,6 +228,17 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     public string ToDataLine(List<PropertyInfo> properties)
     {
+        // XPathOrScripts -> XPathOrScript1/2/3/4/5
+        // \n -> `n
+        for (var i = 0; i < XPathOrScriptProperties.Count; i++)
+        {
+            var property = XPathOrScriptProperties[i];
+            property.SetValue(
+                this,
+                i < XPathOrScripts.Count ? XPathOrScripts[i].Replace("\n", "`n") : ""
+            );
+        }
+
         var items = properties.Select(prop =>
         {
             var value = prop.GetValue(this);
@@ -407,9 +449,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
         async Task<bool> ClickAndTriggerDownload()
         {
-            var xPathOrScripts = string.IsNullOrWhiteSpace(XPathOrScripts)
+            var xPathOrScripts = string.IsNullOrWhiteSpace(XPathOrScript1)
                 ? []
-                : XPathOrScripts.Replace("`n", "\n").Split('`').Select(x => x.Trim()).ToList();
+                : XPathOrScript1.Replace("`n", "\n").Split('`').Select(x => x.Trim()).ToList();
             var frameNames = string.IsNullOrWhiteSpace(Frames)
                 ? []
                 : Frames.Split('`').Select(x => x.Trim()).ToList();
