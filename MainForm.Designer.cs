@@ -1,4 +1,4 @@
-﻿namespace SoftwareCrawler
+namespace SoftwareCrawler
 {
     partial class MainForm
     {
@@ -39,6 +39,7 @@
             cancelToolStripMenuItem = new ToolStripMenuItem();
             toolStripSeparator4 = new ToolStripSeparator();
             insertNewToolStripMenuItem = new ToolStripMenuItem();
+            duplicateToolStripMenuItem = new ToolStripMenuItem();
             deleteToolStripMenuItem = new ToolStripMenuItem();
             reloadToolStripMenuItem = new ToolStripMenuItem();
             editScriptToolStripMenuItem = new ToolStripMenuItem();
@@ -61,7 +62,7 @@
             //
             // dataGridViewContextMenuStrip
             //
-            dataGridViewContextMenuStrip.Items.AddRange(new ToolStripItem[] { downloadSelectedToolStripMenuItem, downloadAllToolStripMenuItem, toolStripSeparator1, testSelectedToolStripMenuItem, testAllToolStripMenuItem, toolStripSeparator2, cancelToolStripMenuItem, toolStripSeparator4, insertNewToolStripMenuItem, deleteToolStripMenuItem, reloadToolStripMenuItem, editScriptToolStripMenuItem, toolStripSeparator3, openWebPageToolStripMenuItem, openWebPageInBrowserToolStripMenuItem, openDownloadDirectoryToolStripMenuItem });
+            dataGridViewContextMenuStrip.Items.AddRange(new ToolStripItem[] { downloadSelectedToolStripMenuItem, downloadAllToolStripMenuItem, toolStripSeparator1, testSelectedToolStripMenuItem, testAllToolStripMenuItem, toolStripSeparator2, cancelToolStripMenuItem, toolStripSeparator4, insertNewToolStripMenuItem, duplicateToolStripMenuItem, deleteToolStripMenuItem, reloadToolStripMenuItem, editScriptToolStripMenuItem, toolStripSeparator3, openWebPageToolStripMenuItem, openWebPageInBrowserToolStripMenuItem, openDownloadDirectoryToolStripMenuItem });
             dataGridViewContextMenuStrip.Name = "dataGridViewContextMenuStrip";
             dataGridViewContextMenuStrip.Size = new Size(216, 292);
             //
@@ -121,6 +122,13 @@
             insertNewToolStripMenuItem.Size = new Size(215, 22);
             insertNewToolStripMenuItem.Text = "Insert &new";
             insertNewToolStripMenuItem.Click += insertNewToolStripMenuItem_Click;
+            //
+            // duplicateToolStripMenuItem
+            //
+            duplicateToolStripMenuItem.Name = "duplicateToolStripMenuItem";
+            duplicateToolStripMenuItem.Size = new Size(215, 22);
+            duplicateToolStripMenuItem.Text = "Du&plicate";
+            duplicateToolStripMenuItem.Click += duplicateToolStripMenuItem_Click;
             //
             // deleteToolStripMenuItem
             //
@@ -303,6 +311,7 @@
         private ToolStripMenuItem openWebPageInBrowserToolStripMenuItem;
         private ToolStripMenuItem editScriptToolStripMenuItem;
         private ToolStripMenuItem insertNewToolStripMenuItem;
+        private ToolStripMenuItem duplicateToolStripMenuItem;
         private ToolStripMenuItem deleteToolStripMenuItem;
         private Button settingsButton;
     }

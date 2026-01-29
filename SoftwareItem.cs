@@ -277,6 +277,31 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         return string.Join('\t', items);
     }
 
+    /// <summary>
+    /// Creates a copy of the current SoftwareItem with all serializable properties copied.
+    /// Non-serializable properties (Status, Progress, ErrorMessage) are reset to their default values.
+    /// </summary>
+    public SoftwareItem Clone()
+    {
+        var cloned = new SoftwareItem();
+
+        // Copy DataProperties
+        foreach (var property in DataProperties)
+        {
+            var value = property.GetValue(this);
+            property.SetValue(cloned, value);
+        }
+
+        // Copy ExtraProperties
+        foreach (var property in ExtraProperties)
+        {
+            var value = property.GetValue(this);
+            property.SetValue(cloned, value);
+        }
+
+        return cloned;
+    }
+
     private SynchronizationContext? _uiSynchronizationContext;
 
     private enum BeginDownloadResult

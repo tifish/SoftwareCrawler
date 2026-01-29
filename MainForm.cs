@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -545,6 +545,35 @@ public partial class MainForm : Form
         // Select the newly inserted row
         softwareListDataGridView.ClearSelection();
         softwareListDataGridView.Rows[currentIndex].Selected = true;
+
+        await SoftwareManager.Save();
+    }
+
+    private async void duplicateToolStripMenuItem_Click(object sender, EventArgs e)
+    {
+        if (softwareListDataGridView.CurrentRow?.DataBoundItem == null)
+            return;
+
+        var currentIndex = softwareListDataGridView.CurrentRow.Index;
+        var bindingList =
+            (BindingList<SoftwareItem>)((BindingSource)softwareListDataGridView.DataSource!).List;
+
+        var currentItem = (SoftwareItem)softwareListDataGridView.CurrentRow.DataBoundItem;
+
+        // Clone the current item
+        var duplicatedItem = currentItem.Clone();
+
+        // Insert duplicated item at the next position
+        var insertIndex = currentIndex + 1;
+        bindingList.Insert(insertIndex, duplicatedItem);
+
+        // Select the newly duplicated row
+        softwareListDataGridView.ClearSelection();
+        softwareListDataGridView.Rows[insertIndex].Selected = true;
+        softwareListDataGridView.CurrentCell = softwareListDataGridView[
+            softwareListDataGridView.CurrentCell?.ColumnIndex ?? 0,
+            insertIndex
+        ];
 
         await SoftwareManager.Save();
     }
