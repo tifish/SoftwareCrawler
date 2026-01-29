@@ -277,7 +277,7 @@ public partial class MainForm : Form
 
         var item = (SoftwareItem)softwareListDataGridView.CurrentRow.DataBoundItem;
         // Join scripts into one file
-        var script = string.Join(scriptSeparator, item.XPathOrScripts);
+        var script = string.Join(scriptSeparator, item.GetXPathOrScripts());
         // Add a newline at the end of the script
         script += '\n';
 
@@ -329,7 +329,7 @@ public partial class MainForm : Form
             // Ensure line endings are \n
             script = script.Replace("\r\n", "\n");
 
-            softwareItem.XPathOrScripts = script.Split(scriptSeparator).ToList();
+            softwareItem.SetXPathOrScripts(script.Split(scriptSeparator).ToList());
             await SoftwareManager.Save();
         }
     }

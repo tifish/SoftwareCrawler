@@ -66,7 +66,37 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public string WebPage { get; set; } = string.Empty;
 
     [NonSerialized]
-    public List<string> XPathOrScripts { get; set; } = [];
+    public List<string> GetXPathOrScripts()
+    {
+        // XPathOrScript1/2/3/4/5 -> XPathOrScripts
+        // `n -> \n
+        var xpathOrScripts = new List<string>();
+        foreach (var property in XPathOrScriptProperties)
+        {
+            var value = (string)property.GetValue(this)!;
+            if (!string.IsNullOrEmpty(value))
+            {
+                xpathOrScripts.Add(value.Replace("`n", "\n"));
+            }
+        }
+
+        return xpathOrScripts;
+    }
+
+    public void SetXPathOrScripts(List<string> xpathOrScripts)
+    {
+        // XPathOrScripts -> XPathOrScript1/2/3/4/5
+        // \n -> `n
+        for (var i = 0; i < XPathOrScriptProperties.Count; i++)
+        {
+            XPathOrScriptProperties[i]
+                .SetValue(
+                    this,
+                    i < xpathOrScripts.Count ? xpathOrScripts[i].Replace("\n", "`n") : ""
+                );
+        }
+    }
+
     public string XPathOrScript1 { get; set; } = string.Empty;
     public string XPathOrScript2 { get; set; } = string.Empty;
     public string XPathOrScript3 { get; set; } = string.Empty;
@@ -144,17 +174,6 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     {
         FromDataLine(dataLine, DataProperties);
         FromDataLine(extraLine, ExtraProperties);
-
-        // XPathOrScript1/2/3/4/5 -> XPathOrScripts
-        // `n -> \n
-        foreach (var property in XPathOrScriptProperties)
-        {
-            var value = (string)property.GetValue(this)!;
-            if (!string.IsNullOrEmpty(value))
-            {
-                XPathOrScripts.Add(value.Replace("`n", "\n"));
-            }
-        }
     }
 
     public static readonly List<PropertyInfo> DataProperties =
@@ -228,17 +247,6 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     public string ToDataLine(List<PropertyInfo> properties)
     {
-        // XPathOrScripts -> XPathOrScript1/2/3/4/5
-        // \n -> `n
-        for (var i = 0; i < XPathOrScriptProperties.Count; i++)
-        {
-            var property = XPathOrScriptProperties[i];
-            property.SetValue(
-                this,
-                i < XPathOrScripts.Count ? XPathOrScripts[i].Replace("\n", "`n") : ""
-            );
-        }
-
         var items = properties.Select(prop =>
         {
             var value = prop.GetValue(this);
@@ -453,7 +461,8 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 ? []
                 : Frames.Split('`').Select(x => x.Trim()).ToList();
 
-            for (var i = 0; i < XPathOrScripts.Count; i++)
+            var xpathOrScripts = GetXPathOrScripts();
+            for (var i = 0; i < xpathOrScripts.Count; i++)
             {
                 Status = DownloadStatus.WaitingForLoadEnd;
                 for (var seconds = 0; seconds < Settings.LoadPageEndTimeout; seconds++)
@@ -470,7 +479,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 // If still not loaded, try to click the link directly.
                 Browser.PrepareLoadEvents();
 
-                var xpathOrScript = XPathOrScripts[i];
+                var xpathOrScript = xpathOrScripts[i];
                 var frameName = i < frameNames.Count ? frameNames[i] : string.Empty;
 
                 // Is XPath
