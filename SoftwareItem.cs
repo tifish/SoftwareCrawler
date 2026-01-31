@@ -9,10 +9,10 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 {
     private class NonSerializedAttribute : Attribute { }
 
-    private DownloadStatus _status;
+    private DownloadingStatus _status;
 
     [NonSerialized]
-    public DownloadStatus Status
+    public DownloadingStatus Status
     {
         get => _status;
         set
@@ -336,21 +336,26 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             if (_hasCancelled)
                 return false;
 
-            var success = await DownloadOnce(testOnly);
-            if (success)
+            var downloadResult = await DownloadOnce(testOnly);
+            switch (downloadResult)
             {
-                Logger.Information(
-                    "Download {Name} successfully, retryCount={RetryCount}",
-                    Name,
-                    i
-                );
-                return true;
+                case DownloadOnceResult.Succeeded:
+                    Logger.Information(
+                        "Download {Name} successfully, retryCount={RetryCount}",
+                        Name,
+                        i
+                    );
+                    return true;
+
+                case DownloadOnceResult.FailedAndRetry:
+                    // Retry
+                    await Task.Delay(Settings.DownloadRetryInterval * 1000);
+                    break;
+
+                case DownloadOnceResult.FailedAndNoRetry:
+                    // No retry
+                    return false;
             }
-
-            if (_hasCancelled)
-                return false;
-
-            await Task.Delay(Settings.DownloadRetryInterval * 1000);
         }
 
         Logger.Warning(
@@ -362,16 +367,23 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         return false;
     }
 
-    private async Task<bool> DownloadOnce(bool testOnly = false)
+    private enum DownloadOnceResult
+    {
+        Succeeded,
+        FailedAndRetry,
+        FailedAndNoRetry,
+    }
+
+    private async Task<DownloadOnceResult> DownloadOnce(bool testOnly = false)
     {
         // Initialize
         _uiSynchronizationContext = SynchronizationContext.Current;
 
-        Status = DownloadStatus.Preparing;
+        Status = DownloadingStatus.CheckingDownloadDirectory;
         ErrorMessage = string.Empty;
 
         if (string.IsNullOrEmpty(FinalDownloadDirectory))
-            return Failed("Download directory is empty.");
+            return Failed("Download directory is empty.", DownloadOnceResult.FailedAndNoRetry);
 
         if (!Directory.Exists(FinalDownloadDirectory))
             try
@@ -380,7 +392,10 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             }
             catch (Exception)
             {
-                return Failed("Download directory does not exist, and failed to create.");
+                return Failed(
+                    "Download directory does not exist, and failed to create.",
+                    DownloadOnceResult.FailedAndNoRetry
+                );
             }
 
         if (DownloadDirectory2 != "" && !Directory.Exists(DownloadDirectory2))
@@ -390,7 +405,10 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             }
             catch (Exception)
             {
-                return Failed("Download directory 2 does not exist, and failed to create.");
+                return Failed(
+                    "Download directory 2 does not exist, and failed to create.",
+                    DownloadOnceResult.FailedAndNoRetry
+                );
             }
 
         var suggestedFileName = string.Empty;
@@ -412,47 +430,48 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             await Browser.Load(WebPage);
 
             // Click links, last link is the download link.
-            if (!await ClickAndTriggerDownload())
-                return false;
+            var clickResult = await ClickAndTriggerDownload();
+            if (clickResult != DownloadOnceResult.Succeeded)
+                return clickResult;
 
             // Wait for download to start.
-            Status = DownloadStatus.WaitingForDownload;
+            Status = DownloadingStatus.WaitingForDownload;
             var startDownloadTimeout =
                 StartDownloadTimeout > 0 ? StartDownloadTimeout : Settings.StartDownloadTimeout;
             var waitCounter = startDownloadTimeout * 2;
             while (beginDownloadResult == BeginDownloadResult.NoDownload)
             {
                 if (_hasCancelled)
-                    return false;
+                    return DownloadOnceResult.FailedAndNoRetry;
 
                 await Task.Delay(500);
                 waitCounter--;
                 if (waitCounter == 0)
-                    return Failed("Failed to start download.");
+                    return Failed("Failed to start download.", DownloadOnceResult.FailedAndRetry);
             }
 
             // Do not download.
             switch (beginDownloadResult)
             {
                 case BeginDownloadResult.Failed: // Failed to download
-                    return false;
+                    return DownloadOnceResult.FailedAndRetry;
                 case BeginDownloadResult.Downloaded: // Same file already downloaded
-                    return await Succeeded(DownloadStatus.SameFileAlreadyDownloaded);
+                    return await Succeeded(DownloadingStatus.SameFileAlreadyDownloaded);
                 case BeginDownloadResult.HasUpdate: // Has update but test only
-                    return await Succeeded(DownloadStatus.HasUpdate);
+                    return await Succeeded(DownloadingStatus.HasUpdate);
             }
 
             // Wait for download to complete.
-            Status = DownloadStatus.Downloading;
+            Status = DownloadingStatus.Downloading;
             if (!await Browser.WaitForDownloaded(TimeSpan.FromSeconds(Settings.DownloadTimeout)))
-                return Failed("Failed to download file.");
+                return Failed("Failed to download file.", DownloadOnceResult.FailedAndRetry);
 
-            return await Succeeded(DownloadStatus.Downloaded);
+            return await Succeeded(DownloadingStatus.Downloaded);
         }
         catch (Exception ex)
         {
             Logger.Error(ex, "Download {Name} failed", Name);
-            return Failed(ex.Message);
+            return Failed(ex.Message, DownloadOnceResult.FailedAndNoRetry);
         }
         finally
         {
@@ -480,7 +499,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             Browser.DownloadProgressHandler -= OnDownloadProgressHandler;
         }
 
-        async Task<bool> ClickAndTriggerDownload()
+        async Task<DownloadOnceResult> ClickAndTriggerDownload()
         {
             var frameNames = string.IsNullOrWhiteSpace(Frames)
                 ? []
@@ -489,11 +508,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             var xpathOrScripts = GetXPathOrScripts();
             for (var i = 0; i < xpathOrScripts.Count; i++)
             {
-                Status = DownloadStatus.WaitingForLoadEnd;
+                Status = DownloadingStatus.WaitingForLoadEnd;
                 for (var seconds = 0; seconds < Settings.LoadPageEndTimeout; seconds++)
                 {
                     if (_hasCancelled)
-                        return false;
+                        return DownloadOnceResult.FailedAndNoRetry;
                     if (await Browser.WaitForMainFrameLoadEnd(TimeSpan.FromSeconds(1)))
                         break;
                 }
@@ -517,7 +536,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                         && char.IsLetter(xpathOrScript[3])
                 )
                 {
-                    Status = DownloadStatus.Clicking;
+                    Status = DownloadingStatus.Clicking;
 
                     // Scroll to the element first
                     var scrollScript = $$"""
@@ -547,17 +566,23 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                             Settings.TryClickInterval * 1000
                         )
                     )
-                        return Failed($"Failed to click, error: {Browser.LastJavascriptError}");
+                        return Failed(
+                            $"Failed to click, error: {Browser.LastJavascriptError}",
+                            DownloadOnceResult.FailedAndRetry
+                        );
                 }
                 else // Is JavaScript
                 {
-                    Status = DownloadStatus.ExecutingScript;
+                    Status = DownloadingStatus.ExecutingScript;
                     if (!await Browser.TryEvaluateJavascript(xpathOrScript, frameName))
-                        return Failed($"Failed to execute script: {Browser.LastJavascriptError}");
+                        return Failed(
+                            $"Failed to execute script: {Browser.LastJavascriptError}",
+                            DownloadOnceResult.FailedAndRetry
+                        );
                 }
             }
 
-            return true;
+            return DownloadOnceResult.Succeeded;
         }
 
         // Called when download starts, decide whether to download.
@@ -573,7 +598,10 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
             if (!ExecutableFileTypes.Contains(ext) && !ArchiveFileTypes.Contains(ext))
             {
-                Failed($"Unexpected file name: {suggestedFileName}");
+                Failed(
+                    $"Unexpected file name: {suggestedFileName}",
+                    DownloadOnceResult.FailedAndNoRetry
+                );
                 beginDownloadResult = BeginDownloadResult.Failed;
                 item.IsCancelled = true;
                 return;
@@ -635,59 +663,79 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
         // When download is completed, move file to target directory.
         // finalStatus can be: Downloaded, SameFileAlreadyDownloaded, HasUpdate
-        async Task<bool> Succeeded(DownloadStatus finalStatus)
+        async Task<DownloadOnceResult> Succeeded(DownloadingStatus finalStatus)
         {
             Status = finalStatus;
 
             Progress = $"{suggestedFileName} - {(double)downloadFileSize:#,###} Bytes";
 
             if (testOnly) // finalStatus == HasUpdate
-                return true;
+                return DownloadOnceResult.Succeeded;
 
-            // Delete other old files in the same directory.
-            DeleteOtherFilesInSameDirectory(targetFilePath);
-
-            // Copy file from downloading folder to target directory.
-            if (File.Exists(downloadedFilePath))
+            try
             {
-                if (downloadFileTime.HasValue)
-                    File.SetLastWriteTime(downloadedFilePath, downloadFileTime.Value);
+                // Delete other old files in the same directory.
+                DeleteOtherFilesInSameDirectory(targetFilePath);
 
-                if (await CopyFileIfChanged(downloadedFilePath, targetFilePath, true))
-                    await CallEventScript(FinalDownloadDirectory, "AfterDownload", targetFilePath);
-            }
-
-            // Extract target file.
-            if (File.Exists(targetFilePath))
-            {
-                if (downloadFileTime.HasValue)
-                    File.SetLastWriteTime(targetFilePath, downloadFileTime.Value);
-
-                // Extract only if the file is newly downloaded.
-                if (finalStatus == DownloadStatus.Downloaded)
+                // Copy file from downloading folder to target directory.
+                if (File.Exists(downloadedFilePath))
                 {
-                    await ExtractArchiveFile(targetFilePath);
-                    await CallEventScript(FinalDownloadDirectory, "AfterExtract", targetFilePath);
+                    if (downloadFileTime.HasValue)
+                        File.SetLastWriteTime(downloadedFilePath, downloadFileTime.Value);
+
+                    if (await CopyFileIfChanged(downloadedFilePath, targetFilePath, true))
+                        await CallEventScript(
+                            FinalDownloadDirectory,
+                            "AfterDownload",
+                            targetFilePath
+                        );
+                }
+
+                // Extract target file and copy to download directory 2.
+                if (File.Exists(targetFilePath))
+                {
+                    if (downloadFileTime.HasValue)
+                        File.SetLastWriteTime(targetFilePath, downloadFileTime.Value);
+
+                    // Extract only if the file is newly downloaded.
+                    if (finalStatus == DownloadingStatus.Downloaded)
+                    {
+                        await ExtractArchiveFile(targetFilePath);
+                        await CallEventScript(
+                            FinalDownloadDirectory,
+                            "AfterExtract",
+                            targetFilePath
+                        );
+                    }
+
+                    // Copy file from downloading folder to download directory 2.
+                    if (!string.IsNullOrEmpty(DownloadDirectory2))
+                    {
+                        var targetFile2 = Path.Combine(DownloadDirectory2, suggestedFileName);
+                        // Delete other old files in the same directory.
+                        DeleteOtherFilesInSameDirectory(targetFile2);
+
+                        // Copy file from download directory 1 to download directory 2.
+                        if (await CopyFileIfChanged(targetFilePath, targetFile2))
+                            await CallEventScript(DownloadDirectory2, "AfterDownload", targetFile2);
+
+                        // Extract only if the file is newly downloaded.
+                        if (finalStatus == DownloadingStatus.Downloaded)
+                        {
+                            await ExtractArchiveFile(targetFile2);
+                            await CallEventScript(DownloadDirectory2, "AfterExtract", targetFile2);
+                        }
+                    }
                 }
             }
-
-            // Copy file from downloading folder to download directory 2.
-            if (!string.IsNullOrEmpty(DownloadDirectory2))
+            catch (Exception ex)
             {
-                var targetFile2 = Path.Combine(DownloadDirectory2, suggestedFileName);
-                DeleteOtherFilesInSameDirectory(targetFile2);
-
-                if (await CopyFileIfChanged(targetFilePath, targetFile2))
-                    await CallEventScript(DownloadDirectory2, "AfterDownload", targetFile2);
-
-                if (finalStatus == DownloadStatus.Downloaded)
-                {
-                    await ExtractArchiveFile(targetFile2);
-                    await CallEventScript(DownloadDirectory2, "AfterExtract", targetFile2);
-                }
+                // Only change status when copying file fails.
+                Status = DownloadingStatus.CopyingFile;
+                return Failed(ex.Message, DownloadOnceResult.FailedAndNoRetry);
             }
 
-            return true;
+            return DownloadOnceResult.Succeeded;
         }
 
         void DeleteOtherFilesInSameDirectory(string filePath)
@@ -714,13 +762,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         }
 
         // When download fails, return error message.
-        bool Failed(string errorMessage)
+        DownloadOnceResult Failed(string errorMessage, DownloadOnceResult downloadOnceResult)
         {
-            Status = DownloadStatus.Failed;
-            ErrorMessage = errorMessage;
+            ErrorMessage = $"When {Status}: {errorMessage}";
+            Status = DownloadingStatus.Failed;
             Progress = string.Empty;
 
-            return false;
+            return downloadOnceResult;
         }
 
         async Task CallEventScript(string directory, string eventName, string filePath)
@@ -863,7 +911,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     public void ResetStatus()
     {
-        Status = DownloadStatus.Idle;
+        Status = DownloadingStatus.Idle;
         Progress = string.Empty;
         ErrorMessage = string.Empty;
     }
@@ -873,14 +921,14 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         _hasCancelled = true;
         Browser.Cancel();
 
-        Status = DownloadStatus.Cancelled;
+        Status = DownloadingStatus.Cancelled;
     }
 }
 
-public enum DownloadStatus
+public enum DownloadingStatus
 {
     Idle,
-    Preparing,
+    CheckingDownloadDirectory,
     WaitingForLoadEnd,
     Clicking,
     ExecutingScript,
@@ -889,6 +937,7 @@ public enum DownloadStatus
     SameFileAlreadyDownloaded,
     Downloaded,
     HasUpdate,
+    CopyingFile,
     Failed,
     Cancelled,
 }
