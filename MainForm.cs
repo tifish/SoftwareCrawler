@@ -67,6 +67,21 @@ public partial class MainForm : Form
 
     private readonly TaskCompletionSource<bool> _onLoadTaskCompletionSource = new();
 
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        base.OnFormClosing(e);
+
+        // Ensure any pending debounced save is flushed before the process exits.
+        try
+        {
+            SoftwareManager.FlushAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to flush software list on closing");
+        }
+    }
+
     protected override async void OnLoad(EventArgs args)
     {
         try
@@ -76,12 +91,16 @@ public partial class MainForm : Form
             using (new DownloadUIDisabler(this))
             {
                 var parentForm = new Form();
-                await Browser.Init(parentForm, Settings.Proxy);
+
+                // Browser initialization and config loading are independent; run them
+                // concurrently so the UI is interactive sooner.
+                var browserInitTask = Browser.Init(parentForm, Settings.Proxy);
+                var reloadTask = Reload();
+                await Task.WhenAll(browserInitTask, reloadTask);
+
                 parentForm.Size = new Size(1280, 720);
 
                 BringToFront();
-
-                await Reload();
             }
 
             _onLoadTaskCompletionSource.TrySetResult(true);
@@ -100,7 +119,10 @@ public partial class MainForm : Form
         await SoftwareManager.Load();
         var bindingList = new BindingList<SoftwareItem>(SoftwareManager.Items);
         softwareListDataGridView.DataSource = new BindingSource(bindingList, "");
-        softwareListDataGridView.AutoResizeColumns(DataGridViewAutoSizeColumnsMode.AllCells);
+        // Use DisplayedCells instead of AllCells: measuring every cell of a large list
+        // blocks the UI thread; measuring only currently visible rows is virtually
+        // instant and gives the same visual result for the initial viewport.
+        softwareListDataGridView.AutoResizeColumns(DataGridViewAutoSizeColumnsMode.DisplayedCells);
 
         // Set column width
         foreach (DataGridViewColumn column in softwareListDataGridView.Columns)
@@ -664,7 +686,7 @@ public partial class MainForm : Form
         _currentSearchResultIndex = -1;
     }
 
-    private void SearchForm_SearchTextChanged(object? sender, EventArgs e)
+    private async void SearchForm_SearchTextChanged(object? sender, EventArgs e)
     {
         if (_searchForm == null)
             return;
@@ -672,6 +694,7 @@ public partial class MainForm : Form
         var searchText = _searchForm.SearchText;
         if (string.IsNullOrWhiteSpace(searchText))
         {
+            _searchCts?.Cancel();
             ClearSearchHighlight();
             _searchResults.Clear();
             _currentSearchResultIndex = -1;
@@ -679,7 +702,7 @@ public partial class MainForm : Form
             return;
         }
 
-        PerformSearch(searchText, _searchForm.MatchCase, _searchForm.FirstMatchPerRow);
+        await PerformSearchAsync(searchText, _searchForm.MatchCase, _searchForm.FirstMatchPerRow);
     }
 
     private void SearchForm_SearchNext(object? sender, EventArgs e)
@@ -703,49 +726,82 @@ public partial class MainForm : Form
         NavigateToSearchResult();
     }
 
-    private void PerformSearch(string searchText, bool matchCase, bool firstMatchPerRow)
+    private CancellationTokenSource? _searchCts;
+
+    private async Task PerformSearchAsync(string searchText, bool matchCase, bool firstMatchPerRow)
     {
-        _searchResults.Clear();
-        _currentSearchResultIndex = -1;
+        _searchCts?.Cancel();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
 
-        var comparison = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-
-        // Search through all visible cells
-        for (int rowIndex = 0; rowIndex < softwareListDataGridView.Rows.Count; rowIndex++)
+        try
         {
-            var row = softwareListDataGridView.Rows[rowIndex];
-            if (row.IsNewRow)
-                continue;
+            // Debounce: avoid running search on every keystroke
+            await Task.Delay(150, token);
 
-            for (
-                int columnIndex = 0;
-                columnIndex < softwareListDataGridView.Columns.Count;
-                columnIndex++
-            )
+            // Snapshot column->property mapping on UI thread (uses DataPropertyName from auto-generated columns)
+            var columnProps = new List<(int columnIndex, System.Reflection.PropertyInfo prop)>();
+            foreach (DataGridViewColumn column in softwareListDataGridView.Columns)
             {
-                var cell = row.Cells[columnIndex];
-                var cellValue = cell.Value?.ToString() ?? "";
+                if (!column.Visible)
+                    continue;
+                var propName = column.DataPropertyName;
+                if (string.IsNullOrEmpty(propName))
+                    continue;
+                var prop = typeof(SoftwareItem).GetProperty(propName);
+                if (prop == null)
+                    continue;
+                columnProps.Add((column.Index, prop));
+            }
+            var items = SoftwareManager.Items.ToList();
 
-                if (cellValue.Contains(searchText, comparison))
+            // Run the actual matching on a background thread
+            var results = await Task.Run(
+                () =>
                 {
-                    _searchResults.Add((rowIndex, columnIndex));
-
-                    // If firstMatchPerRow is true, only add the first match in each row
-                    if (firstMatchPerRow)
+                    var cmp = matchCase
+                        ? StringComparison.Ordinal
+                        : StringComparison.OrdinalIgnoreCase;
+                    var list = new List<(int RowIndex, int ColumnIndex)>();
+                    for (int r = 0; r < items.Count; r++)
                     {
-                        break;
+                        foreach (var (colIdx, prop) in columnProps)
+                        {
+                            var value = prop.GetValue(items[r])?.ToString() ?? "";
+                            if (value.Contains(searchText, cmp))
+                            {
+                                list.Add((r, colIdx));
+                                if (firstMatchPerRow)
+                                    break;
+                            }
+                        }
                     }
-                }
+                    return list;
+                },
+                token
+            );
+
+            if (token.IsCancellationRequested)
+                return;
+
+            _searchResults = results;
+
+            if (_searchResults.Count > 0)
+            {
+                _currentSearchResultIndex = 0;
+                NavigateToSearchResult();
+            }
+            else
+            {
+                _currentSearchResultIndex = -1;
+                ClearSearchHighlight();
+                _searchForm?.UpdateResults(0, 0);
             }
         }
-
-        if (_searchResults.Count > 0)
+        catch (OperationCanceledException)
         {
-            _currentSearchResultIndex = 0;
-            NavigateToSearchResult();
+            // Search was superseded by a newer query; ignore.
         }
-
-        _searchForm?.UpdateResults(_currentSearchResultIndex + 1, _searchResults.Count);
     }
 
     private void NavigateToSearchResult()
@@ -771,24 +827,33 @@ public partial class MainForm : Form
         _searchForm?.UpdateResults(_currentSearchResultIndex + 1, _searchResults.Count);
     }
 
+    private int _highlightedRow = -1;
+
     private void HighlightSearchResult(int rowIndex)
     {
-        ClearSearchHighlight();
+        if (_highlightedRow == rowIndex)
+            return;
+
+        // Only repaint the row that actually changes, not the entire grid.
+        if (_highlightedRow >= 0 && _highlightedRow < softwareListDataGridView.Rows.Count)
+        {
+            var prev = softwareListDataGridView.Rows[_highlightedRow];
+            prev.DefaultCellStyle.BackColor = Color.Empty;
+            prev.DefaultCellStyle.SelectionBackColor = Color.Empty;
+        }
 
         if (rowIndex >= 0 && rowIndex < softwareListDataGridView.Rows.Count)
         {
             var row = softwareListDataGridView.Rows[rowIndex];
             row.DefaultCellStyle.BackColor = Color.Yellow;
             row.DefaultCellStyle.SelectionBackColor = Color.Orange;
+            _highlightedRow = rowIndex;
+        }
+        else
+        {
+            _highlightedRow = -1;
         }
     }
 
-    private void ClearSearchHighlight()
-    {
-        foreach (DataGridViewRow row in softwareListDataGridView.Rows)
-        {
-            row.DefaultCellStyle.BackColor = Color.Empty;
-            row.DefaultCellStyle.SelectionBackColor = Color.Empty;
-        }
-    }
+    private void ClearSearchHighlight() => HighlightSearchResult(-1);
 }

@@ -174,12 +174,20 @@ public class BrowserObject
         CoreWebView2DevToolsProtocolEventReceivedEventArgs e
     )
     {
-        if (e.ParameterObjectAsJson == null)
+        var payload = e.ParameterObjectAsJson;
+        if (string.IsNullOrEmpty(payload))
             return;
 
+        // Offload JSON parsing to a worker thread. A busy page may produce hundreds of
+        // Network.responseReceived events; parsing them on the UI thread caused jank.
+        _ = Task.Run(() => ParseAndUpdateLastRespondTime(payload));
+    }
+
+    private void ParseAndUpdateLastRespondTime(string payload)
+    {
         try
         {
-            var json = System.Text.Json.JsonDocument.Parse(e.ParameterObjectAsJson);
+            var json = System.Text.Json.JsonDocument.Parse(payload);
 
             if (!json.RootElement.TryGetProperty("response", out var response))
                 return;
@@ -255,6 +263,8 @@ public class BrowserObject
     {
         Logger.Debug($"Download starting: {e.DownloadOperation.Uri}");
 
+        _lastProgressInvokeTime = DateTime.MinValue;
+
         var downloadItem = new DownloadItem
         {
             Url = e.DownloadOperation.Uri,
@@ -302,6 +312,11 @@ public class BrowserObject
             WebView2OnDownloadStateChanged(s, args, e.DownloadOperation, downloadItem);
     }
 
+    // Throttle UI progress updates to avoid flooding the UI thread when downloading large files
+    // (BytesReceivedChanged can fire dozens of times per second).
+    private const int ProgressInvokeIntervalMs = 200;
+    private DateTime _lastProgressInvokeTime = DateTime.MinValue;
+
     private void WebView2OnDownloadBytesReceivedChanged(
         object? s,
         object? args,
@@ -318,17 +333,6 @@ public class BrowserObject
         var currentTime = DateTime.Now;
         var currentBytes = downloadOperation.BytesReceived;
 
-        // Calculate download progress, speed, remaining time.
-        var timeDiff = (currentTime - downloadItem.LastUpdateTime).TotalSeconds;
-        if (timeDiff > 0)
-        {
-            var bytesDiff = currentBytes - downloadItem.LastReceivedBytes;
-            downloadItem.CurrentSpeed = (long)(bytesDiff / timeDiff);
-
-            downloadItem.LastReceivedBytes = currentBytes;
-            downloadItem.LastUpdateTime = currentTime;
-        }
-
         downloadItem.ReceivedBytes = currentBytes;
         downloadItem.TotalBytes = (long)(downloadOperation.TotalBytesToReceive ?? 0);
         downloadItem.PercentComplete =
@@ -336,14 +340,33 @@ public class BrowserObject
                 ? (int)((double)downloadItem.ReceivedBytes / downloadItem.TotalBytes * 100)
                 : 0;
 
-        downloadItem.RemainingTime = downloadOperation.EstimatedEndTime - currentTime;
+        var isFinal = downloadItem.ReceivedBytes == downloadItem.TotalBytes;
+        var dueForUpdate =
+            isFinal
+            || (currentTime - _lastProgressInvokeTime).TotalMilliseconds
+                >= ProgressInvokeIntervalMs;
 
-        // Call DownloadProgressHandler to update download progress.
-        downloadItem.DownloadedFilePath = downloadOperation.ResultFilePath;
-        DownloadProgressHandler?.Invoke(this, downloadItem);
+        if (dueForUpdate)
+        {
+            // Compute speed across the throttle interval for smoother readings.
+            var timeDiff = (currentTime - downloadItem.LastUpdateTime).TotalSeconds;
+            if (timeDiff > 0)
+            {
+                var bytesDiff = currentBytes - downloadItem.LastReceivedBytes;
+                downloadItem.CurrentSpeed = (long)(bytesDiff / timeDiff);
+
+                downloadItem.LastReceivedBytes = currentBytes;
+                downloadItem.LastUpdateTime = currentTime;
+            }
+
+            downloadItem.RemainingTime = downloadOperation.EstimatedEndTime - currentTime;
+            downloadItem.DownloadedFilePath = downloadOperation.ResultFilePath;
+            _lastProgressInvokeTime = currentTime;
+            DownloadProgressHandler?.Invoke(this, downloadItem);
+        }
 
         // Edge may block downloading, so we need to check if the download is complete.
-        if (downloadItem.ReceivedBytes == downloadItem.TotalBytes)
+        if (isFinal)
         {
             downloadItem.IsComplete = true;
             _downloadTaskCompletionSource?.TrySetResult(true);
@@ -564,14 +587,12 @@ public class BrowserObject
         WebView2.CoreWebView2.OpenDevToolsWindow();
     }
 
-    public async Task ClearCookies()
+    public Task ClearCookies()
     {
-        var cookieManager = WebView2.CoreWebView2.CookieManager;
-        var cookies = await cookieManager.GetCookiesAsync(null);
-        foreach (var cookie in cookies)
-        {
-            cookieManager.DeleteCookie(cookie);
-        }
+        // DeleteAllCookies is an atomic, fast call. Looping over GetCookiesAsync +
+        // DeleteCookie can block the UI thread when there are hundreds of cookies.
+        WebView2.CoreWebView2.CookieManager.DeleteAllCookies();
+        return Task.CompletedTask;
     }
 }
 

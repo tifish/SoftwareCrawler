@@ -675,7 +675,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             try
             {
                 // Delete other old files in the same directory.
-                DeleteOtherFilesInSameDirectory(targetFilePath);
+                await DeleteOtherFilesInSameDirectory(targetFilePath);
 
                 // Copy file from downloading folder to target directory.
                 if (File.Exists(downloadedFilePath))
@@ -713,7 +713,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                     {
                         var targetFile2 = Path.Combine(DownloadDirectory2, suggestedFileName);
                         // Delete other old files in the same directory.
-                        DeleteOtherFilesInSameDirectory(targetFile2);
+                        await DeleteOtherFilesInSameDirectory(targetFile2);
 
                         // Copy file from download directory 1 to download directory 2.
                         if (await CopyFileIfChanged(targetFilePath, targetFile2))
@@ -738,27 +738,32 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             return DownloadOnceResult.Succeeded;
         }
 
-        void DeleteOtherFilesInSameDirectory(string filePath)
+        Task DeleteOtherFilesInSameDirectory(string filePath)
         {
             if (testOnly || string.IsNullOrWhiteSpace(FilePatternToDeleteBeforeDownload))
-                return;
+                return Task.CompletedTask;
 
             var dir = Path.GetDirectoryName(filePath)!;
+            var pattern = FilePatternToDeleteBeforeDownload;
 
-            try
+            // Run on background thread to avoid blocking the UI while scanning / deleting files.
+            return Task.Run(() =>
             {
-                Directory
-                    .GetFiles(dir, FilePatternToDeleteBeforeDownload)
-                    .Where(file =>
-                        string.Compare(file, filePath, StringComparison.OrdinalIgnoreCase) != 0
-                    )
-                    .ToList()
-                    .ForEach(File.Delete);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Failed to delete other files in {Directory}", dir);
-            }
+                try
+                {
+                    Directory
+                        .GetFiles(dir, pattern)
+                        .Where(file =>
+                            string.Compare(file, filePath, StringComparison.OrdinalIgnoreCase) != 0
+                        )
+                        .ToList()
+                        .ForEach(File.Delete);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Failed to delete other files in {Directory}", dir);
+                }
+            });
         }
 
         // When download fails, return error message.
@@ -815,46 +820,51 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         }
     }
 
-    private static async Task<bool> CopyFileIfChanged(
+    private static Task<bool> CopyFileIfChanged(
         string sourceFile,
         string targetFile,
         bool move = false
     )
     {
-        var sourceFileInfo = new FileInfo(sourceFile);
-        var targetFileInfo = new FileInfo(targetFile);
-
-        // Ignore same file.
-        if (targetFileInfo.Exists)
+        // Run synchronous file I/O on a background thread so the UI thread
+        // is not blocked while moving / copying potentially large files.
+        return Task.Run(() =>
         {
-            if (
-                sourceFileInfo.Length == targetFileInfo.Length
-                && sourceFileInfo.LastWriteTime == targetFileInfo.LastWriteTime
-            )
-                return false;
-        }
+            var sourceFileInfo = new FileInfo(sourceFile);
+            var targetFileInfo = new FileInfo(targetFile);
 
-        // Copy / move sourceFile to targetFile.
-        if (move)
-        {
-            try
+            // Ignore same file.
+            if (targetFileInfo.Exists)
             {
-                File.Move(sourceFile, targetFile, true);
+                if (
+                    sourceFileInfo.Length == targetFileInfo.Length
+                    && sourceFileInfo.LastWriteTime == targetFileInfo.LastWriteTime
+                )
+                    return false;
             }
-            catch
+
+            // Copy / move sourceFile to targetFile.
+            if (move)
             {
-                // WebView2 download safe check may lock the file. Try to copy.
+                try
+                {
+                    File.Move(sourceFile, targetFile, true);
+                }
+                catch
+                {
+                    // WebView2 download safe check may lock the file. Try to copy.
+                    File.Copy(sourceFile, targetFile, true);
+                }
+            }
+            else
+            {
                 File.Copy(sourceFile, targetFile, true);
             }
-        }
-        else
-        {
-            File.Copy(sourceFile, targetFile, true);
-        }
 
-        File.SetLastWriteTime(targetFile, sourceFileInfo.LastWriteTime);
+            File.SetLastWriteTime(targetFile, sourceFileInfo.LastWriteTime);
 
-        return true;
+            return true;
+        });
     }
 
     private static readonly string SevenZipPath = Path.Combine(
@@ -871,19 +881,19 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             return;
 
         var archiveDir = Path.GetDirectoryName(archiveFile)!;
-        if (FilePatternToDeleteBeforeExtractionAndExtractOnly != "")
-            Directory
-                .GetFiles(archiveDir, FilePatternToDeleteBeforeExtractionAndExtractOnly)
-                .ToList()
-                .ForEach(File.Delete);
+        var pattern = FilePatternToDeleteBeforeExtractionAndExtractOnly;
+
+        if (pattern != "")
+            await Task.Run(() =>
+                Directory.GetFiles(archiveDir, pattern).ToList().ForEach(File.Delete)
+            );
 
         // extract files to root directory.
         using var process = Process.Start(
             new ProcessStartInfo
             {
                 FileName = SevenZipPath,
-                Arguments =
-                    $@"e -y -o""{archiveDir}"" ""{archiveFile}"" {FilePatternToDeleteBeforeExtractionAndExtractOnly} -r",
+                Arguments = $@"e -y -o""{archiveDir}"" ""{archiveFile}"" {pattern} -r",
                 UseShellExecute = true,
             }
         );
@@ -894,12 +904,15 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         await process.WaitForExitAsync();
 
         // Delete empty sub-directories in archiveDir
-        foreach (var subDirectory in Directory.GetDirectories(archiveDir))
-            if (
-                Directory.GetFiles(subDirectory).Length == 0
-                && Directory.GetDirectories(subDirectory).Length == 0
-            )
-                Directory.Delete(subDirectory);
+        await Task.Run(() =>
+        {
+            foreach (var subDirectory in Directory.GetDirectories(archiveDir))
+                if (
+                    Directory.GetFiles(subDirectory).Length == 0
+                    && Directory.GetDirectories(subDirectory).Length == 0
+                )
+                    Directory.Delete(subDirectory);
+        });
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
