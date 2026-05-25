@@ -56,9 +56,10 @@ public static class SoftwareManager
         // Write both files in parallel.
         var encoding = new UTF8Encoding(true);
         await Task.WhenAll(
-            File.WriteAllLinesAsync(ConfigPath, dataItems, encoding),
-            File.WriteAllLinesAsync(DownloadDirectoryConfigPath, extraItems, encoding)
-        );
+                File.WriteAllLinesAsync(ConfigPath, dataItems, encoding),
+                File.WriteAllLinesAsync(DownloadDirectoryConfigPath, extraItems, encoding)
+            )
+            .ConfigureAwait(false);
     }
 
     // Debounced save: coalesces bursts of edits (e.g. typing in a cell, multiple row
@@ -75,17 +76,17 @@ public static class SoftwareManager
 
         try
         {
-            await Task.Delay(SaveDebounceMs, token);
+            await Task.Delay(SaveDebounceMs, token).ConfigureAwait(false);
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException)
         {
             return;
         }
 
-        await _saveGate.WaitAsync();
+        await _saveGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            await SaveCore();
+            await SaveCore().ConfigureAwait(false);
         }
         finally
         {

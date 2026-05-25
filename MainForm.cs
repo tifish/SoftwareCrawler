@@ -91,16 +91,12 @@ public partial class MainForm : Form
             using (new DownloadUIDisabler(this))
             {
                 var parentForm = new Form();
-
-                // Browser initialization and config loading are independent; run them
-                // concurrently so the UI is interactive sooner.
-                var browserInitTask = Browser.Init(parentForm, Settings.Proxy);
-                var reloadTask = Reload();
-                await Task.WhenAll(browserInitTask, reloadTask);
-
+                await Browser.Init(parentForm, Settings.Proxy);
                 parentForm.Size = new Size(1280, 720);
 
                 BringToFront();
+
+                await Reload();
             }
 
             _onLoadTaskCompletionSource.TrySetResult(true);
