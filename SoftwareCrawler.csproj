@@ -6,9 +6,15 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <OutDir>bin</OutDir>
+    <PublishDir>bin</PublishDir>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <!-- MSB3277: benign WindowsBase 4.0.0.0/5.0.0.0 conflict pulled in by the WPF
+         assembly bundled with Microsoft.Web.WebView2 (we use the WinForms control). -->
     <NoWarn>1701;1702;CA1416;1591</NoWarn>
+    <MSBuildWarningsAsMessages>MSB3277</MSBuildWarningsAsMessages>
     <LangVersion>preview</LangVersion>
     <ForceDesignerDPIUnaware>true</ForceDesignerDPIUnaware>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
@@ -53,11 +59,11 @@
     <!-- <BeautyGitTree>master</BeautyGitTree> -->
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3650.58" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3967.48" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="nulastudio.NetBeauty" Version="2.1.5" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
-    <PackageReference Include="System.CommandLine" Version="2.0.2" />
+    <PackageReference Include="System.CommandLine" Version="2.0.8" />
   </ItemGroup>
   <ItemGroup>
     <Compile Update="Properties\Resources.Designer.cs">
