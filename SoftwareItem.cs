@@ -886,6 +886,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     private static readonly string SevenZipPath = Path.Combine(
         AppDomain.CurrentDomain.SetupInformation.ApplicationBase!,
+        "7-Zip",
         "7z.exe"
     );
 

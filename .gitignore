@@ -15,4 +15,4 @@
 /bin/*.dll
 /bin/*.pdb
 /bin/*.json
-/bin/DownloadDirectory.tab
+/bin/Config/DownloadDirectory.tab

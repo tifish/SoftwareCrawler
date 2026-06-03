@@ -6,11 +6,13 @@ public static class SoftwareManager
 {
     private static readonly string ConfigPath = Path.Join(
         AppDomain.CurrentDomain.SetupInformation.ApplicationBase ?? string.Empty,
+        "Config",
         "Software.tab"
     );
 
     private static readonly string DownloadDirectoryConfigPath = Path.Join(
         AppDomain.CurrentDomain.SetupInformation.ApplicationBase ?? string.Empty,
+        "Config",
         "DownloadDirectory.tab"
     );
 
