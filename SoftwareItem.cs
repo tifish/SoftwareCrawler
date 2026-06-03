@@ -626,7 +626,24 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             if (File.Exists(oldFile))
             {
                 var fileInfo = new FileInfo(oldFile);
-                if (fileInfo.Length == downloadFileSize)
+
+                // Prefer size comparison when the server reports the file size.
+                // When the size is unknown (no Content-Length, e.g. chunked transfer),
+                // fall back to comparing the server's Last-Modified time against the local
+                // file's modification time. Downloaded files are stamped with that time in
+                // Succeeded(), so a match means the file is unchanged. Without either signal
+                // we cannot tell, so treat it as needing download.
+                bool isSameFile;
+                if (downloadFileSize > 0)
+                    isSameFile = fileInfo.Length == downloadFileSize;
+                else if (downloadFileTime.HasValue)
+                    isSameFile =
+                        Math.Abs((fileInfo.LastWriteTime - downloadFileTime.Value).TotalSeconds)
+                        < 2;
+                else
+                    isSameFile = false;
+
+                if (isSameFile)
                 {
                     beginDownloadResult = BeginDownloadResult.Downloaded;
                     targetFilePath = oldFile;

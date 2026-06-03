@@ -340,7 +340,11 @@ public class BrowserObject
                 ? (int)((double)downloadItem.ReceivedBytes / downloadItem.TotalBytes * 100)
                 : 0;
 
-        var isFinal = downloadItem.ReceivedBytes == downloadItem.TotalBytes;
+        // Only treat byte-count equality as final when the total size is known.
+        // If the server does not provide Content-Length, TotalBytes stays 0 and this
+        // check would never match; completion is handled by the Completed state instead.
+        var isFinal =
+            downloadItem.TotalBytes > 0 && downloadItem.ReceivedBytes == downloadItem.TotalBytes;
         var dueForUpdate =
             isFinal
             || (currentTime - _lastProgressInvokeTime).TotalMilliseconds
@@ -386,7 +390,20 @@ public class BrowserObject
 
         if (downloadOperation.State == CoreWebView2DownloadState.Completed)
         {
-            // Unreachable if edge block downloading.
+            // Reached for normal downloads. When the server does not provide Content-Length,
+            // TotalBytes stays 0 and the byte-count check in BytesReceivedChanged never reaches
+            // "final", so this is the only place that completes the download for such files.
+            // (Edge may block downloading, in which case this state is never raised and the
+            // byte-count check is the fallback.)
+            downloadItem.ReceivedBytes = downloadOperation.BytesReceived;
+            if (downloadItem.TotalBytes == 0)
+                downloadItem.TotalBytes = downloadItem.ReceivedBytes;
+            downloadItem.PercentComplete = 100;
+            downloadItem.DownloadedFilePath = downloadOperation.ResultFilePath;
+            DownloadProgressHandler?.Invoke(this, downloadItem);
+
+            downloadItem.IsComplete = true;
+            _downloadTaskCompletionSource?.TrySetResult(true);
         }
         else if (downloadOperation.State == CoreWebView2DownloadState.Interrupted)
         {
