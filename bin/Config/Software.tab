@@ -1,7 +1,7 @@
 ﻿Enabled	Name	WebPage	XPathOrScript1	XPathOrScript2	XPathOrScript3	XPathOrScript4	XPathOrScript5	Frames	WaitSecondsBeforeClick	StartDownloadTimeout	FilePatternToDeleteBeforeDownload	ExtractAfterDownload	FilePatternToDeleteBeforeExtractionAndExtractOnly
 true	搜狗输入法	https://pinyin.sogou.com/	//a[contains(@href, '.exe')]								*.exe		
 true	百度输入法	https://shurufa.baidu.com/	a = document.evaluate(`n    "//a[text()='立即下载']",`n    document,`n    null,`n    XPathResult.FIRST_ORDERED_NODE_TYPE,`n    null`n).singleNodeValue;`nsetTimeout(function () {`n    a.click();`n}, 2000);								*.exe		
-true	TortoiseSVN	https://tortoisesvn.net/downloads.html	//table[@class='downloads-table']//a[contains(@href, 'x64')]								TortoiseSVN*.msi		
+true	TortoiseSVN	https://tortoisesvn.net/downloads.html	//a[contains(@href, 'x64')]								TortoiseSVN*.msi		
 true	XnViewMP	https://download.xnview.com/XnViewMP-win-x64.exe									*.exe		
 true	Notepad++	https://notepad-plus-plus.org/downloads/	//main[@id='main']//a	//main[@id='main']//a[contains(@href, 'x64.exe')]							*.exe		
 true	完美解码	https://www.puresys.net/4007.html	//a[normalize-space(.)='本地下载']								*.exe		
