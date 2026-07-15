@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel;
 using System.Diagnostics;
+using System.Net;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
@@ -133,6 +134,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public bool ExtractAfterDownload { get; set; }
     public string FilePatternToDeleteBeforeExtractionAndExtractOnly { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Download WebPage directly over HTTP instead of navigating the embedded browser.
+    /// Some sites (e.g. SourceForge) serve Cloudflare challenges to automated browsers
+    /// but allow plain HTTP clients.
+    /// </summary>
+    public bool DirectDownload { get; set; }
+
     private string _errorMessage = string.Empty;
 
     [NonSerialized]
@@ -194,6 +202,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             nameof(FilePatternToDeleteBeforeDownload),
             nameof(ExtractAfterDownload),
             nameof(FilePatternToDeleteBeforeExtractionAndExtractOnly),
+            nameof(DirectDownload),
         }
             .Select(name => typeof(SoftwareItem).GetProperty(name)!)
             .ToList(),
@@ -214,8 +223,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public void FromDataLine(string line, List<PropertyInfo> properties)
     {
         var items = line.Split('\t');
-        if (items.Length != properties.Count)
-            throw new Exception("items.Length != properties.Count");
+        if (items.Length > properties.Count)
+            throw new Exception("items.Length > properties.Count");
+
+        // Fewer columns than properties is allowed: files saved by older versions
+        // lack newly added trailing columns, which then keep their default values.
 
         for (var i = 0; i < items.Length; i++)
         {
@@ -424,6 +436,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         // Download
         try
         {
+            if (DirectDownload)
+                return await DirectDownloadOverHttp();
+
             await Browser.ResetToBlankPage();
 
             // Access download page.
@@ -497,6 +512,178 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             _uiSynchronizationContext = null;
             Browser.BeginDownloadHandler -= OnBeginDownloadHandler;
             Browser.DownloadProgressHandler -= OnDownloadProgressHandler;
+        }
+
+        // Fetch WebPage with HttpClient and stream it to disk, bypassing the browser.
+        // A non-browser User-Agent avoids Cloudflare browser challenges; the
+        // "Windows NT" hint makes SourceForge-style "latest" links resolve to the
+        // Windows release instead of the generic default.
+        async Task<DownloadOnceResult> DirectDownloadOverHttp()
+        {
+            Status = DownloadingStatus.WaitingForDownload;
+
+            using var handler = new HttpClientHandler();
+            if (!string.IsNullOrWhiteSpace(Settings.Proxy))
+                handler.Proxy = new WebProxy(Settings.Proxy);
+
+            using var client = new HttpClient(handler);
+            client.Timeout = Timeout.InfiniteTimeSpan;
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "SoftwareCrawler/1.0 (Windows NT 10.0; Win64; x64)"
+            );
+
+            var startDownloadTimeout =
+                StartDownloadTimeout > 0 ? StartDownloadTimeout : Settings.StartDownloadTimeout;
+
+            HttpResponseMessage response;
+            try
+            {
+                using var headerCts = new CancellationTokenSource(
+                    TimeSpan.FromSeconds(startDownloadTimeout)
+                );
+                response = await client.GetAsync(
+                    WebPage,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    headerCts.Token
+                );
+            }
+            catch (Exception ex)
+            {
+                return Failed(
+                    $"Failed to request download URL: {ex.Message}",
+                    DownloadOnceResult.FailedAndRetry
+                );
+            }
+
+            using (response)
+            {
+                if (!response.IsSuccessStatusCode)
+                    return Failed(
+                        $"Download URL returned {(int)response.StatusCode} {response.ReasonPhrase}.",
+                        DownloadOnceResult.FailedAndRetry
+                    );
+
+                var contentDisposition = response.Content.Headers.ContentDisposition;
+                var fileName =
+                    contentDisposition?.FileNameStar ?? contentDisposition?.FileName?.Trim('"');
+                if (string.IsNullOrWhiteSpace(fileName))
+                {
+                    var finalUri = response.RequestMessage?.RequestUri ?? new Uri(WebPage);
+                    fileName = Uri.UnescapeDataString(Path.GetFileName(finalUri.LocalPath));
+                }
+
+                if (string.IsNullOrWhiteSpace(fileName))
+                    return Failed(
+                        "Cannot determine download file name.",
+                        DownloadOnceResult.FailedAndNoRetry
+                    );
+
+                var item = new DownloadItem
+                {
+                    Url = response.RequestMessage?.RequestUri?.ToString() ?? WebPage,
+                    SuggestedFileName = fileName,
+                    TotalBytes = response.Content.Headers.ContentLength ?? 0,
+                    EndTime = response.Content.Headers.LastModified?.LocalDateTime,
+                    LastUpdateTime = DateTime.Now,
+                };
+
+                // Reuse the same decision logic as browser downloads
+                // (file type check, same-file detection, testOnly handling).
+                OnBeginDownloadHandler(this, item);
+
+                switch (beginDownloadResult)
+                {
+                    case BeginDownloadResult.Failed:
+                        return DownloadOnceResult.FailedAndRetry;
+                    case BeginDownloadResult.Downloaded:
+                        return await Succeeded(DownloadingStatus.SameFileAlreadyDownloaded);
+                    case BeginDownloadResult.HasUpdate:
+                        return await Succeeded(DownloadingStatus.HasUpdate);
+                }
+
+                Status = DownloadingStatus.Downloading;
+                try
+                {
+                    using var downloadCts = new CancellationTokenSource(
+                        TimeSpan.FromSeconds(Settings.DownloadTimeout)
+                    );
+                    await using var httpStream = await response.Content.ReadAsStreamAsync(
+                        downloadCts.Token
+                    );
+                    await using var fileStream = new FileStream(
+                        item.DownloadedFilePath,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.None,
+                        81920,
+                        useAsync: true
+                    );
+
+                    var buffer = new byte[81920];
+                    int bytesRead;
+                    while (
+                        (bytesRead = await httpStream.ReadAsync(buffer, downloadCts.Token)) > 0
+                    )
+                    {
+                        if (_hasCancelled)
+                        {
+                            item.IsCancelled = true;
+                            return DownloadOnceResult.FailedAndNoRetry;
+                        }
+
+                        await fileStream.WriteAsync(
+                            buffer.AsMemory(0, bytesRead),
+                            downloadCts.Token
+                        );
+
+                        item.ReceivedBytes += bytesRead;
+                        item.PercentComplete =
+                            item.TotalBytes > 0
+                                ? (int)((double)item.ReceivedBytes / item.TotalBytes * 100)
+                                : 0;
+
+                        var now = DateTime.Now;
+                        var elapsed = (now - item.LastUpdateTime).TotalSeconds;
+                        if (elapsed >= 0.2)
+                        {
+                            item.CurrentSpeed = (long)(
+                                (item.ReceivedBytes - item.LastReceivedBytes) / elapsed
+                            );
+                            item.RemainingTime =
+                                item.CurrentSpeed > 0 && item.TotalBytes > 0
+                                    ? TimeSpan.FromSeconds(
+                                        (item.TotalBytes - item.ReceivedBytes)
+                                            / (double)item.CurrentSpeed
+                                    )
+                                    : TimeSpan.Zero;
+                            item.LastReceivedBytes = item.ReceivedBytes;
+                            item.LastUpdateTime = now;
+                            OnDownloadProgressHandler(this, item);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return Failed(
+                        $"Failed to download file: {ex.Message}",
+                        DownloadOnceResult.FailedAndRetry
+                    );
+                }
+
+                if (item.TotalBytes > 0 && item.ReceivedBytes != item.TotalBytes)
+                    return Failed(
+                        $"Download incomplete: {item.ReceivedBytes} of {item.TotalBytes} bytes.",
+                        DownloadOnceResult.FailedAndRetry
+                    );
+
+                if (item.TotalBytes == 0)
+                    item.TotalBytes = item.ReceivedBytes;
+                item.PercentComplete = 100;
+                item.IsComplete = true;
+                OnDownloadProgressHandler(this, item);
+
+                return await Succeeded(DownloadingStatus.Downloaded);
+            }
         }
 
         async Task<DownloadOnceResult> ClickAndTriggerDownload()
