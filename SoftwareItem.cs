@@ -761,7 +761,10 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 else // Is JavaScript
                 {
                     Status = DownloadingStatus.ExecutingScript;
-                    if (!await Browser.TryEvaluateJavascript(xpathOrScript, frameName))
+                    // Scripts often include their own wait/retry loops (and may return a
+                    // Promise that WebView2 awaits). Do not re-run the whole script many
+                    // times — each attempt can take a long time.
+                    if (!await Browser.TryEvaluateJavascript(xpathOrScript, frameName, count: 1))
                         return Failed(
                             $"Failed to execute script: {Browser.LastJavascriptError}",
                             DownloadOnceResult.FailedAndRetry
