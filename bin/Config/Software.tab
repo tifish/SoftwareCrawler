@@ -90,7 +90,6 @@ true	Python 3.11	https://www.python.org/downloads/windows	//a[contains(@href, '-
 true	Python 3.10	https://www.python.org/downloads/windows	//a[contains(@href, '-3.10.') and contains(@href, '-amd64.exe')]								python-3.10.*.exe			
 true	Flutter	https://docs.flutter.cn/install/manual	//a[contains(@href, '.zip')]								*.zip			
 true	Cursor	https://github.com/oslook/cursor-ai-downloads?tab=readme-ov-file#all-version-download-links	//a[contains(@href, 'win32/x64/system-setup')]								*.exe	true		
-true	MSI Afterburner	https://www.msi.com/Landing/afterburner/graphics-cards	(//a[contains(@href, 'download')])[2]								*.zip	true	*.exe	
 true	罗技 G Hub	https://www.logitechg.com/en-us/innovation/g-hub.html	//a[contains(@href, '.exe')]								*.exe			
 true	腾讯会议	https://meeting.tencent.com/download/	(//div[contains(text(),'点击下载')])[2]								*.exe			
 true	MongoDB	https://www.mongodb.com/try/download/community	//a[contains(@href, '.msi')]								*.msi			
