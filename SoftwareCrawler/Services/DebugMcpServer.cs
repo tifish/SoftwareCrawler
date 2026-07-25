@@ -194,11 +194,22 @@ internal static class DebugMcpServer
         public List<SoftwareItem> Software => SoftwareManager.Items;
         public DebugInstanceInfo Instance => DebugInstanceContext.Info;
 
+        /// <summary>Download directories held for names the loaded list does not contain.</summary>
+        public IReadOnlyList<string> UnclaimedDownloadDirectories =>
+            SoftwareManager.UnclaimedDownloadDirectoryNames;
+
         /// <summary>Writes the software list immediately, skipping the save debounce.</summary>
         public void FlushSoftwareList() => SoftwareManager.FlushAsync().GetAwaiter().GetResult();
 
         /// <summary>Reloads the software list from disk, as an outside edit would.</summary>
         public void ReloadSoftwareList() => SoftwareManager.Load().GetAwaiter().GetResult();
+
+        /// <summary>
+        /// Drops the preserved download directories, as the context menu item does
+        /// but without the confirmation. False means the save was skipped.
+        /// </summary>
+        public bool CleanUpDownloadDirectories() =>
+            SoftwareManager.RemoveUnclaimedDownloadDirectories().GetAwaiter().GetResult();
     }
 
     private static readonly AppRoot Root = new();
@@ -435,6 +446,11 @@ internal static class DebugMcpServer
         sb.AppendLine($"Watcher active: {ConfigChangeMonitor.IsWatching}");
         sb.AppendLine($"Pending events: {ConfigChangeMonitor.DescribePending()}");
         sb.AppendLine($"In-memory software items: {SoftwareManager.Items.Count}");
+        var unclaimed = SoftwareManager.UnclaimedDownloadDirectoryNames;
+        sb.AppendLine(
+            $"Unclaimed download directories kept: "
+                + (unclaimed.Count == 0 ? "(none)" : string.Join(", ", unclaimed))
+        );
         sb.AppendLine();
 
         foreach (var path in ConfigChangeMonitor.TrackedPaths)

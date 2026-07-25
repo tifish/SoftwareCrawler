@@ -29,6 +29,44 @@ public static class SoftwareManager
 
     public static List<SoftwareItem> Items { get; private set; } = [];
 
+    /// <summary>
+    /// Rows of DownloadDirectory.tab that no loaded item claims, kept in file
+    /// order so a save writes them back untouched. A name goes missing whenever
+    /// the list is temporarily shorter than the file - a half-written
+    /// Software.tab, an outside edit, a row deleted and undone - and the row
+    /// here is the only copy of that download directory there is.
+    /// </summary>
+    private static List<(string Name, string Line)> _unclaimedDownloadDirectories = [];
+
+    /// <summary>The names whose download directories are being preserved.</summary>
+    public static IReadOnlyList<string> UnclaimedDownloadDirectoryNames =>
+        _unclaimedDownloadDirectories.Select(entry => entry.Name).ToArray();
+
+    /// <summary>
+    /// Drops the preserved rows and writes the result, so the file holds nothing
+    /// but the current list. Returns false when the write was refused because the
+    /// file changed outside the app, in which case nothing is discarded.
+    /// </summary>
+    public static async Task<bool> RemoveUnclaimedDownloadDirectories()
+    {
+        var removed = _unclaimedDownloadDirectories;
+        if (removed.Count == 0)
+            return true;
+
+        _unclaimedDownloadDirectories = [];
+        if (await FlushAsync().ConfigureAwait(false))
+        {
+            Log.ZLogInformation(
+                $"Removed {removed.Count} unclaimed download directories: "
+                    + $"{string.Join(", ", removed.Select(entry => entry.Name))}"
+            );
+            return true;
+        }
+
+        _unclaimedDownloadDirectories = removed;
+        return false;
+    }
+
     public static async Task Load()
     {
         var softwarePath = SoftwarePath;
@@ -53,13 +91,27 @@ public static class SoftwareManager
         var downloadDirectories = ParseDownloadDirectories(extraTask.Result, dataLines);
 
         Items.Clear();
+        var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var dataLine in dataLines)
         {
             var item = new SoftwareItem(dataLine, string.Empty);
             if (downloadDirectories.TryGetValue(item.Name, out var extraLine))
+            {
                 item.FromDataLine(extraLine, SoftwareItem.ExtraProperties);
+                claimed.Add(item.Name);
+            }
             Items.Add(item);
         }
+
+        _unclaimedDownloadDirectories = downloadDirectories
+            .Where(entry => !claimed.Contains(entry.Key))
+            .Select(entry => (entry.Key, entry.Key + '\t' + entry.Value))
+            .ToList();
+        if (_unclaimedDownloadDirectories.Count > 0)
+            Log.ZLogInformation(
+                $"Keeping {_unclaimedDownloadDirectories.Count} download directories no item claims: "
+                    + $"{string.Join(", ", UnclaimedDownloadDirectoryNames)}"
+            );
 
         // Remember what we just read: a later save compares against this to notice
         // that somebody else has edited the files in the meantime.
@@ -150,6 +202,16 @@ public static class SoftwareManager
         };
         extraItems.AddRange(
             Items.Select(item => item.Name + '\t' + item.ToDataLine(SoftwareItem.ExtraProperties))
+        );
+
+        // Carry the unclaimed rows over instead of dropping them. Re-check the
+        // names: an item that came back since the load owns its row again, and
+        // writing both copies would duplicate it.
+        var itemNames = Items.Select(item => item.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        extraItems.AddRange(
+            _unclaimedDownloadDirectories
+                .Where(entry => !itemNames.Contains(entry.Name))
+                .Select(entry => entry.Line)
         );
 
         // Write both files in parallel. The scope keeps the watcher from treating

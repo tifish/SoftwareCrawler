@@ -57,6 +57,7 @@ public partial class MainForm : Form
             _mainForm.testSelectedToolStripMenuItem.Enabled = false;
             _mainForm.testAllToolStripMenuItem.Enabled = false;
             _mainForm.reloadToolStripMenuItem.Enabled = false;
+            _mainForm.cleanUpDownloadDirectoriesToolStripMenuItem.Enabled = false;
 
             _mainForm.cancelToolStripMenuItem.Enabled = true;
         }
@@ -68,6 +69,7 @@ public partial class MainForm : Form
             _mainForm.testSelectedToolStripMenuItem.Enabled = true;
             _mainForm.testAllToolStripMenuItem.Enabled = true;
             _mainForm.reloadToolStripMenuItem.Enabled = true;
+            _mainForm.cleanUpDownloadDirectoriesToolStripMenuItem.Enabled = true;
 
             _mainForm.cancelToolStripMenuItem.Enabled = false;
 
@@ -531,6 +533,66 @@ public partial class MainForm : Form
 
             Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true });
         }
+    }
+
+    /// <summary>
+    /// Discards the download directories held for names the list no longer has.
+    /// Those rows survive a save so a temporarily shorter list cannot destroy
+    /// them; this is the way to get rid of the ones that really are obsolete.
+    /// </summary>
+    private async void cleanUpDownloadDirectoriesToolStripMenuItem_Click(object sender, EventArgs e)
+    {
+        var unclaimed = SoftwareManager.UnclaimedDownloadDirectoryNames;
+        const string caption = "Clean up unused download directories";
+
+        if (unclaimed.Count == 0)
+        {
+            MessageBox.Show(
+                this,
+                "Every download directory belongs to an item in the list; there is nothing to clean up.",
+                caption,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information
+            );
+            return;
+        }
+
+        var answer = MessageBox.Show(
+            this,
+            $"These {unclaimed.Count} name(s) are no longer in the software list, but their download "
+                + "directories are still on file:"
+                + Environment.NewLine
+                + Environment.NewLine
+                + string.Join(Environment.NewLine, unclaimed)
+                + Environment.NewLine
+                + Environment.NewLine
+                + "Delete them? This cannot be undone.",
+            caption,
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2
+        );
+        if (answer != DialogResult.Yes)
+            return;
+
+        if (await SoftwareManager.RemoveUnclaimedDownloadDirectories())
+            MessageBox.Show(
+                this,
+                $"Removed {unclaimed.Count} unused download director"
+                    + (unclaimed.Count == 1 ? "y." : "ies."),
+                caption,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information
+            );
+        else
+            MessageBox.Show(
+                this,
+                "Nothing was removed: the config files changed outside the app, so saving was skipped. "
+                    + "Reload the list and try again.",
+                caption,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning
+            );
     }
 
     private bool _hasCancelled;
