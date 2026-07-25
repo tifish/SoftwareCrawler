@@ -50,6 +50,17 @@ namespace SoftwareCrawler
             browseButton = new Button();
             okButton = new Button();
             cancelButton = new Button();
+            storageLocationLabel = new Label();
+            storageLocationComboBox = new ComboBox();
+            customStoragePathTextBox = new TextBox();
+            browseStoragePathButton = new Button();
+            storageFlowLayoutPanel = new FlowLayoutPanel();
+            updateCheckLabel = new Label();
+            updateCheckComboBox = new ComboBox();
+            versionLabel = new Label();
+            versionValueLabel = new Label();
+            checkUpdateButton = new Button();
+            versionFlowLayoutPanel = new FlowLayoutPanel();
             rootTableLayoutPanel = new TableLayoutPanel();
             flowLayoutPanel2 = new FlowLayoutPanel();
             toolButtonFlowLayoutPanel = new FlowLayoutPanel();
@@ -62,6 +73,8 @@ namespace SoftwareCrawler
             ((System.ComponentModel.ISupportInitialize)downloadTimeoutNumericUpDown).BeginInit();
             rootTableLayoutPanel.SuspendLayout();
             flowLayoutPanel2.SuspendLayout();
+            storageFlowLayoutPanel.SuspendLayout();
+            versionFlowLayoutPanel.SuspendLayout();
             toolButtonFlowLayoutPanel.SuspendLayout();
             SuspendLayout();
             //
@@ -309,6 +322,109 @@ namespace SoftwareCrawler
             cancelButton.UseVisualStyleBackColor = true;
             cancelButton.Click += cancelButton_Click;
             //
+            // storageLocationLabel
+            //
+            storageLocationLabel.Anchor = AnchorStyles.Left;
+            storageLocationLabel.AutoSize = true;
+            storageLocationLabel.Name = "storageLocationLabel";
+            storageLocationLabel.TabIndex = 25;
+            storageLocationLabel.Text = "Settings storage";
+            //
+            // storageLocationComboBox
+            //
+            storageLocationComboBox.Anchor = AnchorStyles.Left;
+            storageLocationComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            storageLocationComboBox.FormattingEnabled = true;
+            storageLocationComboBox.Name = "storageLocationComboBox";
+            storageLocationComboBox.Size = new Size(160, 23);
+            storageLocationComboBox.TabIndex = 26;
+            storageLocationComboBox.SelectedIndexChanged += storageLocationComboBox_SelectedIndexChanged;
+            //
+            // customStoragePathTextBox
+            //
+            customStoragePathTextBox.Anchor = AnchorStyles.Left;
+            customStoragePathTextBox.MinimumSize = new Size(180, 23);
+            customStoragePathTextBox.Name = "customStoragePathTextBox";
+            customStoragePathTextBox.Size = new Size(180, 23);
+            customStoragePathTextBox.TabIndex = 27;
+            //
+            // browseStoragePathButton
+            //
+            browseStoragePathButton.Anchor = AnchorStyles.Left;
+            browseStoragePathButton.AutoSize = true;
+            browseStoragePathButton.Name = "browseStoragePathButton";
+            browseStoragePathButton.Size = new Size(75, 25);
+            browseStoragePathButton.TabIndex = 28;
+            browseStoragePathButton.Text = "Browse...";
+            browseStoragePathButton.UseVisualStyleBackColor = true;
+            browseStoragePathButton.Click += browseStoragePathButton_Click;
+            //
+            // storageFlowLayoutPanel
+            //
+            storageFlowLayoutPanel.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            storageFlowLayoutPanel.AutoSize = true;
+            storageFlowLayoutPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            storageFlowLayoutPanel.Controls.Add(storageLocationComboBox);
+            storageFlowLayoutPanel.Controls.Add(customStoragePathTextBox);
+            storageFlowLayoutPanel.Controls.Add(browseStoragePathButton);
+            storageFlowLayoutPanel.Name = "storageFlowLayoutPanel";
+            storageFlowLayoutPanel.TabIndex = 29;
+            //
+            // updateCheckLabel
+            //
+            updateCheckLabel.Anchor = AnchorStyles.Left;
+            updateCheckLabel.AutoSize = true;
+            updateCheckLabel.Name = "updateCheckLabel";
+            updateCheckLabel.TabIndex = 30;
+            updateCheckLabel.Text = "Check for updates";
+            //
+            // updateCheckComboBox
+            //
+            updateCheckComboBox.Anchor = AnchorStyles.Left;
+            updateCheckComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            updateCheckComboBox.FormattingEnabled = true;
+            updateCheckComboBox.Name = "updateCheckComboBox";
+            updateCheckComboBox.Size = new Size(160, 23);
+            updateCheckComboBox.TabIndex = 31;
+            //
+            // versionLabel
+            //
+            versionLabel.Anchor = AnchorStyles.Left;
+            versionLabel.AutoSize = true;
+            versionLabel.Name = "versionLabel";
+            versionLabel.TabIndex = 32;
+            versionLabel.Text = "Version";
+            //
+            // versionValueLabel
+            //
+            versionValueLabel.Anchor = AnchorStyles.Left;
+            versionValueLabel.AutoSize = true;
+            versionValueLabel.Margin = new Padding(3, 8, 12, 0);
+            versionValueLabel.Name = "versionValueLabel";
+            versionValueLabel.TabIndex = 33;
+            versionValueLabel.Text = "0";
+            //
+            // checkUpdateButton
+            //
+            checkUpdateButton.Anchor = AnchorStyles.Left;
+            checkUpdateButton.AutoSize = true;
+            checkUpdateButton.Name = "checkUpdateButton";
+            checkUpdateButton.Size = new Size(110, 25);
+            checkUpdateButton.TabIndex = 34;
+            checkUpdateButton.Text = "Check now";
+            checkUpdateButton.UseVisualStyleBackColor = true;
+            checkUpdateButton.Click += checkUpdateButton_Click;
+            //
+            // versionFlowLayoutPanel
+            //
+            versionFlowLayoutPanel.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            versionFlowLayoutPanel.AutoSize = true;
+            versionFlowLayoutPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            versionFlowLayoutPanel.Controls.Add(versionValueLabel);
+            versionFlowLayoutPanel.Controls.Add(checkUpdateButton);
+            versionFlowLayoutPanel.Name = "versionFlowLayoutPanel";
+            versionFlowLayoutPanel.TabIndex = 35;
+            //
             // rootTableLayoutPanel
             //
             rootTableLayoutPanel.AutoSize = true;
@@ -338,12 +454,21 @@ namespace SoftwareCrawler
             rootTableLayoutPanel.Controls.Add(defaultDownloadDirectoryTextBox, 1, 9);
             rootTableLayoutPanel.Controls.Add(colorModeLabel, 0, 10);
             rootTableLayoutPanel.Controls.Add(colorModeComboBox, 1, 10);
-            rootTableLayoutPanel.Controls.Add(toolButtonFlowLayoutPanel, 1, 11);
+            rootTableLayoutPanel.Controls.Add(storageLocationLabel, 0, 11);
+            rootTableLayoutPanel.Controls.Add(storageFlowLayoutPanel, 1, 11);
+            rootTableLayoutPanel.Controls.Add(updateCheckLabel, 0, 12);
+            rootTableLayoutPanel.Controls.Add(updateCheckComboBox, 1, 12);
+            rootTableLayoutPanel.Controls.Add(versionLabel, 0, 13);
+            rootTableLayoutPanel.Controls.Add(versionFlowLayoutPanel, 1, 13);
+            rootTableLayoutPanel.Controls.Add(toolButtonFlowLayoutPanel, 1, 14);
             rootTableLayoutPanel.Dock = DockStyle.Fill;
             rootTableLayoutPanel.Location = new Point(0, 0);
             rootTableLayoutPanel.Name = "rootTableLayoutPanel";
             rootTableLayoutPanel.Padding = new Padding(10);
-            rootTableLayoutPanel.RowCount = 12;
+            rootTableLayoutPanel.RowCount = 15;
+            rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -356,7 +481,7 @@ namespace SoftwareCrawler
             rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            rootTableLayoutPanel.Size = new Size(584, 382);
+            rootTableLayoutPanel.Size = new Size(584, 470);
             rootTableLayoutPanel.TabIndex = 21;
             //
             // flowLayoutPanel2
@@ -388,10 +513,10 @@ namespace SoftwareCrawler
             AutoScaleMode = AutoScaleMode.Font;
             AutoSize = true;
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            ClientSize = new Size(587, 382);
+            ClientSize = new Size(587, 470);
             Controls.Add(rootTableLayoutPanel);
             FormBorderStyle = FormBorderStyle.Sizable;
-            MinimumSize = new Size(450, 300);
+            MinimumSize = new Size(450, 360);
             MaximizeBox = true;
             MinimizeBox = true;
             Name = "SettingsForm";
@@ -408,6 +533,10 @@ namespace SoftwareCrawler
             rootTableLayoutPanel.PerformLayout();
             flowLayoutPanel2.ResumeLayout(false);
             flowLayoutPanel2.PerformLayout();
+            storageFlowLayoutPanel.ResumeLayout(false);
+            storageFlowLayoutPanel.PerformLayout();
+            versionFlowLayoutPanel.ResumeLayout(false);
+            versionFlowLayoutPanel.PerformLayout();
             toolButtonFlowLayoutPanel.ResumeLayout(false);
             toolButtonFlowLayoutPanel.PerformLayout();
             ResumeLayout(false);
@@ -444,5 +573,16 @@ namespace SoftwareCrawler
         private TableLayoutPanel rootTableLayoutPanel;
         private FlowLayoutPanel toolButtonFlowLayoutPanel;
         private FlowLayoutPanel flowLayoutPanel2;
+        private Label storageLocationLabel;
+        private ComboBox storageLocationComboBox;
+        private TextBox customStoragePathTextBox;
+        private Button browseStoragePathButton;
+        private FlowLayoutPanel storageFlowLayoutPanel;
+        private Label updateCheckLabel;
+        private ComboBox updateCheckComboBox;
+        private Label versionLabel;
+        private Label versionValueLabel;
+        private Button checkUpdateButton;
+        private FlowLayoutPanel versionFlowLayoutPanel;
     }
 }

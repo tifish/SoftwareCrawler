@@ -1,0 +1,70 @@
+name: Build and Release
+
+on:
+    push:
+        branches: ["main"]
+    pull_request:
+        branches: ["main"]
+
+permissions:
+    contents: write
+
+env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    RELEASE_TAG: "latest_release"
+    PROJECT_NAME: "SoftwareCrawler"
+    DOTNET_NOLOGO: true
+    DOTNET_CLI_TELEMETRY_OPTOUT: 1
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+
+jobs:
+    build_and_release:
+        runs-on: windows-latest
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v7
+              with:
+                  fetch-depth: 0
+                  submodules: recursive
+
+            - name: Setup .NET
+              uses: actions/setup-dotnet@v5
+              with:
+                  dotnet-version: 10.0.x
+                  cache: true
+                  cache-dependency-path: SoftwareCrawler/packages.lock.json
+
+            - name: Compute commit count
+              id: ver
+              shell: pwsh
+              run: |
+                  $count = (git rev-list --count HEAD).Trim()
+                  "count=$count" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+                  Set-Content -Path version.txt -Value $count -NoNewline -Encoding ascii
+                  Write-Host "commit count = $count"
+
+            - name: Publish
+              # Version major = commit count (e.g. 123.0.0.0).
+              run: dotnet publish SoftwareCrawler\SoftwareCrawler.csproj -c Release -r win-x64 --no-self-contained -p:PublishReadyToRun=true -p:PublishTrimmed=false -p:PublishSingleFile=false /p:Version=${{ steps.ver.outputs.count }}
+
+            - name: Zip files
+              shell: pwsh
+              run: |
+                  Get-ChildItem -Path bin -Filter *.pdb -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force
+                  Compress-Archive -Path bin\* -DestinationPath ${{ env.PROJECT_NAME }}.zip -Force
+
+            - name: Delete release and tag
+              if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+              run: gh release delete ${{ env.RELEASE_TAG }} --cleanup-tag -y
+              continue-on-error: true
+
+            - name: Create a new tag and release
+              if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+              run: gh release create ${{ env.RELEASE_TAG }} --generate-notes
+
+            - name: Upload artifacts
+              if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+              run: |
+                  gh release upload ${{ env.RELEASE_TAG }} ${{ env.PROJECT_NAME }}.zip --clobber
+                  gh release upload ${{ env.RELEASE_TAG }} version.txt --clobber

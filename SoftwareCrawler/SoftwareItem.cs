@@ -1,0 +1,1163 @@
+﻿using System.ComponentModel;
+using System.Diagnostics;
+using System.Net;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using JeekTools;
+using Microsoft.Extensions.Logging;
+using ZLogger;
+
+namespace SoftwareCrawler;
+
+public sealed class SoftwareItem : INotifyPropertyChanged
+{
+    private static readonly ILogger Log = LogManager.CreateLogger(nameof(SoftwareItem));
+
+    private class NonSerializedAttribute : Attribute { }
+
+    private DownloadingStatus _status;
+
+    [NonSerialized]
+    public DownloadingStatus Status
+    {
+        get => _status;
+        set
+        {
+            if (_status != value)
+            {
+                _status = value;
+
+                if (SynchronizationContext.Current == _uiSynchronizationContext)
+                    OnPropertyChanged();
+                else
+                    _uiSynchronizationContext?.Post(
+                        _ =>
+                        {
+                            OnPropertyChanged();
+                        },
+                        null
+                    );
+            }
+        }
+    }
+
+    private string _progress = string.Empty;
+
+    [NonSerialized]
+    public string Progress
+    {
+        get => _progress;
+        private set
+        {
+            if (_progress != value)
+            {
+                _progress = value;
+
+                if (SynchronizationContext.Current == _uiSynchronizationContext)
+                    OnPropertyChanged();
+                else
+                    _uiSynchronizationContext?.Post(
+                        _ =>
+                        {
+                            OnPropertyChanged();
+                        },
+                        null
+                    );
+            }
+        }
+    }
+
+    public bool Enabled { get; set; } = true;
+    public string Name { get; set; } = string.Empty;
+    public string WebPage { get; set; } = string.Empty;
+
+    [NonSerialized]
+    public List<string> GetXPathOrScripts()
+    {
+        // XPathOrScript1/2/3/4/5 -> XPathOrScripts
+        // `n -> \n
+        var xpathOrScripts = new List<string>();
+        foreach (var property in XPathOrScriptProperties)
+        {
+            var value = (string)property.GetValue(this)!;
+            if (!string.IsNullOrEmpty(value))
+            {
+                xpathOrScripts.Add(value.Replace("`n", "\n"));
+            }
+        }
+
+        return xpathOrScripts;
+    }
+
+    public void SetXPathOrScripts(List<string> xpathOrScripts)
+    {
+        // XPathOrScripts -> XPathOrScript1/2/3/4/5
+        // \n -> `n
+        for (var i = 0; i < XPathOrScriptProperties.Count; i++)
+        {
+            XPathOrScriptProperties[i]
+                .SetValue(
+                    this,
+                    i < xpathOrScripts.Count ? xpathOrScripts[i].Replace("\n", "`n") : ""
+                );
+        }
+    }
+
+    public string XPathOrScript1 { get; set; } = string.Empty;
+    public string XPathOrScript2 { get; set; } = string.Empty;
+    public string XPathOrScript3 { get; set; } = string.Empty;
+    public string XPathOrScript4 { get; set; } = string.Empty;
+    public string XPathOrScript5 { get; set; } = string.Empty;
+    public string Frames { get; set; } = string.Empty;
+    public int WaitSecondsBeforeClick { get; set; }
+    public int StartDownloadTimeout { get; set; }
+    public string DownloadDirectory { get; set; } = string.Empty;
+
+    [Browsable(false)]
+    public string FinalDownloadDirectory
+    {
+        get
+        {
+            var validName = string.Join("", Name.Split(Path.GetInvalidFileNameChars()));
+
+            var downloadDirectory = DownloadDirectory;
+            if (string.IsNullOrWhiteSpace(downloadDirectory))
+            {
+                if (string.IsNullOrEmpty(Settings.DefaultDownloadDirectory))
+                    downloadDirectory = SystemDownloadFolder;
+                else
+                    downloadDirectory = Settings.DefaultDownloadDirectory;
+
+                downloadDirectory = Path.Join(downloadDirectory, validName);
+            }
+
+            return downloadDirectory;
+        }
+    }
+    public string DownloadDirectory2 { get; set; } = string.Empty;
+    public string FilePatternToDeleteBeforeDownload { get; set; } = string.Empty;
+    public bool ExtractAfterDownload { get; set; }
+    public string FilePatternToDeleteBeforeExtractionAndExtractOnly { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Download WebPage directly over HTTP instead of navigating the embedded browser.
+    /// Some sites (e.g. SourceForge) serve Cloudflare challenges to automated browsers
+    /// but allow plain HTTP clients.
+    /// </summary>
+    public bool DirectDownload { get; set; }
+
+    private string _errorMessage = string.Empty;
+
+    [NonSerialized]
+    public string ErrorMessage
+    {
+        get => _errorMessage;
+        private set
+        {
+            if (_errorMessage != value)
+            {
+                _errorMessage = value;
+
+                if (SynchronizationContext.Current == _uiSynchronizationContext)
+                    OnPropertyChanged();
+                else
+                    _uiSynchronizationContext?.Post(
+                        _ =>
+                        {
+                            OnPropertyChanged();
+                        },
+                        null
+                    );
+            }
+        }
+    }
+
+    public SoftwareItem() { }
+
+    private readonly List<PropertyInfo> XPathOrScriptProperties =
+    [
+        typeof(SoftwareItem).GetProperty(nameof(XPathOrScript1))!,
+        typeof(SoftwareItem).GetProperty(nameof(XPathOrScript2))!,
+        typeof(SoftwareItem).GetProperty(nameof(XPathOrScript3))!,
+        typeof(SoftwareItem).GetProperty(nameof(XPathOrScript4))!,
+        typeof(SoftwareItem).GetProperty(nameof(XPathOrScript5))!,
+    ];
+
+    public SoftwareItem(string dataLine, string extraLine)
+    {
+        FromDataLine(dataLine, DataProperties);
+        FromDataLine(extraLine, ExtraProperties);
+    }
+
+    public static readonly List<PropertyInfo> DataProperties =
+    [
+        .. new[]
+        {
+            nameof(Enabled),
+            nameof(Name),
+            nameof(WebPage),
+            nameof(XPathOrScript1),
+            nameof(XPathOrScript2),
+            nameof(XPathOrScript3),
+            nameof(XPathOrScript4),
+            nameof(XPathOrScript5),
+            nameof(Frames),
+            nameof(WaitSecondsBeforeClick),
+            nameof(StartDownloadTimeout),
+            nameof(FilePatternToDeleteBeforeDownload),
+            nameof(ExtractAfterDownload),
+            nameof(FilePatternToDeleteBeforeExtractionAndExtractOnly),
+            nameof(DirectDownload),
+        }
+            .Select(name => typeof(SoftwareItem).GetProperty(name)!)
+            .ToList(),
+    ];
+
+    public static readonly List<PropertyInfo> ExtraProperties =
+    [
+        .. new[] { nameof(DownloadDirectory), nameof(DownloadDirectory2) }
+            .Select(name => typeof(SoftwareItem).GetProperty(name)!)
+            .ToList(),
+    ];
+
+    public static string GetDataHeaderLine(List<PropertyInfo> properties)
+    {
+        return string.Join('\t', properties.Select(prop => prop.Name));
+    }
+
+    public void FromDataLine(string line, List<PropertyInfo> properties)
+    {
+        var items = line.Split('\t');
+        if (items.Length > properties.Count)
+            throw new Exception("items.Length > properties.Count");
+
+        // Fewer columns than properties is allowed: files saved by older versions
+        // lack newly added trailing columns, which then keep their default values.
+
+        for (var i = 0; i < items.Length; i++)
+        {
+            var prop = properties[i];
+            var item = items[i];
+            if (prop.PropertyType == typeof(string))
+            {
+                prop.SetValue(this, item);
+            }
+            else if (prop.PropertyType == typeof(int))
+            {
+                if (!int.TryParse(item, out var value))
+                    value = 0;
+                prop.SetValue(this, value);
+            }
+            else if (prop.PropertyType == typeof(bool))
+            {
+                prop.SetValue(
+                    this,
+                    item.ToLower() switch
+                    {
+                        "true" or "1" => true,
+                        _ => false,
+                    }
+                );
+            }
+        }
+    }
+
+    public string ToDataLine(List<PropertyInfo> properties)
+    {
+        var items = properties.Select(prop =>
+        {
+            var value = prop.GetValue(this);
+
+            if (prop.PropertyType == typeof(string))
+                return (string)(value ?? string.Empty);
+
+            if (prop.PropertyType == typeof(int))
+            {
+                var intValue = (int)value!;
+                return intValue switch
+                {
+                    0 => string.Empty,
+                    _ => intValue.ToString(),
+                };
+            }
+
+            if (prop.PropertyType == typeof(bool))
+                return (bool)value! switch
+                {
+                    true => "true",
+                    false => string.Empty,
+                };
+
+            throw new Exception("Unexpected property type.");
+        });
+
+        return string.Join('\t', items);
+    }
+
+    /// <summary>
+    /// Creates a copy of the current SoftwareItem with all serializable properties copied.
+    /// Non-serializable properties (Status, Progress, ErrorMessage) are reset to their default values.
+    /// </summary>
+    public SoftwareItem Clone()
+    {
+        var cloned = new SoftwareItem();
+
+        // Copy DataProperties
+        foreach (var property in DataProperties)
+        {
+            var value = property.GetValue(this);
+            property.SetValue(cloned, value);
+        }
+
+        // Copy ExtraProperties
+        foreach (var property in ExtraProperties)
+        {
+            var value = property.GetValue(this);
+            property.SetValue(cloned, value);
+        }
+
+        return cloned;
+    }
+
+    private SynchronizationContext? _uiSynchronizationContext;
+
+    private enum BeginDownloadResult
+    {
+        NoDownload,
+        Failed,
+        Downloaded,
+        HasUpdate,
+        Started,
+    }
+
+    public static readonly string SystemDownloadFolder = KnownFolders.GetPath(
+        KnownFolder.Downloads
+    );
+
+    private bool _hasCancelled;
+
+    private static readonly List<string> ExecutableFileTypes = [".exe", ".msi", ".vsix", ".msix"];
+    private static readonly List<string> ArchiveFileTypes = [".zip", ".rar", ".7z"];
+
+    public async Task<bool> Download(bool testOnly = false, int retryCount = 0)
+    {
+        if (!Enabled)
+            return true;
+
+        Progress = "";
+
+        _hasCancelled = false;
+
+        for (var i = 0; i < retryCount + 1; i++)
+        {
+            if (_hasCancelled)
+                return false;
+
+            var downloadResult = await DownloadOnce(testOnly);
+            switch (downloadResult)
+            {
+                case DownloadOnceResult.Succeeded:
+                    Log.ZLogInformation(
+                        $"Download {Name} successfully, retryCount={i}"
+                    );
+                    return true;
+
+                case DownloadOnceResult.FailedAndRetry:
+                    // Retry
+                    await Task.Delay(Settings.DownloadRetryInterval * 1000);
+                    break;
+
+                case DownloadOnceResult.FailedAndNoRetry:
+                    // No retry
+                    return false;
+            }
+        }
+
+        Log.ZLogWarning(
+            $"Download {Name} failed, retryCount={retryCount}, error={ErrorMessage}"
+        );
+        return false;
+    }
+
+    private enum DownloadOnceResult
+    {
+        Succeeded,
+        FailedAndRetry,
+        FailedAndNoRetry,
+    }
+
+    private async Task<DownloadOnceResult> DownloadOnce(bool testOnly = false)
+    {
+        // Initialize
+        _uiSynchronizationContext = SynchronizationContext.Current;
+
+        Status = DownloadingStatus.CheckingDownloadDirectory;
+        ErrorMessage = string.Empty;
+
+        if (string.IsNullOrEmpty(FinalDownloadDirectory))
+            return Failed("Download directory is empty.", DownloadOnceResult.FailedAndNoRetry);
+
+        if (!Directory.Exists(FinalDownloadDirectory))
+            try
+            {
+                Directory.CreateDirectory(FinalDownloadDirectory);
+            }
+            catch (Exception)
+            {
+                return Failed(
+                    "Download directory does not exist, and failed to create.",
+                    DownloadOnceResult.FailedAndNoRetry
+                );
+            }
+
+        if (DownloadDirectory2 != "" && !Directory.Exists(DownloadDirectory2))
+            try
+            {
+                Directory.CreateDirectory(DownloadDirectory2);
+            }
+            catch (Exception)
+            {
+                return Failed(
+                    "Download directory 2 does not exist, and failed to create.",
+                    DownloadOnceResult.FailedAndNoRetry
+                );
+            }
+
+        var suggestedFileName = string.Empty;
+        var downloadFileSize = 0L;
+        DateTime? downloadFileTime = null;
+        var targetFilePath = string.Empty;
+        var downloadedFilePath = string.Empty;
+        var beginDownloadResult = BeginDownloadResult.NoDownload;
+
+        Browser.BeginDownloadHandler += OnBeginDownloadHandler;
+        Browser.DownloadProgressHandler += OnDownloadProgressHandler;
+
+        // Download
+        try
+        {
+            if (DirectDownload)
+                return await DirectDownloadOverHttp();
+
+            await Browser.ResetToBlankPage();
+
+            // Access download page.
+            await Browser.Load(WebPage);
+
+            // Click links, last link is the download link.
+            var clickResult = await ClickAndTriggerDownload();
+            if (clickResult != DownloadOnceResult.Succeeded)
+                return clickResult;
+
+            // Wait for download to start.
+            Status = DownloadingStatus.WaitingForDownload;
+            var startDownloadTimeout =
+                StartDownloadTimeout > 0 ? StartDownloadTimeout : Settings.StartDownloadTimeout;
+            var waitCounter = startDownloadTimeout * 2;
+            while (beginDownloadResult == BeginDownloadResult.NoDownload)
+            {
+                if (_hasCancelled)
+                    return DownloadOnceResult.FailedAndNoRetry;
+
+                await Task.Delay(500);
+                waitCounter--;
+                if (waitCounter == 0)
+                    return Failed("Failed to start download.", DownloadOnceResult.FailedAndRetry);
+            }
+
+            // Do not download.
+            switch (beginDownloadResult)
+            {
+                case BeginDownloadResult.Failed: // Failed to download
+                    return DownloadOnceResult.FailedAndRetry;
+                case BeginDownloadResult.Downloaded: // Same file already downloaded
+                    return await Succeeded(DownloadingStatus.SameFileAlreadyDownloaded);
+                case BeginDownloadResult.HasUpdate: // Has update but test only
+                    return await Succeeded(DownloadingStatus.HasUpdate);
+            }
+
+            // Wait for download to complete.
+            Status = DownloadingStatus.Downloading;
+            if (!await Browser.WaitForDownloaded(TimeSpan.FromSeconds(Settings.DownloadTimeout)))
+                return Failed("Failed to download file.", DownloadOnceResult.FailedAndRetry);
+
+            return await Succeeded(DownloadingStatus.Downloaded);
+        }
+        catch (Exception ex)
+        {
+            Log.ZLogError(ex, $"Download {Name} failed");
+            return Failed(ex.Message, DownloadOnceResult.FailedAndNoRetry);
+        }
+        finally
+        {
+            if (!testOnly && !string.IsNullOrEmpty(downloadedFilePath))
+            {
+                while (true)
+                {
+                    try
+                    {
+                        if (File.Exists(downloadedFilePath))
+                            File.Delete(downloadedFilePath);
+                    }
+                    catch
+                    {
+                        await Task.Delay(500);
+                        continue;
+                    }
+
+                    break;
+                }
+            }
+
+            _uiSynchronizationContext = null;
+            Browser.BeginDownloadHandler -= OnBeginDownloadHandler;
+            Browser.DownloadProgressHandler -= OnDownloadProgressHandler;
+        }
+
+        // Fetch WebPage with HttpClient and stream it to disk, bypassing the browser.
+        // A non-browser User-Agent avoids Cloudflare browser challenges; the
+        // "Windows NT" hint makes SourceForge-style "latest" links resolve to the
+        // Windows release instead of the generic default.
+        async Task<DownloadOnceResult> DirectDownloadOverHttp()
+        {
+            Status = DownloadingStatus.WaitingForDownload;
+
+            using var handler = new HttpClientHandler();
+            if (!string.IsNullOrWhiteSpace(Settings.Proxy))
+                handler.Proxy = new WebProxy(Settings.Proxy);
+
+            using var client = new HttpClient(handler);
+            client.Timeout = Timeout.InfiniteTimeSpan;
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "SoftwareCrawler/1.0 (Windows NT 10.0; Win64; x64)"
+            );
+
+            var startDownloadTimeout =
+                StartDownloadTimeout > 0 ? StartDownloadTimeout : Settings.StartDownloadTimeout;
+
+            HttpResponseMessage response;
+            try
+            {
+                using var headerCts = new CancellationTokenSource(
+                    TimeSpan.FromSeconds(startDownloadTimeout)
+                );
+                response = await client.GetAsync(
+                    WebPage,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    headerCts.Token
+                );
+            }
+            catch (Exception ex)
+            {
+                return Failed(
+                    $"Failed to request download URL: {ex.Message}",
+                    DownloadOnceResult.FailedAndRetry
+                );
+            }
+
+            using (response)
+            {
+                if (!response.IsSuccessStatusCode)
+                    return Failed(
+                        $"Download URL returned {(int)response.StatusCode} {response.ReasonPhrase}.",
+                        DownloadOnceResult.FailedAndRetry
+                    );
+
+                var contentDisposition = response.Content.Headers.ContentDisposition;
+                var fileName =
+                    contentDisposition?.FileNameStar ?? contentDisposition?.FileName?.Trim('"');
+                if (string.IsNullOrWhiteSpace(fileName))
+                {
+                    var finalUri = response.RequestMessage?.RequestUri ?? new Uri(WebPage);
+                    fileName = Uri.UnescapeDataString(Path.GetFileName(finalUri.LocalPath));
+                }
+
+                if (string.IsNullOrWhiteSpace(fileName))
+                    return Failed(
+                        "Cannot determine download file name.",
+                        DownloadOnceResult.FailedAndNoRetry
+                    );
+
+                var item = new DownloadItem
+                {
+                    Url = response.RequestMessage?.RequestUri?.ToString() ?? WebPage,
+                    SuggestedFileName = fileName,
+                    TotalBytes = response.Content.Headers.ContentLength ?? 0,
+                    EndTime = response.Content.Headers.LastModified?.LocalDateTime,
+                    LastUpdateTime = DateTime.Now,
+                };
+
+                // Reuse the same decision logic as browser downloads
+                // (file type check, same-file detection, testOnly handling).
+                OnBeginDownloadHandler(this, item);
+
+                switch (beginDownloadResult)
+                {
+                    case BeginDownloadResult.Failed:
+                        return DownloadOnceResult.FailedAndRetry;
+                    case BeginDownloadResult.Downloaded:
+                        return await Succeeded(DownloadingStatus.SameFileAlreadyDownloaded);
+                    case BeginDownloadResult.HasUpdate:
+                        return await Succeeded(DownloadingStatus.HasUpdate);
+                }
+
+                Status = DownloadingStatus.Downloading;
+                try
+                {
+                    using var downloadCts = new CancellationTokenSource(
+                        TimeSpan.FromSeconds(Settings.DownloadTimeout)
+                    );
+                    await using var httpStream = await response.Content.ReadAsStreamAsync(
+                        downloadCts.Token
+                    );
+                    await using var fileStream = new FileStream(
+                        item.DownloadedFilePath,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.None,
+                        81920,
+                        useAsync: true
+                    );
+
+                    var buffer = new byte[81920];
+                    int bytesRead;
+                    while (
+                        (bytesRead = await httpStream.ReadAsync(buffer, downloadCts.Token)) > 0
+                    )
+                    {
+                        if (_hasCancelled)
+                        {
+                            item.IsCancelled = true;
+                            return DownloadOnceResult.FailedAndNoRetry;
+                        }
+
+                        await fileStream.WriteAsync(
+                            buffer.AsMemory(0, bytesRead),
+                            downloadCts.Token
+                        );
+
+                        item.ReceivedBytes += bytesRead;
+                        item.PercentComplete =
+                            item.TotalBytes > 0
+                                ? (int)((double)item.ReceivedBytes / item.TotalBytes * 100)
+                                : 0;
+
+                        var now = DateTime.Now;
+                        var elapsed = (now - item.LastUpdateTime).TotalSeconds;
+                        if (elapsed >= 0.2)
+                        {
+                            item.CurrentSpeed = (long)(
+                                (item.ReceivedBytes - item.LastReceivedBytes) / elapsed
+                            );
+                            item.RemainingTime =
+                                item.CurrentSpeed > 0 && item.TotalBytes > 0
+                                    ? TimeSpan.FromSeconds(
+                                        (item.TotalBytes - item.ReceivedBytes)
+                                            / (double)item.CurrentSpeed
+                                    )
+                                    : TimeSpan.Zero;
+                            item.LastReceivedBytes = item.ReceivedBytes;
+                            item.LastUpdateTime = now;
+                            OnDownloadProgressHandler(this, item);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return Failed(
+                        $"Failed to download file: {ex.Message}",
+                        DownloadOnceResult.FailedAndRetry
+                    );
+                }
+
+                if (item.TotalBytes > 0 && item.ReceivedBytes != item.TotalBytes)
+                    return Failed(
+                        $"Download incomplete: {item.ReceivedBytes} of {item.TotalBytes} bytes.",
+                        DownloadOnceResult.FailedAndRetry
+                    );
+
+                if (item.TotalBytes == 0)
+                    item.TotalBytes = item.ReceivedBytes;
+                item.PercentComplete = 100;
+                item.IsComplete = true;
+                OnDownloadProgressHandler(this, item);
+
+                return await Succeeded(DownloadingStatus.Downloaded);
+            }
+        }
+
+        async Task<DownloadOnceResult> ClickAndTriggerDownload()
+        {
+            var frameNames = string.IsNullOrWhiteSpace(Frames)
+                ? []
+                : Frames.Split('`').Select(x => x.Trim()).ToList();
+
+            var xpathOrScripts = GetXPathOrScripts();
+            for (var i = 0; i < xpathOrScripts.Count; i++)
+            {
+                Status = DownloadingStatus.WaitingForLoadEnd;
+                for (var seconds = 0; seconds < Settings.LoadPageEndTimeout; seconds++)
+                {
+                    if (_hasCancelled)
+                        return DownloadOnceResult.FailedAndNoRetry;
+                    if (await Browser.WaitForMainFrameLoadEnd(TimeSpan.FromSeconds(1)))
+                        break;
+                }
+
+                // Some script may be executed after page loaded, wait for it.
+                await Task.Delay((WaitSecondsBeforeClick + 1) * 1000);
+
+                // If still not loaded, try to click the link directly.
+                Browser.PrepareLoadEvents();
+
+                var xpathOrScript = xpathOrScripts[i];
+                var frameName = i < frameNames.Count ? frameNames[i] : string.Empty;
+
+                // Is XPath
+                if (
+                    xpathOrScript.StartsWith("//")
+                        && xpathOrScript.Length >= 3
+                        && char.IsLetter(xpathOrScript[2])
+                    || xpathOrScript.StartsWith("(//")
+                        && xpathOrScript.Length >= 4
+                        && char.IsLetter(xpathOrScript[3])
+                )
+                {
+                    Status = DownloadingStatus.Clicking;
+
+                    // Scroll to the element first
+                    var scrollScript = $$"""
+                        {
+                            let element = document.evaluate("{{xpathOrScript}}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                            let elementRect = element.getBoundingClientRect();
+                            let absoluteElementTop = elementRect.top + window.pageYOffset;
+                            let middle = absoluteElementTop - (window.innerHeight / 2);
+                            window.scrollTo(0, middle);
+                        }
+                        """;
+                    if (!await Browser.TryEvaluateJavascript(scrollScript, frameName))
+                    {
+                        // If scroll failed, try to click directly.
+                        Log.ZLogError(
+                            $"Failed to scroll to, error: {Browser.LastJavascriptError}"
+                        );
+                    }
+
+                    // Then click
+                    if (
+                        !await Browser.TryClick(
+                            xpathOrScript,
+                            frameName,
+                            Settings.TryClickCount,
+                            Settings.TryClickInterval * 1000
+                        )
+                    )
+                        return Failed(
+                            $"Failed to click, error: {Browser.LastJavascriptError}",
+                            DownloadOnceResult.FailedAndRetry
+                        );
+                }
+                else // Is JavaScript
+                {
+                    Status = DownloadingStatus.ExecutingScript;
+                    // Scripts often include their own wait/retry loops (and may return a
+                    // Promise that WebView2 awaits). Do not re-run the whole script many
+                    // times — each attempt can take a long time.
+                    if (!await Browser.TryEvaluateJavascript(xpathOrScript, frameName, count: 1))
+                        return Failed(
+                            $"Failed to execute script: {Browser.LastJavascriptError}",
+                            DownloadOnceResult.FailedAndRetry
+                        );
+                }
+            }
+
+            return DownloadOnceResult.Succeeded;
+        }
+
+        // Called when download starts, decide whether to download.
+        void OnBeginDownloadHandler(object? o, DownloadItem item)
+        {
+            suggestedFileName = item.SuggestedFileName;
+            downloadFileSize = item.TotalBytes;
+            downloadFileTime = item.EndTime;
+
+            // Download to system download folder first, then move to download directory.
+            downloadedFilePath = Path.Combine(SystemDownloadFolder, suggestedFileName);
+            var ext = Path.GetExtension(item.SuggestedFileName).ToLower();
+
+            if (!ExecutableFileTypes.Contains(ext) && !ArchiveFileTypes.Contains(ext))
+            {
+                Failed(
+                    $"Unexpected file name: {suggestedFileName}",
+                    DownloadOnceResult.FailedAndNoRetry
+                );
+                beginDownloadResult = BeginDownloadResult.Failed;
+                item.IsCancelled = true;
+                return;
+            }
+
+            targetFilePath = Path.Join(FinalDownloadDirectory, suggestedFileName);
+
+            // Compare file size to determine download or not.
+            // Epic Launcher download page may change its file name for each download.
+            // Find the old file and check the size.
+            var oldFile = targetFilePath;
+            if (
+                !File.Exists(oldFile)
+                && !string.IsNullOrWhiteSpace(FilePatternToDeleteBeforeDownload)
+            )
+            {
+                oldFile = Directory
+                    .GetFiles(FinalDownloadDirectory, FilePatternToDeleteBeforeDownload)
+                    .FirstOrDefault();
+            }
+
+            if (File.Exists(oldFile))
+            {
+                var fileInfo = new FileInfo(oldFile);
+
+                // Prefer size comparison when the server reports the file size.
+                // When the size is unknown (no Content-Length, e.g. chunked transfer),
+                // fall back to comparing the server's Last-Modified time against the local
+                // file's modification time. Downloaded files are stamped with that time in
+                // Succeeded(), so a match means the file is unchanged. Without either signal
+                // we cannot tell, so treat it as needing download.
+                bool isSameFile;
+                if (downloadFileSize > 0)
+                    isSameFile = fileInfo.Length == downloadFileSize;
+                else if (downloadFileTime.HasValue)
+                    isSameFile =
+                        Math.Abs((fileInfo.LastWriteTime - downloadFileTime.Value).TotalSeconds)
+                        < 2;
+                else
+                    isSameFile = false;
+
+                if (isSameFile)
+                {
+                    beginDownloadResult = BeginDownloadResult.Downloaded;
+                    targetFilePath = oldFile;
+                    item.IsCancelled = true;
+                    return;
+                }
+            }
+
+            if (testOnly)
+            {
+                beginDownloadResult = BeginDownloadResult.HasUpdate;
+                item.IsCancelled = true;
+                return;
+            }
+
+            beginDownloadResult = BeginDownloadResult.Started;
+            // Tell the browser to download to the downloadingFilePath.
+            item.DownloadedFilePath = downloadedFilePath;
+        }
+
+        // Called when download progress changes.
+        void OnDownloadProgressHandler(object? o, DownloadItem item)
+        {
+            // Download file name may change if same file exists.
+            downloadedFilePath = item.DownloadedFilePath;
+
+            Progress =
+                $"{item.SuggestedFileName}"
+                + $" - {item.PercentComplete:00}%"
+                + $" - {item.ReceivedBytes:#,###} / {item.TotalBytes:#,###} Bytes"
+                + $" - {item.CurrentSpeed / 1024:#,###} KB/s"
+                + $" - {item.RemainingTime:hh\\:mm\\:ss}";
+        }
+
+        // When download is completed, move file to target directory.
+        // finalStatus can be: Downloaded, SameFileAlreadyDownloaded, HasUpdate
+        async Task<DownloadOnceResult> Succeeded(DownloadingStatus finalStatus)
+        {
+            Status = finalStatus;
+
+            Progress = $"{suggestedFileName} - {(double)downloadFileSize:#,###} Bytes";
+
+            if (testOnly) // finalStatus == HasUpdate
+                return DownloadOnceResult.Succeeded;
+
+            try
+            {
+                // Delete other old files in the same directory.
+                await DeleteOtherFilesInSameDirectory(targetFilePath);
+
+                // Copy file from downloading folder to target directory.
+                if (File.Exists(downloadedFilePath))
+                {
+                    if (downloadFileTime.HasValue)
+                        File.SetLastWriteTime(downloadedFilePath, downloadFileTime.Value);
+
+                    if (await CopyFileIfChanged(downloadedFilePath, targetFilePath, true))
+                        await CallEventScript(
+                            FinalDownloadDirectory,
+                            "AfterDownload",
+                            targetFilePath
+                        );
+                }
+
+                // Extract target file and copy to download directory 2.
+                if (File.Exists(targetFilePath))
+                {
+                    if (downloadFileTime.HasValue)
+                        File.SetLastWriteTime(targetFilePath, downloadFileTime.Value);
+
+                    // Extract only if the file is newly downloaded.
+                    if (finalStatus == DownloadingStatus.Downloaded)
+                    {
+                        await ExtractArchiveFile(targetFilePath);
+                        await CallEventScript(
+                            FinalDownloadDirectory,
+                            "AfterExtract",
+                            targetFilePath
+                        );
+                    }
+
+                    // Copy file from downloading folder to download directory 2.
+                    if (!string.IsNullOrEmpty(DownloadDirectory2))
+                    {
+                        var targetFile2 = Path.Combine(DownloadDirectory2, suggestedFileName);
+                        // Delete other old files in the same directory.
+                        await DeleteOtherFilesInSameDirectory(targetFile2);
+
+                        // Copy file from download directory 1 to download directory 2.
+                        if (await CopyFileIfChanged(targetFilePath, targetFile2))
+                            await CallEventScript(DownloadDirectory2, "AfterDownload", targetFile2);
+
+                        // Extract only if the file is newly downloaded.
+                        if (finalStatus == DownloadingStatus.Downloaded)
+                        {
+                            await ExtractArchiveFile(targetFile2);
+                            await CallEventScript(DownloadDirectory2, "AfterExtract", targetFile2);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Only change status when copying file fails.
+                Status = DownloadingStatus.CopyingFile;
+                return Failed(ex.Message, DownloadOnceResult.FailedAndNoRetry);
+            }
+
+            return DownloadOnceResult.Succeeded;
+        }
+
+        Task DeleteOtherFilesInSameDirectory(string filePath)
+        {
+            if (testOnly || string.IsNullOrWhiteSpace(FilePatternToDeleteBeforeDownload))
+                return Task.CompletedTask;
+
+            var dir = Path.GetDirectoryName(filePath)!;
+            var pattern = FilePatternToDeleteBeforeDownload;
+
+            // Run on background thread to avoid blocking the UI while scanning / deleting files.
+            return Task.Run(() =>
+            {
+                try
+                {
+                    Directory
+                        .GetFiles(dir, pattern)
+                        .Where(file =>
+                            string.Compare(file, filePath, StringComparison.OrdinalIgnoreCase) != 0
+                        )
+                        .ToList()
+                        .ForEach(File.Delete);
+                }
+                catch (Exception ex)
+                {
+                    Log.ZLogError(ex, $"Failed to delete other files in {dir}");
+                }
+            });
+        }
+
+        // When download fails, return error message.
+        DownloadOnceResult Failed(string errorMessage, DownloadOnceResult downloadOnceResult)
+        {
+            ErrorMessage = $"When {Status}: {errorMessage}";
+            Status = DownloadingStatus.Failed;
+            Progress = string.Empty;
+
+            return downloadOnceResult;
+        }
+
+        async Task CallEventScript(string directory, string eventName, string filePath)
+        {
+            var script = Path.Join(directory, eventName + ".cmd");
+            if (File.Exists(script)) // Execute .cmd file
+            {
+                using var process = Process.Start(
+                    new ProcessStartInfo
+                    {
+                        FileName = script,
+                        Arguments = $"\"{filePath}\"",
+                        WorkingDirectory = directory,
+                        UseShellExecute = true,
+                    }
+                );
+                if (process == null)
+                    return;
+
+                await process.WaitForExitAsync();
+                return;
+            }
+            else // Execute .ps1 file
+            {
+                script = Path.Join(directory, eventName + ".ps1");
+
+                if (!File.Exists(script))
+                    return;
+
+                using var process = Process.Start(
+                    new ProcessStartInfo
+                    {
+                        FileName = "powershell",
+                        Arguments = $"-ExecutionPolicy Bypass -File \"{script}\" \"{filePath}\"",
+                        WorkingDirectory = directory,
+                        UseShellExecute = true,
+                    }
+                );
+                if (process == null)
+                    return;
+
+                await process.WaitForExitAsync();
+            }
+        }
+    }
+
+    private static Task<bool> CopyFileIfChanged(
+        string sourceFile,
+        string targetFile,
+        bool move = false
+    )
+    {
+        // Run synchronous file I/O on a background thread so the UI thread
+        // is not blocked while moving / copying potentially large files.
+        return Task.Run(() =>
+        {
+            var sourceFileInfo = new FileInfo(sourceFile);
+            var targetFileInfo = new FileInfo(targetFile);
+
+            // Ignore same file.
+            if (targetFileInfo.Exists)
+            {
+                if (
+                    sourceFileInfo.Length == targetFileInfo.Length
+                    && sourceFileInfo.LastWriteTime == targetFileInfo.LastWriteTime
+                )
+                    return false;
+            }
+
+            // Copy / move sourceFile to targetFile.
+            if (move)
+            {
+                try
+                {
+                    File.Move(sourceFile, targetFile, true);
+                }
+                catch
+                {
+                    // WebView2 download safe check may lock the file. Try to copy.
+                    File.Copy(sourceFile, targetFile, true);
+                }
+            }
+            else
+            {
+                File.Copy(sourceFile, targetFile, true);
+            }
+
+            File.SetLastWriteTime(targetFile, sourceFileInfo.LastWriteTime);
+
+            return true;
+        });
+    }
+
+    private static readonly string SevenZipPath = Path.Combine(
+        AppDomain.CurrentDomain.SetupInformation.ApplicationBase!,
+        "7-Zip",
+        "7z.exe"
+    );
+
+    private async Task ExtractArchiveFile(string archiveFile)
+    {
+        if (!ExtractAfterDownload)
+            return;
+
+        if (!ArchiveFileTypes.Contains(Path.GetExtension(archiveFile).ToLower()))
+            return;
+
+        var archiveDir = Path.GetDirectoryName(archiveFile)!;
+        var pattern = FilePatternToDeleteBeforeExtractionAndExtractOnly;
+
+        if (pattern != "")
+            await Task.Run(() =>
+                Directory.GetFiles(archiveDir, pattern).ToList().ForEach(File.Delete)
+            );
+
+        // extract files to root directory.
+        using var process = Process.Start(
+            new ProcessStartInfo
+            {
+                FileName = SevenZipPath,
+                Arguments = $@"e -y -o""{archiveDir}"" ""{archiveFile}"" {pattern} -r",
+                UseShellExecute = true,
+            }
+        );
+
+        if (process == null)
+            return;
+
+        await process.WaitForExitAsync();
+
+        // Delete empty sub-directories in archiveDir
+        await Task.Run(() =>
+        {
+            foreach (var subDirectory in Directory.GetDirectories(archiveDir))
+                if (
+                    Directory.GetFiles(subDirectory).Length == 0
+                    && Directory.GetDirectories(subDirectory).Length == 0
+                )
+                    Directory.Delete(subDirectory);
+        });
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    public void ResetStatus()
+    {
+        Status = DownloadingStatus.Idle;
+        Progress = string.Empty;
+        ErrorMessage = string.Empty;
+    }
+
+    public void CancelDownload()
+    {
+        _hasCancelled = true;
+        Browser.Cancel();
+
+        Status = DownloadingStatus.Cancelled;
+    }
+}
+
+public enum DownloadingStatus
+{
+    Idle,
+    CheckingDownloadDirectory,
+    WaitingForLoadEnd,
+    Clicking,
+    ExecutingScript,
+    WaitingForDownload,
+    Downloading,
+    SameFileAlreadyDownloaded,
+    Downloaded,
+    HasUpdate,
+    CopyingFile,
+    Failed,
+    Cancelled,
+}

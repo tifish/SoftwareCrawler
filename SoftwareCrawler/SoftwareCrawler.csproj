@@ -6,21 +6,24 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-    <OutDir>bin</OutDir>
-    <PublishDir>bin</PublishDir>
-    <PublishReadyToRun>true</PublishReadyToRun>
+    <LangVersion>preview</LangVersion>
+    <RootNamespace>SoftwareCrawler</RootNamespace>
+    <AssemblyName>SoftwareCrawler</AssemblyName>
+    <!-- Dev builds are always 0.0.0.0; CI overrides with /p:Version=<commit count>. -->
+    <Version>0.0.0.0</Version>
+    <OutDir>..\bin</OutDir>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
+    <CETCompat>false</CETCompat>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishDir>$(OutDir)</PublishDir>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <ForceDesignerDPIUnaware>true</ForceDesignerDPIUnaware>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!-- MSB3277: benign WindowsBase 4.0.0.0/5.0.0.0 conflict pulled in by the WPF
          assembly bundled with Microsoft.Web.WebView2 (we use the WinForms control). -->
     <NoWarn>1701;1702;CA1416;1591</NoWarn>
     <MSBuildWarningsAsMessages>MSB3277</MSBuildWarningsAsMessages>
-    <LangVersion>preview</LangVersion>
-    <ForceDesignerDPIUnaware>true</ForceDesignerDPIUnaware>
-    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <CETCompat>false</CETCompat>
-    <PublishReadyToRun>true</PublishReadyToRun>
-    <PublishDir>$(OutDir)</PublishDir>
   </PropertyGroup>
   <PropertyGroup>
     <BeautySharedRuntimeMode>False</BeautySharedRuntimeMode>
@@ -60,10 +63,11 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3967.48" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="nulastudio.NetBeauty" Version="2.1.5" />
-    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
     <PackageReference Include="System.CommandLine" Version="2.0.8" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\JeekTools.NET\JeekTools.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Update="Properties\Resources.Designer.cs">

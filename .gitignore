@@ -1,18 +1,35 @@
-/.idea
-/.vs
-/.vscode
-/.config
-/obj
-*.log
-/*.user
-/*.DotSettings
+# Build output
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+artifacts/
+publish/
+
+# Rider / Visual Studio / VS Code
+.vs/
+.idea/
+.vscode/
+.config/
+*.user
+*.suo
+*.DotSettings
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Runtime data produced next to the repo root
 /Cache
-/bin/Libs
-/bin/locales
-/bin/Logs
-/bin/Cache
-/bin/*.exe
-/bin/*.dll
-/bin/*.pdb
-/bin/*.json
-/bin/Config/DownloadDirectory.tab
+*.log
+
+# Only data files and scripts live in bin; everything else is generated,
+# user data, or downloaded at runtime.
+bin/*
+!bin/*.ps1
+!bin/*.cmd
+!bin/Data/
+!bin/Data/**
+!bin/7-Zip/
+!bin/7-Zip/**
