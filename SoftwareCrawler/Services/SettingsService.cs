@@ -270,6 +270,10 @@ public class SettingsService
         var mergedMachine = localMachine;
         var mergedRoaming = localRoaming;
 
+        // Brackets both writes so the watcher can date them; TryMergeAndWrite already
+        // merges with whatever is on disk, so an outside edit is absorbed, not lost.
+        using var selfWrite = ConfigChangeMonitor.BeginSelfWrite(MachineSettingsPath, roamingPath);
+
         if (!string.Equals(machineJson, _lastSavedMachineJson, StringComparison.Ordinal))
         {
             var machineSaved = JsonSettingsFile.TryMergeAndWrite<MachineAppSettings>(

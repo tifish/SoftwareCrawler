@@ -134,6 +134,13 @@ public static class DebugMcpContract
                 "storage_info",
                 "Report the resolved settings paths: machine config, roaming config, storage mode, and whether portable mode is forced.",
                 new()
+            ),
+            Tool(
+                "config_monitor",
+                "Report the config watcher state: whether it is live, which events are waiting for the quiet period, "
+                    + "and for every tracked config file the content baseline the app holds and whether the file on disk "
+                    + "has been changed outside the app (in which case saving it is skipped).",
+                new()
             )
         );
 

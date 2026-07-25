@@ -61,6 +61,11 @@ public static class SoftwareManager
             Items.Add(item);
         }
 
+        // Remember what we just read: a later save compares against this to notice
+        // that somebody else has edited the files in the meantime.
+        ConfigChangeMonitor.MarkSelfWrite(softwarePath);
+        ConfigChangeMonitor.MarkSelfWrite(downloadDirectoryPath);
+
         Log.ZLogInformation($"Loaded {Items.Count} software items from {softwarePath}");
     }
 
@@ -110,11 +115,28 @@ public static class SoftwareManager
         return columns.Length > 1 ? columns[1] : string.Empty;
     }
 
-    private static async Task SaveCore()
+    /// <summary>Returns false when the write was skipped to protect an outside edit.</summary>
+    private static async Task<bool> SaveCore()
     {
         var softwarePath = SoftwarePath;
         var downloadDirectoryPath = DownloadDirectoryPath;
         Directory.CreateDirectory(Path.GetDirectoryName(softwarePath)!);
+
+        // The two files are one document keyed by name, so an outside edit to
+        // either makes the in-memory list stale. Writing it back would silently
+        // undo that edit, which is worse than losing the app-side change - the
+        // app can reload, the user's text editor cannot. The watcher reports the
+        // change within its quiet period and the app reloads from disk.
+        if (
+            ConfigChangeMonitor.HasExternalChange(softwarePath)
+            || ConfigChangeMonitor.HasExternalChange(downloadDirectoryPath)
+        )
+        {
+            Log.ZLogWarning(
+                $"Skipped saving the software list: {softwarePath} changed outside the app since it was last read"
+            );
+            return false;
+        }
 
         var dataItems = new List<string>(Items.Count + 1)
         {
@@ -130,17 +152,19 @@ public static class SoftwareManager
             Items.Select(item => item.Name + '\t' + item.ToDataLine(SoftwareItem.ExtraProperties))
         );
 
-        // Write both files in parallel.
+        // Write both files in parallel. The scope keeps the watcher from treating
+        // our own write as an external edit, and records the new content on exit.
         var encoding = new UTF8Encoding(true);
-        await Task.WhenAll(
-                File.WriteAllLinesAsync(softwarePath, dataItems, encoding),
-                File.WriteAllLinesAsync(downloadDirectoryPath, extraItems, encoding)
-            )
-            .ConfigureAwait(false);
+        using (ConfigChangeMonitor.BeginSelfWrite(softwarePath, downloadDirectoryPath))
+        {
+            await Task.WhenAll(
+                    File.WriteAllLinesAsync(softwarePath, dataItems, encoding),
+                    File.WriteAllLinesAsync(downloadDirectoryPath, extraItems, encoding)
+                )
+                .ConfigureAwait(false);
+        }
 
-        // Keep the watcher from treating our own write as an external edit.
-        ConfigChangeMonitor.MarkSelfWrite(softwarePath);
-        ConfigChangeMonitor.MarkSelfWrite(downloadDirectoryPath);
+        return true;
     }
 
     // Debounced save: coalesces bursts of edits (e.g. typing in a cell, multiple row
@@ -176,14 +200,15 @@ public static class SoftwareManager
     }
 
     // Forces an immediate save, bypassing the debounce. Use on shutdown to guarantee
-    // the latest changes are flushed to disk.
-    public static async Task FlushAsync()
+    // the latest changes are flushed to disk. False means the write was skipped
+    // because the files changed outside the app.
+    public static async Task<bool> FlushAsync()
     {
         _debounceCts?.Cancel();
         await _saveGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            await SaveCore().ConfigureAwait(false);
+            return await SaveCore().ConfigureAwait(false);
         }
         finally
         {

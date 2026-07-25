@@ -71,6 +71,7 @@ internal static class DebugMcpServer
         host.AddTool("software_list", SoftwareListAsync);
         host.AddTool("download_probe", DownloadProbeAsync);
         host.AddTool("storage_info", _ => Task.FromResult(StorageInfo()));
+        host.AddTool("config_monitor", _ => Task.FromResult(ConfigMonitorInfo()));
         return host;
     }
 
@@ -195,6 +196,9 @@ internal static class DebugMcpServer
 
         /// <summary>Writes the software list immediately, skipping the save debounce.</summary>
         public void FlushSoftwareList() => SoftwareManager.FlushAsync().GetAwaiter().GetResult();
+
+        /// <summary>Reloads the software list from disk, as an outside edit would.</summary>
+        public void ReloadSoftwareList() => SoftwareManager.Load().GetAwaiter().GetResult();
     }
 
     private static readonly AppRoot Root = new();
@@ -417,6 +421,28 @@ internal static class DebugMcpServer
         sb.AppendLine($"Machine config root: {SettingsService.MachineConfigRoot}");
         sb.AppendLine($"Program config root: {SettingsService.ProgramConfigRoot}");
         sb.AppendLine($"Watching: {ConfigChangeMonitor.Root}");
+        return ToolText(sb.ToString());
+    }
+
+    /// <summary>
+    /// What the config watcher currently believes about the files it protects:
+    /// whether the app would refuse to overwrite them, and what it last saw.
+    /// </summary>
+    private static JsonObject ConfigMonitorInfo()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"Watching: {ConfigChangeMonitor.Root}");
+        sb.AppendLine($"Watcher active: {ConfigChangeMonitor.IsWatching}");
+        sb.AppendLine($"Pending events: {ConfigChangeMonitor.DescribePending()}");
+        sb.AppendLine($"In-memory software items: {SoftwareManager.Items.Count}");
+        sb.AppendLine();
+
+        foreach (var path in ConfigChangeMonitor.TrackedPaths)
+            sb.AppendLine(
+                $"{Path.GetFileName(path)}: known={ConfigChangeMonitor.DescribeKnown(path)} "
+                    + $"externallyChanged={ConfigChangeMonitor.HasExternalChange(path)}"
+            );
+
         return ToolText(sb.ToString());
     }
 
