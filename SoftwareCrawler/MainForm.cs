@@ -166,22 +166,28 @@ public partial class MainForm : Form
         if (IsDisposed || !IsHandleCreated)
             return;
 
+        var names = changedFiles.Select(Path.GetFileName).ToArray();
+        var settingsChanged = names.Contains("settings.json", StringComparer.OrdinalIgnoreCase);
+        // Both .tab files back the same grid, so either one means a single rebind.
+        var listChanged =
+            names.Contains("Software.tab", StringComparer.OrdinalIgnoreCase)
+            || names.Contains("DownloadDirectory.tab", StringComparer.OrdinalIgnoreCase);
+        if (!settingsChanged && !listChanged)
+            return;
+
         BeginInvoke(async () =>
         {
-            foreach (var file in changedFiles)
+            if (settingsChanged)
             {
-                var name = Path.GetFileName(file);
-                if (name.Equals("settings.json", StringComparison.OrdinalIgnoreCase))
-                {
-                    SettingsStore.ReloadRoamingSettings();
-                    Application.SetColorMode(Settings.ColorMode);
-                    Log.ZLogInformation($"Reloaded settings from {file}");
-                }
-                else if (name.Equals("Software.tab", StringComparison.OrdinalIgnoreCase))
-                {
-                    await Reload();
-                    Log.ZLogInformation($"Reloaded the software list from {file}");
-                }
+                SettingsStore.ReloadRoamingSettings();
+                Application.SetColorMode(Settings.ColorMode);
+                Log.ZLogInformation($"Reloaded settings after an outside edit");
+            }
+
+            if (listChanged)
+            {
+                await Reload();
+                Log.ZLogInformation($"Reloaded the software list after an outside edit");
             }
         });
     }

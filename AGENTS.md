@@ -7,7 +7,7 @@
 - `SoftwareCrawler/` — the WinForms app (WebView2 drives the crawling).
 - `JeekTools.NET/` — shared library, a git submodule.
 - `Tools/DebugMcpBridge/` — stdio MCP bridge that forwards to the running Debug app.
-- `bin/` — build output and the version-controlled runtime files (data, scripts).
+- `bin/` — build output plus the version-controlled runtime files: `Config/Software.tab` (the software list), `7-Zip/`, and the scripts. Everything else under `bin/` is generated or user data.
 - `Build.cmd` / `Run.cmd` / `Publish.cmd` — build, build+launch, optimized publish.
 
 ## Rules

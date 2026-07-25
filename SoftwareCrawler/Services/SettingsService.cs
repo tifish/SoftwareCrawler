@@ -28,9 +28,6 @@ public class SettingsService
     /// <summary>The Config folder holding machine-local data.</summary>
     public static string MachineConfigRoot => Storage.LocalConfigDir;
 
-    /// <summary>The folder holding the data files shipped with the app.</summary>
-    public static string BuiltInDataRoot => Path.Combine(Storage.ProgramDir, "Data");
-
     /// <summary>The Config folder next to the executable; its existence forces portable mode.</summary>
     public static string ProgramConfigRoot => Storage.ProgramConfigDir;
 

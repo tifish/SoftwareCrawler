@@ -23,9 +23,10 @@ irm https://ghfast.top/https://raw.githubusercontent.com/tifish/SoftwareCrawler/
 
 ## 配置存放位置
 
-- 本机相关设置（窗口位置、下载目录等）：`%LOCALAPPDATA%\SoftwareCrawler\Config`
-- 可漫游设置与软件列表：默认 `%APPDATA%\SoftwareCrawler\Config`，可在设置中改为便携模式（程序目录下的 `Config`）或自定义目录。
-- 程序目录下存在 `Config` 时强制使用便携模式。
+- 软件列表 `Config\Software.tab` 随程序发布并入库，下载目录 `Config\DownloadDirectory.tab` 与它同目录，按软件名关联，因此增删或调整顺序都不会错位。
+- 因为程序目录下始终带 `Config`，运行时使用便携模式，设置也写在这里。
+- 本机相关设置（本机路径、代理等）：`%LOCALAPPDATA%\SoftwareCrawler\Config`。
+- 设置窗口可切换存放位置（默认 AppData / 便携 / 自定义），切换时会询问是否移动 `Config` 目录。
 
 ## 开发
 

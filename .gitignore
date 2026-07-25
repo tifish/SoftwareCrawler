@@ -29,7 +29,10 @@ Thumbs.db
 bin/*
 !bin/*.ps1
 !bin/*.cmd
-!bin/Data/
-!bin/Data/**
 !bin/7-Zip/
 !bin/7-Zip/**
+
+# The software list ships with the app; the rest of Config is user data.
+!bin/Config/
+bin/Config/*
+!bin/Config/Software.tab

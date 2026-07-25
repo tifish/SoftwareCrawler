@@ -192,6 +192,9 @@ internal static class DebugMcpServer
         public SettingsService SettingsStore => SettingsSingletonContainer.SettingsStore;
         public List<SoftwareItem> Software => SoftwareManager.Items;
         public DebugInstanceInfo Instance => DebugInstanceContext.Info;
+
+        /// <summary>Writes the software list immediately, skipping the save debounce.</summary>
+        public void FlushSoftwareList() => SoftwareManager.FlushAsync().GetAwaiter().GetResult();
     }
 
     private static readonly AppRoot Root = new();
@@ -412,7 +415,7 @@ internal static class DebugMcpServer
         sb.AppendLine($"Roaming settings: {SettingsStore.RoamingSettingsPath}");
         sb.AppendLine($"Roaming config root: {SettingsStore.ResolveConfigRoot()}");
         sb.AppendLine($"Machine config root: {SettingsService.MachineConfigRoot}");
-        sb.AppendLine($"Built-in data root: {SettingsService.BuiltInDataRoot}");
+        sb.AppendLine($"Program config root: {SettingsService.ProgramConfigRoot}");
         sb.AppendLine($"Watching: {ConfigChangeMonitor.Root}");
         return ToolText(sb.ToString());
     }
