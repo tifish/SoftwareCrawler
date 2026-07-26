@@ -47,7 +47,7 @@ namespace SoftwareCrawler
             openWebPageToolStripMenuItem = new ToolStripMenuItem();
             openWebPageInBrowserToolStripMenuItem = new ToolStripMenuItem();
             openDownloadDirectoryToolStripMenuItem = new ToolStripMenuItem();
-            cleanUpDownloadDirectoriesToolStripMenuItem = new ToolStripMenuItem();
+            cleanUpLocalSettingsToolStripMenuItem = new ToolStripMenuItem();
             errorMessageLabel = new Label();
             showDevToolsButton = new Button();
             softwareListDataGridView = new DataGridView();
@@ -63,7 +63,7 @@ namespace SoftwareCrawler
             //
             // dataGridViewContextMenuStrip
             //
-            dataGridViewContextMenuStrip.Items.AddRange(new ToolStripItem[] { downloadSelectedToolStripMenuItem, downloadAllToolStripMenuItem, toolStripSeparator1, testSelectedToolStripMenuItem, testAllToolStripMenuItem, toolStripSeparator2, cancelToolStripMenuItem, toolStripSeparator4, insertNewToolStripMenuItem, duplicateToolStripMenuItem, deleteToolStripMenuItem, reloadToolStripMenuItem, editScriptToolStripMenuItem, toolStripSeparator3, openWebPageToolStripMenuItem, openWebPageInBrowserToolStripMenuItem, openDownloadDirectoryToolStripMenuItem, cleanUpDownloadDirectoriesToolStripMenuItem });
+            dataGridViewContextMenuStrip.Items.AddRange(new ToolStripItem[] { downloadSelectedToolStripMenuItem, downloadAllToolStripMenuItem, toolStripSeparator1, testSelectedToolStripMenuItem, testAllToolStripMenuItem, toolStripSeparator2, cancelToolStripMenuItem, toolStripSeparator4, insertNewToolStripMenuItem, duplicateToolStripMenuItem, deleteToolStripMenuItem, reloadToolStripMenuItem, editScriptToolStripMenuItem, toolStripSeparator3, openWebPageToolStripMenuItem, openWebPageInBrowserToolStripMenuItem, openDownloadDirectoryToolStripMenuItem, cleanUpLocalSettingsToolStripMenuItem });
             dataGridViewContextMenuStrip.Name = "dataGridViewContextMenuStrip";
             dataGridViewContextMenuStrip.Size = new Size(216, 314);
             //
@@ -178,12 +178,12 @@ namespace SoftwareCrawler
             openDownloadDirectoryToolStripMenuItem.Text = "&Open download directory";
             openDownloadDirectoryToolStripMenuItem.Click += openDownloadDirectoryToolStripMenuItem_Click;
             //
-            // cleanUpDownloadDirectoriesToolStripMenuItem
+            // cleanUpLocalSettingsToolStripMenuItem
             //
-            cleanUpDownloadDirectoriesToolStripMenuItem.Name = "cleanUpDownloadDirectoriesToolStripMenuItem";
-            cleanUpDownloadDirectoriesToolStripMenuItem.Size = new Size(215, 22);
-            cleanUpDownloadDirectoriesToolStripMenuItem.Text = "Clean &up unused download directories";
-            cleanUpDownloadDirectoriesToolStripMenuItem.Click += cleanUpDownloadDirectoriesToolStripMenuItem_Click;
+            cleanUpLocalSettingsToolStripMenuItem.Name = "cleanUpLocalSettingsToolStripMenuItem";
+            cleanUpLocalSettingsToolStripMenuItem.Size = new Size(215, 22);
+            cleanUpLocalSettingsToolStripMenuItem.Text = "Clean &up unused local settings";
+            cleanUpLocalSettingsToolStripMenuItem.Click += cleanUpLocalSettingsToolStripMenuItem_Click;
             //
             // errorMessageLabel
             //
@@ -311,7 +311,7 @@ namespace SoftwareCrawler
         private ToolStripSeparator toolStripSeparator3;
         private ToolStripMenuItem openWebPageToolStripMenuItem;
         private ToolStripMenuItem openDownloadDirectoryToolStripMenuItem;
-        private ToolStripMenuItem cleanUpDownloadDirectoriesToolStripMenuItem;
+        private ToolStripMenuItem cleanUpLocalSettingsToolStripMenuItem;
         private ToolStripMenuItem cancelToolStripMenuItem;
         private ToolStripSeparator toolStripSeparator4;
         private TableLayoutPanel rootTableLayoutPanel;

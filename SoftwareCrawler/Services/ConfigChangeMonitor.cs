@@ -39,17 +39,22 @@ public static class ConfigChangeMonitor
     );
     private static readonly Lock Gate = new();
 
-    private static FileSystemWatcher? _watcher;
+    private static readonly List<FileSystemWatcher> _watchers = [];
     private static CancellationTokenSource? _debounceCts;
     private static DateTime _batchStartedUtc;
 
     /// <summary>Raised with the full paths of the files that changed on disk.</summary>
     public static event Action<IReadOnlyList<string>>? ConfigChanged;
 
-    public static string Root { get; private set; } = "";
+    /// <summary>The folders being watched. The config folder is always one of them.</summary>
+    public static IReadOnlyList<string> Roots { get; private set; } = [];
 
-    /// <summary>True while a watcher is attached; a silent watcher failure shows up here.</summary>
-    public static bool IsWatching => _watcher is { EnableRaisingEvents: true };
+    /// <summary>The config folder, kept for callers that only care about that one.</summary>
+    public static string Root => Roots.Count > 0 ? Roots[0] : "";
+
+    /// <summary>True while every watcher is live; a silent failure shows up here.</summary>
+    public static bool IsWatching =>
+        _watchers.Count > 0 && _watchers.All(watcher => watcher.EnableRaisingEvents);
 
     /// <summary>The files the app has a known-content baseline for. Diagnostics only.</summary>
     public static IReadOnlyList<string> TrackedPaths => SelfWrites.Keys.Order().ToArray();
@@ -76,16 +81,36 @@ public static class ConfigChangeMonitor
         }
     }
 
-    /// <summary>Starts watching <paramref name="configRoot"/>, replacing any previous watch.</summary>
-    public static void Watch(string configRoot)
+    /// <summary>
+    /// Starts watching <paramref name="configRoot"/>, replacing any previous watch.
+    /// <paramref name="extraRoots"/> covers folders outside the config folder that
+    /// still hold live files - a Debug build edits the shipped template in place,
+    /// so a git checkout there has to be noticed too. Blank and duplicate entries
+    /// are skipped, which is how a released build passes nothing extra.
+    /// </summary>
+    public static void Watch(string configRoot, params string[] extraRoots)
     {
         Stop();
 
-        Root = configRoot;
+        var roots = new List<string>();
+        foreach (var root in extraRoots.Prepend(configRoot))
+            if (
+                !string.IsNullOrWhiteSpace(root)
+                && !roots.Contains(root, StringComparer.OrdinalIgnoreCase)
+            )
+                roots.Add(root);
+
+        Roots = roots;
+        foreach (var root in roots)
+            Attach(root);
+    }
+
+    private static void Attach(string root)
+    {
         try
         {
-            Directory.CreateDirectory(configRoot);
-            var watcher = new FileSystemWatcher(configRoot)
+            Directory.CreateDirectory(root);
+            var watcher = new FileSystemWatcher(root)
             {
                 NotifyFilter =
                     NotifyFilters.LastWrite
@@ -99,13 +124,13 @@ public static class ConfigChangeMonitor
             watcher.Deleted += OnChanged;
             watcher.Renamed += OnRenamed;
             watcher.Error += (_, e) =>
-                Log.ZLogWarning($"Config watcher error: {e.GetException().Message}");
+                Log.ZLogWarning($"Config watcher error under {root}: {e.GetException().Message}");
             watcher.EnableRaisingEvents = true;
-            _watcher = watcher;
+            _watchers.Add(watcher);
         }
         catch (Exception ex)
         {
-            Log.ZLogWarning($"Could not watch config folder {configRoot}: {ex.Message}");
+            Log.ZLogWarning($"Could not watch folder {root}: {ex.Message}");
         }
     }
 
@@ -118,12 +143,14 @@ public static class ConfigChangeMonitor
             Pending.Clear();
         }
 
-        if (_watcher is null)
-            return;
+        foreach (var watcher in _watchers)
+        {
+            watcher.EnableRaisingEvents = false;
+            watcher.Dispose();
+        }
 
-        _watcher.EnableRaisingEvents = false;
-        _watcher.Dispose();
-        _watcher = null;
+        _watchers.Clear();
+        Roots = [];
     }
 
     /// <summary>

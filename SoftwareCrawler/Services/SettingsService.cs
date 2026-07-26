@@ -37,6 +37,9 @@ public class SettingsService
     /// <summary>The Config folder next to the executable; its existence forces portable mode.</summary>
     public static string ProgramConfigRoot => Storage.ProgramConfigDir;
 
+    /// <summary>The folder the executable runs from, where shipped templates live.</summary>
+    public static string ProgramRoot => Storage.ProgramDir;
+
     /// <summary>Where versions before the settings split kept everything.</summary>
     private static string LegacySettingsPath => Path.Combine(Storage.ProgramDir, "Settings.json");
 

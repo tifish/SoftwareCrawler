@@ -57,7 +57,7 @@ public partial class MainForm : Form
             _mainForm.testSelectedToolStripMenuItem.Enabled = false;
             _mainForm.testAllToolStripMenuItem.Enabled = false;
             _mainForm.reloadToolStripMenuItem.Enabled = false;
-            _mainForm.cleanUpDownloadDirectoriesToolStripMenuItem.Enabled = false;
+            _mainForm.cleanUpLocalSettingsToolStripMenuItem.Enabled = false;
 
             _mainForm.cancelToolStripMenuItem.Enabled = true;
         }
@@ -69,7 +69,7 @@ public partial class MainForm : Form
             _mainForm.testSelectedToolStripMenuItem.Enabled = true;
             _mainForm.testAllToolStripMenuItem.Enabled = true;
             _mainForm.reloadToolStripMenuItem.Enabled = true;
-            _mainForm.cleanUpDownloadDirectoriesToolStripMenuItem.Enabled = true;
+            _mainForm.cleanUpLocalSettingsToolStripMenuItem.Enabled = true;
 
             _mainForm.cancelToolStripMenuItem.Enabled = false;
 
@@ -173,7 +173,7 @@ public partial class MainForm : Form
         // Both .tab files back the same grid, so either one means a single rebind.
         var listChanged =
             names.Contains("Software.tab", StringComparer.OrdinalIgnoreCase)
-            || names.Contains("DownloadDirectory.tab", StringComparer.OrdinalIgnoreCase);
+            || names.Contains("LocalSettings.tab", StringComparer.OrdinalIgnoreCase);
         if (!settingsChanged && !listChanged)
             return;
 
@@ -536,20 +536,20 @@ public partial class MainForm : Form
     }
 
     /// <summary>
-    /// Discards the download directories held for names the list no longer has.
+    /// Discards the per-machine settings held for names the list no longer has.
     /// Those rows survive a save so a temporarily shorter list cannot destroy
     /// them; this is the way to get rid of the ones that really are obsolete.
     /// </summary>
-    private async void cleanUpDownloadDirectoriesToolStripMenuItem_Click(object sender, EventArgs e)
+    private async void cleanUpLocalSettingsToolStripMenuItem_Click(object sender, EventArgs e)
     {
-        var unclaimed = SoftwareManager.UnclaimedDownloadDirectoryNames;
-        const string caption = "Clean up unused download directories";
+        var unclaimed = SoftwareManager.UnclaimedLocalSettingNames;
+        const string caption = "Clean up unused local settings";
 
         if (unclaimed.Count == 0)
         {
             MessageBox.Show(
                 this,
-                "Every download directory belongs to an item in the list; there is nothing to clean up.",
+                "Every saved setting belongs to an item in the list; there is nothing to clean up.",
                 caption,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information
@@ -559,8 +559,8 @@ public partial class MainForm : Form
 
         var answer = MessageBox.Show(
             this,
-            $"These {unclaimed.Count} name(s) are no longer in the software list, but their download "
-                + "directories are still on file:"
+            $"These {unclaimed.Count} name(s) are no longer in the software list, but their saved "
+                + "settings are still on file:"
                 + Environment.NewLine
                 + Environment.NewLine
                 + string.Join(Environment.NewLine, unclaimed)
@@ -575,11 +575,11 @@ public partial class MainForm : Form
         if (answer != DialogResult.Yes)
             return;
 
-        if (await SoftwareManager.RemoveUnclaimedDownloadDirectories())
+        if (await SoftwareManager.RemoveUnclaimedLocalSettings())
             MessageBox.Show(
                 this,
-                $"Removed {unclaimed.Count} unused download director"
-                    + (unclaimed.Count == 1 ? "y." : "ies."),
+                $"Removed the unused settings for {unclaimed.Count} name"
+                    + (unclaimed.Count == 1 ? "." : "s."),
                 caption,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information

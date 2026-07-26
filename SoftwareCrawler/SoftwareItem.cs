@@ -189,11 +189,15 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         FromDataLine(extraLine, ExtraProperties);
     }
 
+    /// <summary>
+    /// The crawl recipe: what every machine shares, and the only thing that
+    /// belongs in version control. Whether this machine wants the item is
+    /// <see cref="Enabled"/>, which lives with the download directories instead.
+    /// </summary>
     public static readonly List<PropertyInfo> DataProperties =
     [
         .. new[]
         {
-            nameof(Enabled),
             nameof(Name),
             nameof(WebPage),
             nameof(XPathOrScript1),
@@ -213,7 +217,27 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             .ToList(),
     ];
 
+    /// <summary>Everything that is this machine's business alone.</summary>
     public static readonly List<PropertyInfo> ExtraProperties =
+    [
+        .. new[] { nameof(Enabled), nameof(DownloadDirectory), nameof(DownloadDirectory2) }
+            .Select(name => typeof(SoftwareItem).GetProperty(name)!)
+            .ToList(),
+    ];
+
+    /// <summary>
+    /// The layout of both files before Enabled moved out of the shared list.
+    /// Kept so existing files still read correctly; the next save rewrites them
+    /// in the current layout, after which these are only of historical interest.
+    /// </summary>
+    public static readonly List<PropertyInfo> LegacyDataProperties =
+    [
+        typeof(SoftwareItem).GetProperty(nameof(Enabled))!,
+        .. DataProperties,
+    ];
+
+    /// <inheritdoc cref="LegacyDataProperties"/>
+    public static readonly List<PropertyInfo> LegacyExtraProperties =
     [
         .. new[] { nameof(DownloadDirectory), nameof(DownloadDirectory2) }
             .Select(name => typeof(SoftwareItem).GetProperty(name)!)

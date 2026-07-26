@@ -259,7 +259,7 @@ public partial class SettingsForm : Form
         if (newLocation == StorageLocation.ProgramDirectory)
             Directory.CreateDirectory(destRoot);
 
-        ConfigChangeMonitor.Watch(destRoot);
+        ConfigChangeMonitor.Watch(destRoot, SoftwareManager.WatchedTemplateFolder);
         return true;
     }
 

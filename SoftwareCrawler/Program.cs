@@ -56,7 +56,10 @@ static class Program
         );
 
         // Pick up settings and list edits made outside the app.
-        ConfigChangeMonitor.Watch(SettingsStore.ResolveConfigRoot());
+        ConfigChangeMonitor.Watch(
+            SettingsStore.ResolveConfigRoot(),
+            SoftwareManager.WatchedTemplateFolder
+        );
 
         // Only Debug builds actually listen; the call is a no-op otherwise.
         DebugMcpServer.Start();

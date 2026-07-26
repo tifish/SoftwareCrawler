@@ -7,7 +7,8 @@
 - `SoftwareCrawler/` — the WinForms app (WebView2 drives the crawling).
 - `JeekTools.NET/` — shared library, a git submodule.
 - `Tools/DebugMcpBridge/` — stdio MCP bridge that forwards to the running Debug app.
-- `bin/` — build output plus the version-controlled runtime files: `Config/Software.tab` (the software list), `7-Zip/`, and the scripts. Everything else under `bin/` is generated or user data.
+- `bin/` — build output plus the version-controlled runtime files: `Templates/Software.tab` (the crawl recipes), `7-Zip/`, and the scripts. Everything else under `bin/` is generated or user data.
+- `bin/Config/` — user data only, git-ignored apart from the `.gitkeep` that keeps the folder present (its existence is what selects portable mode). `LocalSettings.tab` holds this machine's enabled flags and download directories and has no version control; a Debug build reads and writes `Templates/Software.tab` directly, a released build works on a copy seeded into `Config/`.
 - `Build.cmd` / `Run.cmd` / `Publish.cmd` — build, build+launch, optimized publish.
 
 ## Rules

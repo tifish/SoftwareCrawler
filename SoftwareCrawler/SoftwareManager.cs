@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text;
 using JeekTools;
 using Microsoft.Extensions.Logging;
@@ -8,7 +9,7 @@ namespace SoftwareCrawler;
 
 /// <summary>
 /// Loads and saves the software list. Both files live in the active Config
-/// folder; the download directories are keyed by software name, so reordering
+/// folder; the per-machine rows are keyed by software name, so reordering
 /// or inserting rows in one file can never shift the other out of alignment.
 /// </summary>
 public static class SoftwareManager
@@ -16,54 +17,85 @@ public static class SoftwareManager
     private static readonly ILogger Log = LogManager.CreateLogger(nameof(SoftwareManager));
 
     private const string SoftwareFileName = "Software.tab";
-    private const string DownloadDirectoryFileName = "DownloadDirectory.tab";
+    private const string LocalSettingsFileName = "LocalSettings.tab";
+    private const string TemplateFolderName = "Templates";
     private const string NameColumn = "Name";
 
-    /// <summary>The crawl definitions, version-controlled and shipped with the app.</summary>
-    private static string SoftwarePath =>
-        Path.Join(SettingsStore.ResolveConfigRoot(), SoftwareFileName);
+    /// <summary>
+    /// The crawl definitions as shipped: version-controlled, packaged, and the
+    /// file a Debug build works on directly so edits are ready to commit.
+    /// </summary>
+    private static string SoftwareTemplatePath =>
+        Path.Join(SettingsService.ProgramRoot, TemplateFolderName, SoftwareFileName);
 
-    /// <summary>Per-item download directories, next to the list they belong to.</summary>
-    private static string DownloadDirectoryPath =>
-        Path.Join(SettingsStore.ResolveConfigRoot(), DownloadDirectoryFileName);
+    /// <summary>
+    /// The list the app reads and writes. A Debug build is the development copy
+    /// of the template itself; a released build works on a copy in the config
+    /// folder, seeded from the template the first time it is missing, so a user's
+    /// own edits are never overwritten by an update.
+    /// </summary>
+    private static string SoftwarePath =>
+        DebugInstanceContext.IsDebugBuild
+            ? SoftwareTemplatePath
+            : Path.Join(SettingsStore.ResolveConfigRoot(), SoftwareFileName);
+
+    /// <summary>This machine's own choices: which items are enabled, and where each downloads to.</summary>
+    private static string LocalSettingsPath =>
+        Path.Join(SettingsStore.ResolveConfigRoot(), LocalSettingsFileName);
 
     public static List<SoftwareItem> Items { get; private set; } = [];
 
+    /// <summary>The list actually being read and written. Diagnostics only.</summary>
+    public static string ActiveSoftwarePath => SoftwarePath;
+
+    /// <summary>The shipped template the config copy is seeded from. Diagnostics only.</summary>
+    public static string TemplatePath => SoftwareTemplatePath;
+
     /// <summary>
-    /// Rows of DownloadDirectory.tab that no loaded item claims, kept in file
+    /// The folder to watch on top of the config folder, empty unless this is a
+    /// Debug build. Only a Debug build edits the template in place, so only it
+    /// needs to hear about a git checkout landing on the file underneath it.
+    /// </summary>
+    public static string WatchedTemplateFolder =>
+        DebugInstanceContext.IsDebugBuild
+            ? Path.GetDirectoryName(SoftwareTemplatePath) ?? string.Empty
+            : string.Empty;
+
+    /// <summary>
+    /// Rows of LocalSettings.tab that no loaded item claims, kept in file
     /// order so a save writes them back untouched. A name goes missing whenever
     /// the list is temporarily shorter than the file - a half-written
     /// Software.tab, an outside edit, a row deleted and undone - and the row
-    /// here is the only copy of that download directory there is.
+    /// here is the only copy of those settings there is.
     /// </summary>
-    private static List<(string Name, string Line)> _unclaimedDownloadDirectories = [];
+    private static List<(string Name, string Line)> _unclaimedLocalSettings = [];
 
-    /// <summary>The names whose download directories are being preserved.</summary>
-    public static IReadOnlyList<string> UnclaimedDownloadDirectoryNames =>
-        _unclaimedDownloadDirectories.Select(entry => entry.Name).ToArray();
+    /// <summary>The names whose per-machine settings are being preserved.</summary>
+    public static IReadOnlyList<string> UnclaimedLocalSettingNames =>
+        _unclaimedLocalSettings.Select(entry => entry.Name).ToArray();
 
     /// <summary>
     /// Drops the preserved rows and writes the result, so the file holds nothing
     /// but the current list. Returns false when the write was refused because the
     /// file changed outside the app, in which case nothing is discarded.
     /// </summary>
-    public static async Task<bool> RemoveUnclaimedDownloadDirectories()
+    public static async Task<bool> RemoveUnclaimedLocalSettings()
     {
-        var removed = _unclaimedDownloadDirectories;
+        var removed = _unclaimedLocalSettings;
         if (removed.Count == 0)
             return true;
 
-        _unclaimedDownloadDirectories = [];
+        _unclaimedLocalSettings = [];
         if (await FlushAsync().ConfigureAwait(false))
         {
             Log.ZLogInformation(
-                $"Removed {removed.Count} unclaimed download directories: "
+                $"Removed {removed.Count} unclaimed local settings: "
                     + $"{string.Join(", ", removed.Select(entry => entry.Name))}"
             );
             return true;
         }
 
-        _unclaimedDownloadDirectories = removed;
+        _unclaimedLocalSettings = removed;
         return false;
     }
 
@@ -72,82 +104,164 @@ public static class SoftwareManager
         var softwarePath = SoftwarePath;
         Directory.CreateDirectory(Path.GetDirectoryName(softwarePath)!);
 
+        SeedFromTemplate(softwarePath);
+
         if (!File.Exists(softwarePath))
         {
             Log.ZLogWarning($"No software list at {softwarePath}");
             return;
         }
 
-        var downloadDirectoryPath = DownloadDirectoryPath;
+        var localSettingsPath = LocalSettingsPath;
 
         // Read both files in parallel to reduce startup latency.
         var dataTask = File.ReadAllLinesAsync(softwarePath);
-        var extraTask = File.Exists(downloadDirectoryPath)
-            ? File.ReadAllLinesAsync(downloadDirectoryPath)
+        var extraTask = File.Exists(localSettingsPath)
+            ? File.ReadAllLinesAsync(localSettingsPath)
             : Task.FromResult<string[]>([]);
         await Task.WhenAll(dataTask, extraTask);
 
+        // Enabled used to be the first column of the shared list. Read such a
+        // file with the layout it was written in; the next save moves the flags
+        // over to the per-machine file for good.
+        var dataProperties = dataTask.Result.Length > 0 && IsLegacyDataHeader(dataTask.Result[0])
+            ? SoftwareItem.LegacyDataProperties
+            : SoftwareItem.DataProperties;
+        if (dataProperties == SoftwareItem.LegacyDataProperties)
+            Log.ZLogInformation(
+                $"Reading {softwarePath} in the layout that still had the Enabled column"
+            );
+
         var dataLines = dataTask.Result.Skip(1).ToArray();
-        var downloadDirectories = ParseDownloadDirectories(extraTask.Result, dataLines);
+        var names = dataLines.Select(line => GetNameColumn(line, dataProperties)).ToArray();
+        var localSettings = ParseLocalSettings(
+            extraTask.Result,
+            names,
+            out var extraProperties
+        );
 
         Items.Clear();
         var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var dataLine in dataLines)
         {
-            var item = new SoftwareItem(dataLine, string.Empty);
-            if (downloadDirectories.TryGetValue(item.Name, out var extraLine))
+            // The parameterless constructor keeps the property defaults, which is
+            // what an item with no row in the per-machine file should end up with.
+            var item = new SoftwareItem();
+            item.FromDataLine(dataLine, dataProperties);
+            if (localSettings.TryGetValue(item.Name, out var extraLine))
             {
-                item.FromDataLine(extraLine, SoftwareItem.ExtraProperties);
+                item.FromDataLine(extraLine, extraProperties);
                 claimed.Add(item.Name);
             }
             Items.Add(item);
         }
 
-        _unclaimedDownloadDirectories = downloadDirectories
+        // Re-serialize the rows nobody claimed: they may have been read in the old
+        // layout, and they are written back under the current header.
+        _unclaimedLocalSettings = localSettings
             .Where(entry => !claimed.Contains(entry.Key))
-            .Select(entry => (entry.Key, entry.Key + '\t' + entry.Value))
+            .Select(entry =>
+            {
+                var orphan = new SoftwareItem();
+                orphan.FromDataLine(entry.Value, extraProperties);
+                return (
+                    entry.Key,
+                    entry.Key + '\t' + orphan.ToDataLine(SoftwareItem.ExtraProperties)
+                );
+            })
             .ToList();
-        if (_unclaimedDownloadDirectories.Count > 0)
+        if (_unclaimedLocalSettings.Count > 0)
             Log.ZLogInformation(
-                $"Keeping {_unclaimedDownloadDirectories.Count} download directories no item claims: "
-                    + $"{string.Join(", ", UnclaimedDownloadDirectoryNames)}"
+                $"Keeping {_unclaimedLocalSettings.Count} local settings no item claims: "
+                    + $"{string.Join(", ", UnclaimedLocalSettingNames)}"
             );
 
         // Remember what we just read: a later save compares against this to notice
         // that somebody else has edited the files in the meantime.
         ConfigChangeMonitor.MarkSelfWrite(softwarePath);
-        ConfigChangeMonitor.MarkSelfWrite(downloadDirectoryPath);
+        ConfigChangeMonitor.MarkSelfWrite(localSettingsPath);
 
         Log.ZLogInformation($"Loaded {Items.Count} software items from {softwarePath}");
     }
 
     /// <summary>
-    /// Maps each software name to its download directory columns. Files written
-    /// before the Name column existed were aligned by row index; they are read
-    /// that way once and get the key on the next save.
+    /// Puts the shipped list in place the first time a config folder has none.
+    /// Only ever fills a gap: once the copy exists it belongs to the user, so an
+    /// update refreshes the template without touching what they have edited.
+    /// A Debug build resolves both paths to the same file and does nothing here.
     /// </summary>
-    private static Dictionary<string, string> ParseDownloadDirectories(
+    private static void SeedFromTemplate(string softwarePath)
+    {
+        try
+        {
+            var template = SoftwareTemplatePath;
+            if (
+                File.Exists(softwarePath)
+                || !File.Exists(template)
+                || string.Equals(template, softwarePath, StringComparison.OrdinalIgnoreCase)
+            )
+                return;
+
+            File.Copy(template, softwarePath);
+            Log.ZLogInformation($"Seeded {softwarePath} from the shipped template {template}");
+        }
+        catch (Exception ex)
+        {
+            Log.ZLogWarning($"Could not seed the software list from the template: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// True for a shared list still carrying the Enabled column, which the header
+    /// names first. Everything written since starts with Name.
+    /// </summary>
+    private static bool IsLegacyDataHeader(string header) =>
+        header.TrimStart('﻿').StartsWith(nameof(SoftwareItem.Enabled) + '\t', StringComparison.Ordinal);
+
+    private static string GetNameColumn(string line, List<PropertyInfo> properties)
+    {
+        var index = properties.FindIndex(property => property.Name == NameColumn);
+        var columns = line.Split('\t');
+        return index >= 0 && index < columns.Length ? columns[index] : string.Empty;
+    }
+
+    /// <summary>
+    /// Maps each software name to its per-machine columns, and reports which
+    /// layout they are in. Three shapes exist: the current one, the one before
+    /// Enabled joined it, and files so old they had no Name column and were
+    /// aligned by row index. All three get the current shape on the next save.
+    /// </summary>
+    private static Dictionary<string, string> ParseLocalSettings(
         string[] lines,
-        string[] dataLines
+        string[] names,
+        out List<PropertyInfo> properties
     )
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        properties = SoftwareItem.ExtraProperties;
         if (lines.Length == 0)
             return result;
 
         var values = lines.Skip(1).ToArray();
 
-        if (!lines[0].StartsWith(NameColumn + '\t', StringComparison.Ordinal))
+        if (!lines[0].TrimStart('﻿').StartsWith(NameColumn + '\t', StringComparison.Ordinal))
         {
-            for (var i = 0; i < values.Length && i < dataLines.Length; i++)
-            {
-                var name = GetNameColumn(dataLines[i]);
-                if (name.Length > 0)
-                    result[name] = values[i];
-            }
+            properties = SoftwareItem.LegacyExtraProperties;
+            for (var i = 0; i < values.Length && i < names.Length; i++)
+                if (names[i].Length > 0)
+                    result[names[i]] = values[i];
 
-            Log.ZLogInformation($"Read {result.Count} download directories by row index");
+            Log.ZLogInformation($"Read {result.Count} per-machine rows by row index");
             return result;
+        }
+
+        // Keyed by name, but Enabled only joined these columns later.
+        if (
+            !lines[0].Contains('\t' + nameof(SoftwareItem.Enabled) + '\t', StringComparison.Ordinal)
+        )
+        {
+            properties = SoftwareItem.LegacyExtraProperties;
+            Log.ZLogInformation($"Reading the per-machine file in its pre-Enabled layout");
         }
 
         foreach (var line in values)
@@ -160,18 +274,11 @@ public static class SoftwareManager
         return result;
     }
 
-    // Name is the second column of a data line; see SoftwareItem.DataProperties.
-    private static string GetNameColumn(string line)
-    {
-        var columns = line.Split('\t');
-        return columns.Length > 1 ? columns[1] : string.Empty;
-    }
-
     /// <summary>Returns false when the write was skipped to protect an outside edit.</summary>
     private static async Task<bool> SaveCore()
     {
         var softwarePath = SoftwarePath;
-        var downloadDirectoryPath = DownloadDirectoryPath;
+        var localSettingsPath = LocalSettingsPath;
         Directory.CreateDirectory(Path.GetDirectoryName(softwarePath)!);
 
         // The two files are one document keyed by name, so an outside edit to
@@ -181,7 +288,7 @@ public static class SoftwareManager
         // change within its quiet period and the app reloads from disk.
         if (
             ConfigChangeMonitor.HasExternalChange(softwarePath)
-            || ConfigChangeMonitor.HasExternalChange(downloadDirectoryPath)
+            || ConfigChangeMonitor.HasExternalChange(localSettingsPath)
         )
         {
             Log.ZLogWarning(
@@ -209,23 +316,23 @@ public static class SoftwareManager
         // writing both copies would duplicate it.
         var itemNames = Items.Select(item => item.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         extraItems.AddRange(
-            _unclaimedDownloadDirectories
+            _unclaimedLocalSettings
                 .Where(entry => !itemNames.Contains(entry.Name))
                 .Select(entry => entry.Line)
         );
 
-        // Keep the state we are about to replace; DownloadDirectory.tab is not in
+        // Keep the state we are about to replace; LocalSettings.tab is not in
         // git and this is the only copy of it there will ever be.
-        ConfigBackupService.BackupDaily(softwarePath, downloadDirectoryPath);
+        ConfigBackupService.BackupDaily(softwarePath, localSettingsPath);
 
         // Write both files in parallel. The scope keeps the watcher from treating
         // our own write as an external edit, and records the new content on exit.
         var encoding = new UTF8Encoding(true);
-        using (ConfigChangeMonitor.BeginSelfWrite(softwarePath, downloadDirectoryPath))
+        using (ConfigChangeMonitor.BeginSelfWrite(softwarePath, localSettingsPath))
         {
             await Task.WhenAll(
                     Task.Run(() => WriteLinesAtomic(softwarePath, dataItems, encoding)),
-                    Task.Run(() => WriteLinesAtomic(downloadDirectoryPath, extraItems, encoding))
+                    Task.Run(() => WriteLinesAtomic(localSettingsPath, extraItems, encoding))
                 )
                 .ConfigureAwait(false);
         }

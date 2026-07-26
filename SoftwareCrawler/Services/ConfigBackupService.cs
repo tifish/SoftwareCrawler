@@ -8,7 +8,7 @@ namespace SoftwareCrawler.Services;
 /// <summary>
 /// Keeps a daily copy of the config files, taken just before the app overwrites
 /// them. Software.tab is version-controlled and settings.json can be rebuilt from
-/// defaults, but DownloadDirectory.tab exists in exactly one place - a bad write,
+/// defaults, but LocalSettings.tab exists in exactly one place - a bad write,
 /// a mistaken edit or a stray "git clean -xfd" used to leave nothing to restore
 /// from.
 ///

@@ -194,22 +194,27 @@ internal static class DebugMcpServer
         public List<SoftwareItem> Software => SoftwareManager.Items;
         public DebugInstanceInfo Instance => DebugInstanceContext.Info;
 
-        /// <summary>Download directories held for names the loaded list does not contain.</summary>
-        public IReadOnlyList<string> UnclaimedDownloadDirectories =>
-            SoftwareManager.UnclaimedDownloadDirectoryNames;
+        /// <summary>Per-machine settings held for names the loaded list does not contain.</summary>
+        public IReadOnlyList<string> UnclaimedLocalSettings =>
+            SoftwareManager.UnclaimedLocalSettingNames;
 
         /// <summary>Writes the software list immediately, skipping the save debounce.</summary>
         public void FlushSoftwareList() => SoftwareManager.FlushAsync().GetAwaiter().GetResult();
 
-        /// <summary>Reloads the software list from disk, as an outside edit would.</summary>
-        public void ReloadSoftwareList() => SoftwareManager.Load().GetAwaiter().GetResult();
+        /// <summary>
+        /// Reloads the software list from disk, as an outside edit would. Runs on
+        /// the pool rather than inline: tools are invoked on the UI thread, and
+        /// Load resumes on the captured context, which blocking here would deadlock.
+        /// </summary>
+        public void ReloadSoftwareList() =>
+            Task.Run(() => SoftwareManager.Load()).GetAwaiter().GetResult();
 
         /// <summary>Takes today's config backup now, without waiting for a save.</summary>
         public string BackupConfigNow()
         {
             ConfigBackupService.BackupDaily(
                 Path.Join(SettingsStore.ResolveConfigRoot(), "Software.tab"),
-                Path.Join(SettingsStore.ResolveConfigRoot(), "DownloadDirectory.tab"),
+                Path.Join(SettingsStore.ResolveConfigRoot(), "LocalSettings.tab"),
                 SettingsStore.MachineSettingsPath,
                 SettingsStore.RoamingSettingsPath
             );
@@ -217,11 +222,11 @@ internal static class DebugMcpServer
         }
 
         /// <summary>
-        /// Drops the preserved download directories, as the context menu item does
+        /// Drops the preserved per-machine rows, as the context menu item does
         /// but without the confirmation. False means the save was skipped.
         /// </summary>
-        public bool CleanUpDownloadDirectories() =>
-            SoftwareManager.RemoveUnclaimedDownloadDirectories().GetAwaiter().GetResult();
+        public bool CleanUpLocalSettings() =>
+            SoftwareManager.RemoveUnclaimedLocalSettings().GetAwaiter().GetResult();
     }
 
     private static readonly AppRoot Root = new();
@@ -454,13 +459,15 @@ internal static class DebugMcpServer
     private static JsonObject ConfigMonitorInfo()
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"Watching: {ConfigChangeMonitor.Root}");
+        sb.AppendLine($"Watching: {string.Join(", ", ConfigChangeMonitor.Roots)}");
         sb.AppendLine($"Watcher active: {ConfigChangeMonitor.IsWatching}");
+        sb.AppendLine($"Software list in use: {SoftwareManager.ActiveSoftwarePath}");
+        sb.AppendLine($"Shipped template: {SoftwareManager.TemplatePath}");
         sb.AppendLine($"Pending events: {ConfigChangeMonitor.DescribePending()}");
         sb.AppendLine($"In-memory software items: {SoftwareManager.Items.Count}");
-        var unclaimed = SoftwareManager.UnclaimedDownloadDirectoryNames;
+        var unclaimed = SoftwareManager.UnclaimedLocalSettingNames;
         sb.AppendLine(
-            $"Unclaimed download directories kept: "
+            $"Unclaimed local settings kept: "
                 + (unclaimed.Count == 0 ? "(none)" : string.Join(", ", unclaimed))
         );
         sb.AppendLine();
