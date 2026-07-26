@@ -190,7 +190,8 @@ flowchart TD
 
 - 表格是 `DataGridView` + `BindingList<SoftwareItem>`，列由属性自动生成（`[Browsable(false)]` 的 `FinalDownloadDirectory` 因此不显示）。所有增删/排序都直接操作 `BindingList` 然后 `Save()`。
 - 下载期间用 `DownloadUIDisabler`（`IDisposable`）统一禁用菜单、启用取消项，`using` 作用域结束自动恢复。
-- 下载是**串行**的：单例浏览器决定了不能并行，`DownloadAll`/`DownloadSelected` 逐项 await。
+- 下载是**串行**的：全局只有一个浏览器和一组下载回调，两个下载同时跑会互相应答对方的事件。菜单本来就逐项 await，`SoftwareItem.Download()` 里的信号量（`DownloadGate`）负责挡住从别处发起的下载——调试工具、第二个菜单动作——不与之重叠。
+- 表格的重新绑定由 `SoftwareManager.Reloaded` 事件驱动，而不是写在某个菜单处理器里：`Load()` 是把 `Items` 清空重填，绑定它的 `BindingList` 收不到任何通知，所以**任何**路径触发的重载都必须重新绑定，包括不经过 UI 的调试入口。
 - 反射性能敏感处都做了退让：列宽只按 `DisplayedCells` 测量、查找放到线程池并防抖 150ms、高亮只重画变化的行。
 - **外部编辑脚本**：右键 Edit script 会把 1..5 步脚本用 `\n// ``\n` 拼成一个 `.js` 临时文件，交给 `ExternalJavascriptEditor`（缺省 notepad）打开，确认后再按分隔符拆回去。这是编写爬取脚本的主要工作流。
 

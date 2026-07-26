@@ -379,6 +379,18 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     private static readonly List<string> ExecutableFileTypes = [".exe", ".msi", ".vsix", ".msix"];
     private static readonly List<string> ArchiveFileTypes = [".zip", ".rar", ".7z"];
 
+    /// <summary>
+    /// There is one browser and one set of download callbacks, so two downloads
+    /// running at once would answer each other's events and file each other's
+    /// results. The menu drives items one at a time; this is what keeps a
+    /// download started from anywhere else - the debug tools, a second menu
+    /// action - from overlapping with it.
+    /// </summary>
+    private static readonly SemaphoreSlim DownloadGate = new(1, 1);
+
+    /// <summary>True while an item holds the download gate. Diagnostics only.</summary>
+    internal static bool IsDownloading => DownloadGate.CurrentCount == 0;
+
     public async Task<bool> Download(bool testOnly = false, int retryCount = 0)
     {
         if (!Enabled)
@@ -388,29 +400,37 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
         _hasCancelled = false;
 
-        for (var i = 0; i < retryCount + 1; i++)
+        await DownloadGate.WaitAsync().ConfigureAwait(true);
+        try
         {
-            if (_hasCancelled)
-                return false;
-
-            var downloadResult = await DownloadOnce(testOnly);
-            switch (downloadResult)
+            for (var i = 0; i < retryCount + 1; i++)
             {
-                case DownloadOnceResult.Succeeded:
-                    Log.ZLogInformation(
-                        $"Download {Name} successfully, retryCount={i}"
-                    );
-                    return true;
-
-                case DownloadOnceResult.FailedAndRetry:
-                    // Retry
-                    await Task.Delay(Settings.DownloadRetryInterval * 1000);
-                    break;
-
-                case DownloadOnceResult.FailedAndNoRetry:
-                    // No retry
+                if (_hasCancelled)
                     return false;
+
+                var downloadResult = await DownloadOnce(testOnly);
+                switch (downloadResult)
+                {
+                    case DownloadOnceResult.Succeeded:
+                        Log.ZLogInformation(
+                            $"Download {Name} successfully, retryCount={i}"
+                        );
+                        return true;
+
+                    case DownloadOnceResult.FailedAndRetry:
+                        // Retry
+                        await Task.Delay(Settings.DownloadRetryInterval * 1000);
+                        break;
+
+                    case DownloadOnceResult.FailedAndNoRetry:
+                        // No retry
+                        return false;
+                }
             }
+        }
+        finally
+        {
+            DownloadGate.Release();
         }
 
         Log.ZLogWarning(

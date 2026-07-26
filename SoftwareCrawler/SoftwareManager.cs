@@ -45,6 +45,14 @@ public static class SoftwareManager
 
     public static List<SoftwareItem> Items { get; private set; } = [];
 
+    /// <summary>
+    /// Raised once <see cref="Load"/> has replaced the contents of <see cref="Items"/>.
+    /// The grid binds to that list, and refilling it underneath raises no change
+    /// notification, so anything showing the list has to rebind - otherwise it
+    /// keeps drawing rows that are no longer there.
+    /// </summary>
+    public static event Action? Reloaded;
+
     /// <summary>The list actually being read and written. Diagnostics only.</summary>
     public static string ActiveSoftwarePath => SoftwarePath;
 
@@ -241,6 +249,8 @@ public static class SoftwareManager
         ConfigChangeMonitor.MarkSelfWrite(localSettingsPath);
 
         Log.ZLogInformation($"Loaded {Items.Count} software items from {softwarePath}");
+
+        Reloaded?.Invoke();
     }
 
     /// <summary>

@@ -194,6 +194,18 @@ internal static class DebugMcpServer
         public List<SoftwareItem> Software => SoftwareManager.Items;
         public DebugInstanceInfo Instance => DebugInstanceContext.Info;
 
+        /// <summary>True while a download holds the gate that keeps them one at a time.</summary>
+        public bool IsDownloading => SoftwareItem.IsDownloading;
+
+        /// <summary>Rows the grid is currently showing, to compare against the loaded list.</summary>
+        public int GridRowCount =>
+            MainForm is { } form
+            && form.Controls.Find("softwareListDataGridView", searchAllChildren: true)
+                .FirstOrDefault()
+                is DataGridView grid
+                ? grid.RowCount
+                : -1;
+
         /// <summary>Per-machine settings held for names the loaded list does not contain.</summary>
         public IReadOnlyList<string> UnclaimedLocalSettings =>
             SoftwareManager.UnclaimedLocalSettingNames;

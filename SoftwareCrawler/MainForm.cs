@@ -24,6 +24,7 @@ public partial class MainForm : Form
 
         Text = DebugInstanceContext.DecorateTitle(Text);
         ConfigChangeMonitor.ConfigChanged += OnConfigChanged;
+        SoftwareManager.Reloaded += OnSoftwareListReloaded;
 
         // Enable double buffering for the data grid view to prevent flickering
         typeof(DataGridView)
@@ -84,6 +85,7 @@ public partial class MainForm : Form
         base.OnFormClosing(e);
 
         ConfigChangeMonitor.ConfigChanged -= OnConfigChanged;
+        SoftwareManager.Reloaded -= OnSoftwareListReloaded;
         _updateCheckTimer?.Stop();
 
         // Ensure any pending debounced save is flushed before the process exits.
@@ -194,10 +196,33 @@ public partial class MainForm : Form
         });
     }
 
-    private async Task Reload()
+    private Task Reload() =>
+        // Binding is left to OnSoftwareListReloaded, which Load raises, so that a
+        // reload started anywhere else reaches the grid just the same.
+        SoftwareManager.Load();
+
+    /// <summary>
+    /// Rebinds the grid after the list was reloaded from disk. Raised on whichever
+    /// thread did the loading, which is not always this one.
+    /// </summary>
+    private void OnSoftwareListReloaded()
     {
-        // Load software items and bind to data grid view
-        await SoftwareManager.Load();
+        if (IsDisposed || !IsHandleCreated)
+            return;
+
+        if (InvokeRequired)
+        {
+            // BeginInvoke, not Invoke: a caller blocking on Load while the UI
+            // thread waits here would deadlock.
+            BeginInvoke(BindSoftwareList);
+            return;
+        }
+
+        BindSoftwareList();
+    }
+
+    private void BindSoftwareList()
+    {
         var bindingList = new BindingList<SoftwareItem>(SoftwareManager.Items);
         softwareListDataGridView.DataSource = new BindingSource(bindingList, "");
         // Use DisplayedCells instead of AllCells: measuring every cell of a large list
