@@ -210,6 +210,48 @@ internal static class DebugMcpServer
             Task.Run(() => SoftwareManager.Load()).GetAwaiter().GetResult();
 
         /// <summary>
+        /// Lists the files an item's delete pattern would remove from its download
+        /// directory the next time it downloads, without removing anything.
+        /// </summary>
+        public IReadOnlyList<string> PreviewOldVersionDeletion(string name)
+        {
+            var item = SoftwareManager.Items.FirstOrDefault(candidate =>
+                candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
+            );
+            if (item is null)
+                return [$"No software item named '{name}'."];
+
+            var directory = item.FinalDownloadDirectory;
+            return SoftwareItem
+                .SelectOldVersions(
+                    directory,
+                    item.FilePatternToDeleteBeforeDownload,
+                    keepFile: "",
+                    SoftwareManager.OtherItemPatternsInDirectory(item, directory)
+                )
+                .Select(Path.GetFileName)
+                .ToArray()!;
+        }
+
+        /// <summary>
+        /// Reports the download directories more than one item writes to, which
+        /// is what makes the pattern delete stand down.
+        /// </summary>
+        public IReadOnlyList<string> SharedDownloadDirectories()
+        {
+            var shared = new List<string>();
+            foreach (var item in SoftwareManager.Items)
+            foreach (var directory in new[] { item.DownloadDirectory, item.DownloadDirectory2 })
+            {
+                var others = SoftwareManager.OtherItemsUsingDirectory(item, directory);
+                if (others.Count > 0)
+                    shared.Add($"{directory}: {item.Name} + {string.Join(", ", others)}");
+            }
+
+            return shared;
+        }
+
+        /// <summary>
         /// Runs a helper process the way the pipeline runs 7-Zip and event
         /// scripts, and returns its exit code (-1 when it could not start).
         /// </summary>

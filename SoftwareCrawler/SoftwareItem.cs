@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel;
 using System.Diagnostics;
+using System.IO.Enumeration;
 using System.Net;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -979,26 +980,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 return Task.CompletedTask;
 
             var dir = Path.GetDirectoryName(filePath)!;
-            var pattern = FilePatternToDeleteBeforeDownload;
 
-            // Run on background thread to avoid blocking the UI while scanning / deleting files.
-            return Task.Run(() =>
-            {
-                try
-                {
-                    Directory
-                        .GetFiles(dir, pattern)
-                        .Where(file =>
-                            string.Compare(file, filePath, StringComparison.OrdinalIgnoreCase) != 0
-                        )
-                        .ToList()
-                        .ForEach(File.Delete);
-                }
-                catch (Exception ex)
-                {
-                    Log.ZLogError(ex, $"Failed to delete other files in {dir}");
-                }
-            });
+            return DeleteOldVersions(
+                dir,
+                FilePatternToDeleteBeforeDownload,
+                filePath,
+                SoftwareManager.OtherItemPatternsInDirectory(this, dir)
+            );
         }
 
         // When download fails, return error message.
@@ -1115,6 +1103,110 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             Log.ZLogWarning($"{what} could not be run: {ex.Message}");
             return -1;
         }
+    }
+
+    /// <summary>
+    /// More matches than one item's download history could plausibly be. Past this
+    /// the pattern is not describing old versions any more - it is describing
+    /// somebody else's folder.
+    /// </summary>
+    private const int MaxOldVersionsToDelete = 10;
+
+    /// <summary>
+    /// Deletes what <paramref name="pattern"/> claims are this item's earlier
+    /// downloads, keeping <paramref name="keepFile"/>.
+    ///
+    /// Items commonly share a download folder on purpose and separate their files
+    /// by naming them precisely, so a shared folder is not by itself a reason to
+    /// stand down. What is: a file that one of <paramref name="otherPatterns"/>
+    /// also matches, which may belong to that item rather than this one. That is
+    /// what keeps a broad pattern like "*.exe" from clearing out a folder full of
+    /// other items' installers. A pattern that suddenly matches far more files
+    /// than one item's history could be is refused outright.
+    ///
+    /// Returns what it deleted, for the log and for the tests.
+    /// </summary>
+    internal static IReadOnlyList<string> SelectOldVersions(
+        string directory,
+        string pattern,
+        string keepFile,
+        IReadOnlyList<string> otherPatterns
+    )
+    {
+        if (string.IsNullOrWhiteSpace(pattern) || !Directory.Exists(directory))
+            return [];
+
+        var candidates = Directory
+            .GetFiles(directory, pattern)
+            .Where(file => !string.Equals(file, keepFile, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var claimedByOthers = candidates
+            .Where(file =>
+                otherPatterns.Any(other =>
+                    FileSystemName.MatchesWin32Expression(
+                        other,
+                        Path.GetFileName(file),
+                        ignoreCase: true
+                    )
+                )
+            )
+            .ToList();
+
+        if (claimedByOthers.Count > 0)
+            Log.ZLogWarning(
+                $"Keeping {claimedByOthers.Count} file(s) in {directory} that another "
+                    + $"item's pattern also matches: "
+                    + $"{string.Join(", ", claimedByOthers.Select(Path.GetFileName))}"
+            );
+
+        var doomed = candidates.Except(claimedByOthers).ToList();
+
+        if (doomed.Count > MaxOldVersionsToDelete)
+        {
+            Log.ZLogWarning(
+                $"Keeping the {doomed.Count} files matching '{pattern}' in {directory}: "
+                    + $"more than one item's old versions should be"
+            );
+            return [];
+        }
+
+        return doomed;
+    }
+
+    /// <inheritdoc cref="SelectOldVersions"/>
+    internal static Task<IReadOnlyList<string>> DeleteOldVersions(
+        string directory,
+        string pattern,
+        string keepFile,
+        IReadOnlyList<string> otherPatterns
+    )
+    {
+        // Run on a background thread to avoid blocking the UI while scanning /
+        // deleting files.
+        return Task.Run<IReadOnlyList<string>>(() =>
+        {
+            try
+            {
+                var doomed = SelectOldVersions(directory, pattern, keepFile, otherPatterns);
+
+                foreach (var file in doomed)
+                    File.Delete(file);
+
+                if (doomed.Count > 0)
+                    Log.ZLogInformation(
+                        $"Deleted {doomed.Count} old file(s) in {directory}: "
+                            + $"{string.Join(", ", doomed.Select(Path.GetFileName))}"
+                    );
+
+                return doomed;
+            }
+            catch (Exception ex)
+            {
+                Log.ZLogError(ex, $"Failed to delete other files in {directory}");
+                return [];
+            }
+        });
     }
 
     private const int DeleteStagedFileAttempts = 10;
