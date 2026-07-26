@@ -210,6 +210,17 @@ internal static class DebugMcpServer
             Task.Run(() => SoftwareManager.Load()).GetAwaiter().GetResult();
 
         /// <summary>
+        /// Runs a helper process the way the pipeline runs 7-Zip and event
+        /// scripts, and returns its exit code (-1 when it could not start).
+        /// </summary>
+        public int RunProcessProbe(string fileName, string arguments, string workingDirectory) =>
+            Task.Run(() =>
+                    SoftwareItem.RunProcessAsync(fileName, arguments, workingDirectory, "probe")
+                )
+                .GetAwaiter()
+                .GetResult();
+
+        /// <summary>
         /// Runs the staged-file delete the download pipeline uses, for checking
         /// that a locked file makes it give up instead of hanging. True when the
         /// file is gone.

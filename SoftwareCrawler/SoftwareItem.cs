@@ -942,6 +942,12 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                     }
                 }
             }
+            catch (PostProcessException ex)
+            {
+                // Status already names the step that failed. The file is on disk,
+                // so downloading it again would not help.
+                return Failed(ex.Message, DownloadOnceResult.FailedAndNoRetry);
+            }
             catch (Exception ex)
             {
                 // Only change status when copying file fails.
@@ -993,44 +999,106 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         async Task CallEventScript(string directory, string eventName, string filePath)
         {
             var script = Path.Join(directory, eventName + ".cmd");
-            if (File.Exists(script)) // Execute .cmd file
-            {
-                using var process = Process.Start(
-                    new ProcessStartInfo
-                    {
-                        FileName = script,
-                        Arguments = $"\"{filePath}\"",
-                        WorkingDirectory = directory,
-                        UseShellExecute = true,
-                    }
-                );
-                if (process == null)
-                    return;
-
-                await process.WaitForExitAsync();
-                return;
-            }
-            else // Execute .ps1 file
+            var isBatch = File.Exists(script);
+            if (!isBatch)
             {
                 script = Path.Join(directory, eventName + ".ps1");
-
                 if (!File.Exists(script))
                     return;
-
-                using var process = Process.Start(
-                    new ProcessStartInfo
-                    {
-                        FileName = "powershell",
-                        Arguments = $"-ExecutionPolicy Bypass -File \"{script}\" \"{filePath}\"",
-                        WorkingDirectory = directory,
-                        UseShellExecute = true,
-                    }
-                );
-                if (process == null)
-                    return;
-
-                await process.WaitForExitAsync();
             }
+
+            Status = DownloadingStatus.RunningEventScript;
+
+            var (fileName, arguments) = isBatch
+                // A batch file is not an executable, so it goes through cmd.exe.
+                // cmd strips the outermost pair of quotes from /c, hence the extra
+                // pair around the whole command line for paths with spaces.
+                ? ("cmd.exe", $"/c \"\"{script}\" \"{filePath}\"\"")
+                : (
+                    "powershell",
+                    $"-ExecutionPolicy Bypass -NoProfile -File \"{script}\" \"{filePath}\""
+                );
+
+            var exitCode = await RunProcessAsync(
+                fileName,
+                arguments,
+                directory,
+                $"{eventName} script {script}"
+            );
+
+            // The user put the script there to finish the job; a failure that only
+            // showed up as a vanished console window used to pass as success.
+            if (exitCode != 0)
+                throw new PostProcessException(
+                    $"{eventName} script exited with code {exitCode}: {script}"
+                );
+        }
+    }
+
+    /// <summary>
+    /// A step that runs after the file is in place - extraction, an event script -
+    /// failed. The download itself is done, so the pipeline reports this without
+    /// retrying, and <see cref="DownloadingStatus"/> already names the step.
+    /// </summary>
+    private sealed class PostProcessException(string message) : Exception(message);
+
+    /// <summary>
+    /// Runs a helper process to completion with no console window and returns its
+    /// exit code, or -1 when it could not be started. Output is captured and logged
+    /// on failure: these run unattended at night, where a window that flashes an
+    /// error and closes tells nobody anything.
+    /// </summary>
+    internal static async Task<int> RunProcessAsync(
+        string fileName,
+        string arguments,
+        string workingDirectory,
+        string what
+    )
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = fileName,
+            Arguments = arguments,
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+
+        try
+        {
+            using var process = Process.Start(startInfo);
+            if (process is null)
+            {
+                Log.ZLogWarning($"{what} could not be started.");
+                return -1;
+            }
+
+            // Start draining both pipes before waiting: a helper that fills a pipe
+            // buffer blocks until somebody reads it, and we would never get there.
+            var standardOutput = process.StandardOutput.ReadToEndAsync();
+            var standardError = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+
+            if (process.ExitCode != 0)
+            {
+                var output = string.Join(
+                        Environment.NewLine,
+                        new[] { await standardOutput, await standardError }.Where(text =>
+                            !string.IsNullOrWhiteSpace(text)
+                        )
+                    )
+                    .Trim();
+                Log.ZLogWarning($"{what} exited with code {process.ExitCode}: {output}");
+            }
+
+            return process.ExitCode;
+        }
+        catch (Exception ex)
+        {
+            Log.ZLogWarning($"{what} could not be run: {ex.Message}");
+            return -1;
         }
     }
 
@@ -1140,20 +1208,20 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 Directory.GetFiles(archiveDir, pattern).ToList().ForEach(File.Delete)
             );
 
+        Status = DownloadingStatus.Extracting;
+
         // extract files to root directory.
-        using var process = Process.Start(
-            new ProcessStartInfo
-            {
-                FileName = SevenZipPath,
-                Arguments = $@"e -y -o""{archiveDir}"" ""{archiveFile}"" {pattern} -r",
-                UseShellExecute = true,
-            }
+        var exitCode = await RunProcessAsync(
+            SevenZipPath,
+            $@"e -y -o""{archiveDir}"" ""{archiveFile}"" {pattern} -r",
+            archiveDir,
+            $"7-Zip extracting {Path.GetFileName(archiveFile)}"
         );
 
-        if (process == null)
-            return;
-
-        await process.WaitForExitAsync();
+        // 7-Zip reports 1 for non-fatal warnings, such as a file it could not read;
+        // 2 and up are real failures, and -1 means it never started.
+        if (exitCode < 0 || exitCode >= 2)
+            throw new PostProcessException($"7-Zip exited with code {exitCode}: {archiveFile}");
 
         // Delete empty sub-directories in archiveDir
         await Task.Run(() =>
@@ -1203,6 +1271,8 @@ public enum DownloadingStatus
     Downloaded,
     HasUpdate,
     CopyingFile,
+    Extracting,
+    RunningEventScript,
     Failed,
     Cancelled,
 }
