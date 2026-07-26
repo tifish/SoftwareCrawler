@@ -214,19 +214,51 @@ public static class SoftwareManager
                 .Select(entry => entry.Line)
         );
 
+        // Keep the state we are about to replace; DownloadDirectory.tab is not in
+        // git and this is the only copy of it there will ever be.
+        ConfigBackupService.BackupDaily(softwarePath, downloadDirectoryPath);
+
         // Write both files in parallel. The scope keeps the watcher from treating
         // our own write as an external edit, and records the new content on exit.
         var encoding = new UTF8Encoding(true);
         using (ConfigChangeMonitor.BeginSelfWrite(softwarePath, downloadDirectoryPath))
         {
             await Task.WhenAll(
-                    File.WriteAllLinesAsync(softwarePath, dataItems, encoding),
-                    File.WriteAllLinesAsync(downloadDirectoryPath, extraItems, encoding)
+                    Task.Run(() => WriteLinesAtomic(softwarePath, dataItems, encoding)),
+                    Task.Run(() => WriteLinesAtomic(downloadDirectoryPath, extraItems, encoding))
                 )
                 .ConfigureAwait(false);
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Writes through a temporary file and renames over the target, so an
+    /// interrupted write leaves the previous content intact instead of a
+    /// truncated file. Mirrors <see cref="SharedDataFile.WriteAllTextAtomic"/>,
+    /// which cannot be used directly because these files carry a BOM.
+    /// The ".tmp" name is the one <see cref="ConfigChangeMonitor"/> ignores.
+    /// </summary>
+    private static void WriteLinesAtomic(string path, IEnumerable<string> lines, Encoding encoding)
+    {
+        var temporary = path + $".{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.WriteAllLines(temporary, lines, encoding);
+            File.Move(temporary, path, overwrite: true);
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(temporary);
+            }
+            catch
+            {
+                // Best-effort cleanup; the rename normally consumed it already.
+            }
+        }
     }
 
     // Debounced save: coalesces bursts of edits (e.g. typing in a cell, multiple row

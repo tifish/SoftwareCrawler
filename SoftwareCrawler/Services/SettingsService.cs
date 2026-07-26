@@ -28,6 +28,12 @@ public class SettingsService
     /// <summary>The Config folder holding machine-local data.</summary>
     public static string MachineConfigRoot => Storage.LocalConfigDir;
 
+    /// <summary>
+    /// The per-machine data folder, outside the program directory whatever the
+    /// storage mode is. Things that must survive a wiped bin folder live here.
+    /// </summary>
+    public static string LocalDataRoot => Storage.LocalDir;
+
     /// <summary>The Config folder next to the executable; its existence forces portable mode.</summary>
     public static string ProgramConfigRoot => Storage.ProgramConfigDir;
 
@@ -273,6 +279,9 @@ public class SettingsService
         // Brackets both writes so the watcher can date them; TryMergeAndWrite already
         // merges with whatever is on disk, so an outside edit is absorbed, not lost.
         using var selfWrite = ConfigChangeMonitor.BeginSelfWrite(MachineSettingsPath, roamingPath);
+
+        // settings.json is user data that nothing else can restore either.
+        ConfigBackupService.BackupDaily(MachineSettingsPath, roamingPath);
 
         if (!string.Equals(machineJson, _lastSavedMachineJson, StringComparison.Ordinal))
         {

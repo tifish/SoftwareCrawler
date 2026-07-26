@@ -139,7 +139,8 @@ public static class DebugMcpContract
                 "config_monitor",
                 "Report the config watcher state: whether it is live, which events are waiting for the quiet period, "
                     + "and for every tracked config file the content baseline the app holds and whether the file on disk "
-                    + "has been changed outside the app (in which case saving it is skipped).",
+                    + "has been changed outside the app (in which case saving it is skipped). Also lists the daily config "
+                    + "backups and where they are kept.",
                 new()
             )
         );

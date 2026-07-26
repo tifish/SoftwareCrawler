@@ -204,6 +204,18 @@ internal static class DebugMcpServer
         /// <summary>Reloads the software list from disk, as an outside edit would.</summary>
         public void ReloadSoftwareList() => SoftwareManager.Load().GetAwaiter().GetResult();
 
+        /// <summary>Takes today's config backup now, without waiting for a save.</summary>
+        public string BackupConfigNow()
+        {
+            ConfigBackupService.BackupDaily(
+                Path.Join(SettingsStore.ResolveConfigRoot(), "Software.tab"),
+                Path.Join(SettingsStore.ResolveConfigRoot(), "DownloadDirectory.tab"),
+                SettingsStore.MachineSettingsPath,
+                SettingsStore.RoamingSettingsPath
+            );
+            return ConfigBackupService.Root;
+        }
+
         /// <summary>
         /// Drops the preserved download directories, as the context menu item does
         /// but without the confirmation. False means the save was skipped.
@@ -458,6 +470,15 @@ internal static class DebugMcpServer
                 $"{Path.GetFileName(path)}: known={ConfigChangeMonitor.DescribeKnown(path)} "
                     + $"externallyChanged={ConfigChangeMonitor.HasExternalChange(path)}"
             );
+
+        sb.AppendLine();
+        sb.AppendLine($"Backup root: {ConfigBackupService.Root}");
+        var backups = ConfigBackupService.Describe();
+        if (backups.Count == 0)
+            sb.AppendLine("Backups: (none)");
+        else
+            foreach (var day in backups)
+                sb.AppendLine($"  {day}");
 
         return ToolText(sb.ToString());
     }
