@@ -433,12 +433,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             }
 
             targetFilePath = Path.Join(_item.FinalDownloadDirectory, suggestedFileName);
-
-            // Stage the download next to where it is going, so finishing it is a
-            // rename rather than a copy across volumes, and the user's Downloads
-            // folder is left alone. The suffix keeps a half-finished attempt from
-            // standing in for the previous version.
-            downloadedFilePath = targetFilePath + PartialSuffix;
+            downloadedFilePath = StagingPathFor(targetFilePath);
 
             // Compare file size to determine download or not.
             // Epic Launcher download page may change its file name for each download.
@@ -744,6 +739,46 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
     /// swept up by a delete pattern.
     /// </summary>
     internal const string PartialSuffix = ".partial";
+
+    /// <summary>
+    /// Where the bytes go while they are arriving.
+    ///
+    /// A local destination is staged in place: finishing is then a rename rather
+    /// than a copy, which for a 3 GB installer heading to another volume is the
+    /// difference between instant and writing it twice.
+    ///
+    /// A network destination is not, because streaming a download straight onto a
+    /// share means every write crosses the wire and one blip loses the transfer.
+    /// Those keep the old route - land locally, copy once when it is complete.
+    /// </summary>
+    internal static string StagingPathFor(string targetFilePath) =>
+        IsNetworkPath(Path.GetDirectoryName(targetFilePath))
+            ? Path.Combine(SoftwareItem.SystemDownloadFolder, Path.GetFileName(targetFilePath))
+            : targetFilePath + PartialSuffix;
+
+    /// <summary>True for a UNC path or a drive letter mapped to a share.</summary>
+    internal static bool IsNetworkPath(string? directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory))
+            return false;
+
+        try
+        {
+            var full = Path.GetFullPath(directory);
+            if (full.StartsWith(@"\\", StringComparison.Ordinal))
+                return true;
+
+            var root = Path.GetPathRoot(full);
+            return !string.IsNullOrEmpty(root)
+                && new DriveInfo(root).DriveType == DriveType.Network;
+        }
+        catch
+        {
+            // An unreadable path is not worth guessing about; treat it as local
+            // and let the download itself report the real problem.
+            return false;
+        }
+    }
 
     /// <summary>
     /// More matches than one item's download history could plausibly be. Past this

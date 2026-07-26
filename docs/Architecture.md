@@ -104,9 +104,14 @@ flowchart TD
 - **旧版本清理的边界**：多个软件项共用一个下载目录是常规用法（7 个 JetBrains IDE 一个目录、每个 CUDA 版本一个目录），**靠模式本身区分彼此**——`FilePatternToDeleteBeforeDownload` 就是这个约定，程序不去猜别的项想要什么，各项之间也不产生关联。唯一的兜底是数量上限：单次匹配超过 10 个就整体放弃并记警告（`SelectOldVersions`），挡住把模式指向通用下载目录这类事故。在途的 `.partial` 永远不参与。
 - **`testOnly`**：走完整个链路直到能判断"有没有更新"，随即取消下载，状态记为 `HasUpdate`。菜单里的 Test 和 MCP 的 `download_probe` 默认走这条路。
 
-落盘顺序（`DownloadPipeline.Succeeded()`）：**直接下载到目标目录**，用 `<最终文件名>.partial` 作为在途名；完成后按 `FilePatternToDeleteBeforeDownload` 清理旧文件，再把 `.partial` 改名成最终文件（同卷改名是瞬时的，失败则退化为复制——WebView2 的安全扫描可能仍锁着文件）。若配置了 `DownloadDirectory2` 再复制一份。两个目录各自独立地执行解压与钩子。
+**在途文件放哪**（`StagingPathFor`）取决于目标是本地还是网络：
 
-在途文件就放在目标目录里，因此几处按模式扫描的地方都显式跳过 `.partial`：它既不能被当作"已下载的旧版本"参与判重，也不能被删除模式扫走。下载开始前会清掉上次中断留下的同名 `.partial`，否则浏览器会自动改名成 `xxx (1).partial`。
+- **本地目标**：就地暂存为 `<最终文件名>.partial`，完成后改名。跨卷时这是关键——目标在别的盘的话，旧做法要把整个文件从系统下载目录复制过去（3GB 的 CUDA 包等于写两遍，还要求 C 盘有等量空闲）。
+- **网络目标（UNC 或映射盘）**：仍然先落到系统下载目录，完成后复制过去。边下边写共享意味着每个写操作都过网络，抖一下整个传输就没了。
+
+落盘顺序（`DownloadPipeline.Succeeded()`）：完成后按 `FilePatternToDeleteBeforeDownload` 清理旧文件，再把暂存文件移到最终位置（同目录是瞬时改名；失败则退化为复制——WebView2 的安全扫描可能仍锁着文件）。若配置了 `DownloadDirectory2` 再复制一份。两个目录各自独立地执行解压与钩子。
+
+就地暂存时在途文件与成品同目录，因此几处按模式扫描的地方都显式跳过 `.partial`：它既不能被当作"已下载的旧版本"参与判重，也不能被删除模式扫走。下载开始前会清掉上次中断留下的同名 `.partial`，否则浏览器会自动改名成 `xxx (1).partial`。
 
 扩展点：目标目录下若存在 `AfterDownload.cmd`/`.ps1` 或 `AfterExtract.cmd`/`.ps1`，会以文件路径为参数同步调用（`.cmd` 优先）。解压用随程序附带的 `bin/7-Zip/7z.exe`，`e -r` 展平到根目录，之后删掉空子目录。
 
