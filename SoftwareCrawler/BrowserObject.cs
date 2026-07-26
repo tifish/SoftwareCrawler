@@ -24,6 +24,9 @@ public class BrowserObject
 
     public WebView2 WebView2 = null!;
 
+    /// <summary>The WebView2 profile folder actually in use. Diagnostics only.</summary>
+    public string UserDataFolder { get; private set; } = "";
+
     // Track frames for frame-specific script execution
     private readonly Dictionary<string, CoreWebView2Frame> _frames = new();
 
@@ -66,9 +69,14 @@ public class BrowserObject
             args.Add($"--proxy-server={proxyServer}");
         }
 
+        // Anchored to the executable, not the working directory: a scheduled task
+        // starts the app in system32, which would give the nightly run a different
+        // WebView2 profile - no cookies, no logins - than a manual start.
+        UserDataFolder = Path.Combine(AppContext.BaseDirectory, "Cache");
+
         var environment = await CoreWebView2Environment.CreateAsync(
             null,
-            Path.GetFullPath("Cache"),
+            UserDataFolder,
             new CoreWebView2EnvironmentOptions(string.Join(" ", args), "zh-CN")
         );
         await WebView2.EnsureCoreWebView2Async(environment);
