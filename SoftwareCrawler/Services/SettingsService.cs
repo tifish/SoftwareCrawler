@@ -61,8 +61,10 @@ public class SettingsService
             MachineSettingsPath,
             out MachineAppSettings machineSettings
         );
+        // The legacy file is flat, and the flat view forwards into the two halves,
+        // so deserializing it has already sorted its values into the right one.
         if (!machineFileLoaded && legacy is not null)
-            machineSettings = ToMachineSettings(legacy);
+            machineSettings = legacy.Machine;
         NormalizeMachineSettings(machineSettings);
 
         RoamingSettingsPath = ResolveSettingsPath(
@@ -74,10 +76,10 @@ public class SettingsService
             out RoamingAppSettings roamingSettings
         );
         if (!roamingFileLoaded && legacy is not null)
-            roamingSettings = ToRoamingSettings(legacy);
+            roamingSettings = legacy.Roaming;
         NormalizeRoamingSettings(roamingSettings);
 
-        Settings = MergeSettings(machineSettings, roamingSettings);
+        Settings = new AppSettings(machineSettings, roamingSettings);
         NormalizeSettings(Settings);
 
         // Baselines are cloned so they never share references with Settings:
@@ -88,10 +90,10 @@ public class SettingsService
         var migrated = legacy is not null && (!machineFileLoaded || !roamingFileLoaded);
         _baseMachineSettings = migrated
             ? new MachineAppSettings()
-            : JsonSettingsFile.Clone(ToMachineSettings(Settings));
+            : JsonSettingsFile.Clone(Settings.Machine);
         _baseRoamingSettings = migrated
             ? new RoamingAppSettings()
-            : JsonSettingsFile.Clone(ToRoamingSettings(Settings));
+            : JsonSettingsFile.Clone(Settings.Roaming);
         _lastSavedMachineJson = JsonSettingsFile.Serialize(_baseMachineSettings);
         _lastSavedRoamingPath = CurrentRoamingSettingsPath();
         _lastSavedRoamingJson = JsonSettingsFile.Serialize(_baseRoamingSettings);
@@ -130,81 +132,14 @@ public class SettingsService
     public StorageLocation CurrentStorageLocation =>
         Storage.ResolveEffectiveLocation(Settings.StorageLocation);
 
-    private static AppSettings MergeSettings(
-        MachineAppSettings machineSettings,
-        RoamingAppSettings roamingSettings
-    ) =>
-        new()
-        {
-            StorageLocation = machineSettings.StorageLocation,
-            CustomStoragePath = machineSettings.CustomStoragePath,
-            Proxy = machineSettings.Proxy,
-            ExternalJavascriptEditor = machineSettings.ExternalJavascriptEditor,
-            DefaultDownloadDirectory = machineSettings.DefaultDownloadDirectory,
-            DownloadRetryCount = roamingSettings.DownloadRetryCount,
-            DownloadRetryInterval = roamingSettings.DownloadRetryInterval,
-            LoadPageEndTimeout = roamingSettings.LoadPageEndTimeout,
-            TryClickCount = roamingSettings.TryClickCount,
-            TryClickInterval = roamingSettings.TryClickInterval,
-            StartDownloadTimeout = roamingSettings.StartDownloadTimeout,
-            DownloadTimeout = roamingSettings.DownloadTimeout,
-            ColorMode = roamingSettings.ColorMode,
-            CheckUpdateOnStartup = roamingSettings.CheckUpdateOnStartup,
-            UpdateCheckFrequency = roamingSettings.UpdateCheckFrequency,
-        };
-
-    private static MachineAppSettings ToMachineSettings(AppSettings settings)
-    {
-        var machineSettings = new MachineAppSettings
-        {
-            StorageLocation = settings.StorageLocation,
-            CustomStoragePath = settings.CustomStoragePath,
-            Proxy = settings.Proxy,
-            ExternalJavascriptEditor = settings.ExternalJavascriptEditor,
-            DefaultDownloadDirectory = settings.DefaultDownloadDirectory,
-        };
-        NormalizeMachineSettings(machineSettings);
-        return machineSettings;
-    }
-
-    private static RoamingAppSettings ToRoamingSettings(AppSettings settings)
-    {
-        var roamingSettings = new RoamingAppSettings
-        {
-            DownloadRetryCount = settings.DownloadRetryCount,
-            DownloadRetryInterval = settings.DownloadRetryInterval,
-            LoadPageEndTimeout = settings.LoadPageEndTimeout,
-            TryClickCount = settings.TryClickCount,
-            TryClickInterval = settings.TryClickInterval,
-            StartDownloadTimeout = settings.StartDownloadTimeout,
-            DownloadTimeout = settings.DownloadTimeout,
-            ColorMode = settings.ColorMode,
-            CheckUpdateOnStartup = settings.CheckUpdateOnStartup,
-            UpdateCheckFrequency = settings.UpdateCheckFrequency,
-        };
-        NormalizeRoamingSettings(roamingSettings);
-        return roamingSettings;
-    }
-
+    /// <summary>
+    /// Brings both halves within their allowed ranges. The flat view forwards to
+    /// them, so there is nothing to copy back.
+    /// </summary>
     private static void NormalizeSettings(AppSettings settings)
     {
-        var normalized = MergeSettings(ToMachineSettings(settings), ToRoamingSettings(settings));
-
-        settings.StorageLocation = normalized.StorageLocation;
-        settings.CustomStoragePath = normalized.CustomStoragePath;
-        settings.Proxy = normalized.Proxy;
-        settings.ExternalJavascriptEditor = normalized.ExternalJavascriptEditor;
-        settings.DefaultDownloadDirectory = normalized.DefaultDownloadDirectory;
-        settings.DownloadRetryCount = normalized.DownloadRetryCount;
-        settings.DownloadRetryInterval = normalized.DownloadRetryInterval;
-        settings.LoadPageEndTimeout = normalized.LoadPageEndTimeout;
-        settings.TryClickCount = normalized.TryClickCount;
-        settings.TryClickInterval = normalized.TryClickInterval;
-        settings.StartDownloadTimeout = normalized.StartDownloadTimeout;
-        settings.DownloadTimeout = normalized.DownloadTimeout;
-        settings.ColorMode = normalized.ColorMode;
-        settings.CheckUpdateOnStartup = normalized.CheckUpdateOnStartup;
-        settings.UpdateCheckFrequency = normalized.UpdateCheckFrequency;
+        NormalizeMachineSettings(settings.Machine);
+        NormalizeRoamingSettings(settings.Roaming);
     }
 
     private static void NormalizeMachineSettings(MachineAppSettings settings)
@@ -250,17 +185,17 @@ public class SettingsService
     public void ReloadRoamingSettings()
     {
         NormalizeSettings(Settings);
-        var machineSettings = ToMachineSettings(Settings);
+        var machineSettings = Settings.Machine;
         var path = CurrentRoamingSettingsPath();
         if (!JsonSettingsFile.TryLoad(path, out RoamingAppSettings roamingSettings))
-            roamingSettings = ToRoamingSettings(Settings);
+            roamingSettings = Settings.Roaming;
         NormalizeRoamingSettings(roamingSettings);
 
-        Settings = MergeSettings(machineSettings, roamingSettings);
+        Settings = new AppSettings(machineSettings, roamingSettings);
         NormalizeSettings(Settings);
         RoamingSettingsPath = path;
         _lastSavedRoamingPath = path;
-        _baseRoamingSettings = JsonSettingsFile.Clone(ToRoamingSettings(Settings));
+        _baseRoamingSettings = JsonSettingsFile.Clone(Settings.Roaming);
         _lastSavedRoamingJson = JsonSettingsFile.Serialize(_baseRoamingSettings);
     }
 
@@ -269,8 +204,8 @@ public class SettingsService
     {
         NormalizeSettings(Settings);
 
-        var localMachine = ToMachineSettings(Settings);
-        var localRoaming = ToRoamingSettings(Settings);
+        var localMachine = Settings.Machine;
+        var localRoaming = Settings.Roaming;
         var machineJson = JsonSettingsFile.Serialize(localMachine);
         var roamingPath = CurrentRoamingSettingsPath();
         var roamingJson = JsonSettingsFile.Serialize(localRoaming);
@@ -334,7 +269,7 @@ public class SettingsService
 
         if (saved)
         {
-            Settings = MergeSettings(mergedMachine, mergedRoaming);
+            Settings = new AppSettings(mergedMachine, mergedRoaming);
             NormalizeSettings(Settings);
         }
 

@@ -180,7 +180,7 @@ flowchart TD
 
 - `MachineAppSettings`：`StorageLocation` `CustomStoragePath` `Proxy` `ExternalJavascriptEditor` `DefaultDownloadDirectory`。永远存在 `%LOCALAPPDATA%\SoftwareCrawler\Config\settings.json`。
 - `RoamingAppSettings`：各类超时/重试次数、主题、更新检查频率。存在**活动 Config 目录**的 `settings.json` 里，和软件清单同进退。
-- `AppSettings` 是两者合并后的只读视图，应用代码只读它；`SettingsService` 负责合并、归一化（`Math.Clamp` 各种超时）与拆分回写。
+- `AppSettings` 是两者合并后的扁平视图，应用代码只用它。它**不持有值**，每个属性转发到 `Machine` 或 `Roaming` 对象，因此没有"合并/拆分/拷回"这类需要人工同步的映射代码；`SettingsService` 只负责加载、归一化（`Math.Clamp` 各种超时）和写回。加一个设置项 = 往两个存储类之一加属性 + 在扁平视图上加一行转发，漏了第二步会在调用点编译失败，而测试 `EveryStoredSettingIsReachableFromTheFlatView` 会直接指出来。扁平形状同时也是拆分前那版 `Settings.json` 的形状，所以老文件反序列化进来就自动落到各自的一半里。
 
 **存储位置**三选一（`StorageLocation`）：AppData（默认）/ 便携（可执行文件旁的 `Config`）/ 自定义目录。判定规则是：**只要可执行文件旁存在 `Config` 目录，就强制便携模式**，与保存的值无关。仓库里 `bin/Config/.gitkeep` 就是为此存在——每个 worktree 自带 `Config`，于是各自便携、互不干扰，不会共用一份 AppData 配置。设置窗口切换位置时会询问是否搬迁 `Config` 目录（`SettingsForm.cs:166` 起）。
 
@@ -241,7 +241,7 @@ Claude Code ──stdio──> Tools/DebugMcpBridge ──HTTP JSON-RPC──> �
 | --- | --- |
 | 给配方加一个字段 | `SoftwareItem` 属性 + `DataProperties`；旧文件靠"列数可少于属性数"自动兼容，无需迁移代码 |
 | 加一个本机私有字段 | `SoftwareItem` 属性 + `ExtraProperties`；同时确认 `LegacyExtraProperties` 的读取路径仍成立 |
-| 加一个设置项 | `MachineAppSettings` 或 `RoamingAppSettings` 二选一 → `AppSettings` → `MergeSettings`/`To*Settings`/`Normalize*` 四处同步 → `SettingsForm` 加控件 |
+| 加一个设置项 | `MachineAppSettings` 或 `RoamingAppSettings` 二选一 + `AppSettings` 加一行转发（+ 需要范围限制就写进 `Normalize*`）→ `SettingsForm` 加控件 |
 | 支持一种新的下载方式 | 优先复用 `OnBeginDownloadHandler` / `Succeeded` 这条决策与落盘链路（`DirectDownload` 就是这么接的） |
 | 加一个调试能力 | `DebugMcpServer.CreateHost()` 注册工具 + `DebugMcpContract.BuildToolList()` 声明 schema；简单读写优先挂到 `AppRoot` 上，用 `get_value`/`invoke` 直接触达 |
 | 排查"配置被覆盖/没保存" | MCP `config_monitor`：watcher 是否存活、pending 事件、每个文件的基线哈希与 `externallyChanged`、备份清单 |
