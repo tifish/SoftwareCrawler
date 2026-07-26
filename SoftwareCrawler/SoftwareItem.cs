@@ -805,8 +805,6 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             downloadFileSize = item.TotalBytes;
             downloadFileTime = item.EndTime;
 
-            // Download to system download folder first, then move to download directory.
-            downloadedFilePath = Path.Combine(SystemDownloadFolder, suggestedFileName);
             var ext = Path.GetExtension(item.SuggestedFileName).ToLower();
 
             if (!ExecutableFileTypes.Contains(ext) && !ArchiveFileTypes.Contains(ext))
@@ -822,6 +820,12 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
             targetFilePath = Path.Join(FinalDownloadDirectory, suggestedFileName);
 
+            // Stage the download next to where it is going, so finishing it is a
+            // rename rather than a copy across volumes, and the user's Downloads
+            // folder is left alone. The suffix keeps a half-finished attempt from
+            // standing in for the previous version.
+            downloadedFilePath = targetFilePath + PartialSuffix;
+
             // Compare file size to determine download or not.
             // Epic Launcher download page may change its file name for each download.
             // Find the old file and check the size.
@@ -833,7 +837,10 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             {
                 oldFile = Directory
                     .GetFiles(FinalDownloadDirectory, FilePatternToDeleteBeforeDownload)
-                    .FirstOrDefault();
+                    // An interrupted attempt is not a previous version to compare against.
+                    .FirstOrDefault(file =>
+                        !file.EndsWith(PartialSuffix, StringComparison.OrdinalIgnoreCase)
+                    );
             }
 
             if (File.Exists(oldFile))
@@ -873,6 +880,19 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             }
 
             beginDownloadResult = BeginDownloadResult.Started;
+
+            // Clear out what an interrupted attempt left behind, or the browser
+            // would download to "name.exe (1).partial" instead.
+            try
+            {
+                if (File.Exists(downloadedFilePath))
+                    File.Delete(downloadedFilePath);
+            }
+            catch (Exception ex)
+            {
+                Log.ZLogWarning($"Could not remove the stale {downloadedFilePath}: {ex.Message}");
+            }
+
             // Tell the browser to download to the downloadingFilePath.
             item.DownloadedFilePath = downloadedFilePath;
         }
@@ -1106,6 +1126,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Marks a download still in flight. It sits in the destination directory, so
+    /// it has to be recognisable there: never offered as the finished file, never
+    /// swept up by a delete pattern.
+    /// </summary>
+    internal const string PartialSuffix = ".partial";
+
+    /// <summary>
     /// More matches than one item's download history could plausibly be. Past this
     /// the pattern is not describing old versions any more - it is describing
     /// somebody else's folder.
@@ -1139,6 +1166,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         var candidates = Directory
             .GetFiles(directory, pattern)
             .Where(file => !string.Equals(file, keepFile, StringComparison.OrdinalIgnoreCase))
+            // The download in flight lives here too, and a pattern like "name.*"
+            // would happily match it.
+            .Where(file => !file.EndsWith(PartialSuffix, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         var claimedByOthers = candidates

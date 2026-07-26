@@ -103,7 +103,9 @@ flowchart TD
 - **旧版本清理的边界**：多个软件项共用一个下载目录是常规用法（7 个 JetBrains IDE 一个目录、每个 CUDA 版本一个目录），各自靠精确模式区分自己的文件。所以判断依据不是"目录是否共用"，而是**待删文件是否也被同目录另一项的模式匹配**——是则不删（`SelectOldVersions`）。这样 `*.exe` 这种宽泛模式在共用目录里最多只能删到无人认领的文件。另有一道上限：单次匹配超过 10 个就整体放弃并记警告，防止模式指向通用下载目录。
 - **`testOnly`**：走完整个链路直到能判断"有没有更新"，随即取消下载，状态记为 `HasUpdate`。菜单里的 Test 和 MCP 的 `download_probe` 默认走这条路。
 
-落盘顺序（`Succeeded()`，`SoftwareItem.cs:896`）：**先下载到系统下载目录**，再按 `FilePatternToDeleteBeforeDownload` 清理目标目录旧文件，然后移动到 `FinalDownloadDirectory`（移动失败退化为复制——WebView2 的安全扫描可能仍锁着文件）。若配置了 `DownloadDirectory2` 再复制一份。两个目录各自独立地执行解压与钩子。
+落盘顺序（`Succeeded()`）：**直接下载到目标目录**，用 `<最终文件名>.partial` 作为在途名；完成后按 `FilePatternToDeleteBeforeDownload` 清理旧文件，再把 `.partial` 改名成最终文件（同卷改名是瞬时的，失败则退化为复制——WebView2 的安全扫描可能仍锁着文件）。若配置了 `DownloadDirectory2` 再复制一份。两个目录各自独立地执行解压与钩子。
+
+在途文件就放在目标目录里，因此几处按模式扫描的地方都显式跳过 `.partial`：它既不能被当作"已下载的旧版本"参与判重，也不能被删除模式扫走。下载开始前会清掉上次中断留下的同名 `.partial`，否则浏览器会自动改名成 `xxx (1).partial`。
 
 扩展点：目标目录下若存在 `AfterDownload.cmd`/`.ps1` 或 `AfterExtract.cmd`/`.ps1`，会以文件路径为参数同步调用（`.cmd` 优先）。解压用随程序附带的 `bin/7-Zip/7z.exe`，`e -r` 展平到根目录，之后删掉空子目录。
 
