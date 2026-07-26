@@ -1,10 +1,28 @@
 name: Build and Release
 
+# Every run replaces the latest_release tag and hands all users a new version,
+# so changes that cannot affect the shipped binaries do not start one. A push
+# is skipped only when every file it touches is listed here.
 on:
     push:
         branches: ["main"]
+        # Actions does not support YAML anchors, so this list is repeated below.
+        paths-ignore:
+            - "**.md"
+            - "docs/**"
+            - "LICENSE"
+            - ".gitignore"
+            - ".editorconfig"
+            - ".mcp.json"
     pull_request:
         branches: ["main"]
+        paths-ignore:
+            - "**.md"
+            - "docs/**"
+            - "LICENSE"
+            - ".gitignore"
+            - ".editorconfig"
+            - ".mcp.json"
 
 permissions:
     contents: write
