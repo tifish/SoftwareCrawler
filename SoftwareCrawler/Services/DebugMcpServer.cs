@@ -209,6 +209,14 @@ internal static class DebugMcpServer
         public void ReloadSoftwareList() =>
             Task.Run(() => SoftwareManager.Load()).GetAwaiter().GetResult();
 
+        /// <summary>
+        /// Runs the staged-file delete the download pipeline uses, for checking
+        /// that a locked file makes it give up instead of hanging. True when the
+        /// file is gone.
+        /// </summary>
+        public bool DeleteStagedFileProbe(string path) =>
+            Task.Run(() => SoftwareItem.DeleteStagedFile(path)).GetAwaiter().GetResult();
+
         /// <summary>Takes today's config backup now, without waiting for a save.</summary>
         public string BackupConfigNow()
         {

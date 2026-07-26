@@ -515,23 +515,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         finally
         {
             if (!testOnly && !string.IsNullOrEmpty(downloadedFilePath))
-            {
-                while (true)
-                {
-                    try
-                    {
-                        if (File.Exists(downloadedFilePath))
-                            File.Delete(downloadedFilePath);
-                    }
-                    catch
-                    {
-                        await Task.Delay(500);
-                        continue;
-                    }
-
-                    break;
-                }
-            }
+                await DeleteStagedFile(downloadedFilePath);
 
             _uiSynchronizationContext = null;
             Browser.BeginDownloadHandler -= OnBeginDownloadHandler;
@@ -1048,6 +1032,43 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 await process.WaitForExitAsync();
             }
         }
+    }
+
+    private const int DeleteStagedFileAttempts = 10;
+    private const int DeleteStagedFileIntervalMs = 500;
+
+    /// <summary>
+    /// Removes the file left in the staging folder, tolerating the brief lock
+    /// WebView2's download scan holds after a transfer ends. Gives up after a few
+    /// seconds rather than retrying forever: a leftover staged file is untidy, but
+    /// a delete that never returns stalls every remaining item in the run.
+    /// Returns whether the file is gone.
+    /// </summary>
+    internal static async Task<bool> DeleteStagedFile(string path)
+    {
+        for (var attempt = 1; attempt <= DeleteStagedFileAttempts; attempt++)
+        {
+            try
+            {
+                if (!File.Exists(path))
+                    return true;
+
+                File.Delete(path);
+                return true;
+            }
+            catch when (attempt < DeleteStagedFileAttempts)
+            {
+                await Task.Delay(DeleteStagedFileIntervalMs);
+            }
+            catch (Exception ex)
+            {
+                Log.ZLogWarning(
+                    $"Gave up deleting the staged file {path} after {DeleteStagedFileAttempts} attempts: {ex.Message}"
+                );
+            }
+        }
+
+        return false;
     }
 
     private static Task<bool> CopyFileIfChanged(
