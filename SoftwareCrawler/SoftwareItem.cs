@@ -71,18 +71,34 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public string Name { get; set; } = string.Empty;
     public string WebPage { get; set; } = string.Empty;
 
+    /// <summary>
+    /// A row is one line of tab-separated columns, so a value carrying either
+    /// character would break the file: a newline splits the row in two, a tab
+    /// shifts every column after it. Both travel as backtick escapes, which is
+    /// also what the grid shows and what the file has always held.
+    /// </summary>
+    internal static string EncodeField(string value) =>
+        value
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n')
+            .Replace("\t", "`t")
+            .Replace("\n", "`n");
+
+    /// <inheritdoc cref="EncodeField"/>
+    internal static string DecodeField(string value) =>
+        value.Replace("`n", "\n").Replace("`t", "\t");
+
     [NonSerialized]
     public List<string> GetXPathOrScripts()
     {
-        // XPathOrScript1/2/3/4/5 -> XPathOrScripts
-        // `n -> \n
+        // XPathOrScript1/2/3/4/5 -> XPathOrScripts, as editable text
         var xpathOrScripts = new List<string>();
         foreach (var property in XPathOrScriptProperties)
         {
             var value = (string)property.GetValue(this)!;
             if (!string.IsNullOrEmpty(value))
             {
-                xpathOrScripts.Add(value.Replace("`n", "\n"));
+                xpathOrScripts.Add(DecodeField(value));
             }
         }
 
@@ -91,15 +107,12 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     public void SetXPathOrScripts(List<string> xpathOrScripts)
     {
-        // XPathOrScripts -> XPathOrScript1/2/3/4/5
-        // \n -> `n
+        // XPathOrScripts -> XPathOrScript1/2/3/4/5, back to the escaped form.
+        // An external editor indenting with tabs is what makes this necessary.
         for (var i = 0; i < XPathOrScriptProperties.Count; i++)
         {
             XPathOrScriptProperties[i]
-                .SetValue(
-                    this,
-                    i < xpathOrScripts.Count ? xpathOrScripts[i].Replace("\n", "`n") : ""
-                );
+                .SetValue(this, i < xpathOrScripts.Count ? EncodeField(xpathOrScripts[i]) : "");
         }
     }
 
@@ -292,8 +305,10 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         {
             var value = prop.GetValue(this);
 
+            // Every column goes through the escape, not just the script ones: a
+            // path or a name pasted into the grid can carry a tab just as easily.
             if (prop.PropertyType == typeof(string))
-                return (string)(value ?? string.Empty);
+                return EncodeField((string)(value ?? string.Empty));
 
             if (prop.PropertyType == typeof(int))
             {

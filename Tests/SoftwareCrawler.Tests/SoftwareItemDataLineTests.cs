@@ -176,6 +176,63 @@ public class SoftwareItemDataLineTests
         Assert.Equal(scripts, restored.GetXPathOrScripts());
     }
 
+    /// <summary>
+    /// An external editor indenting a script with tabs used to shift every later
+    /// column of the row on the next save.
+    /// </summary>
+    [Fact]
+    public void TabsInAScriptCannotShiftTheColumns()
+    {
+        var script = "function download() {\n\tconst a = 1;\n\tclick(a);\n}";
+
+        var item = new SoftwareItem { Name = "Example" };
+        item.SetXPathOrScripts([script]);
+        var line = item.ToDataLine(SoftwareItem.DataProperties);
+
+        Assert.Equal(SoftwareItem.DataProperties.Count, line.Split('\t').Length);
+
+        var restored = new SoftwareItem();
+        restored.FromDataLine(line, SoftwareItem.DataProperties);
+
+        Assert.Equal(script, restored.GetXPathOrScripts().Single());
+    }
+
+    /// <summary>Any column can pick one up from a paste, not just the script ones.</summary>
+    [Theory]
+    [InlineData("tab\there")]
+    [InlineData("newline\nhere")]
+    [InlineData("carriage\r\nreturn")]
+    [InlineData("lone\rcarriage")]
+    public void ControlCharactersInAnyColumnCannotBreakTheRow(string value)
+    {
+        var item = new SoftwareItem { Name = value, DownloadDirectory = value };
+
+        var dataLine = item.ToDataLine(SoftwareItem.DataProperties);
+        var extraLine = item.ToDataLine(SoftwareItem.ExtraProperties);
+
+        Assert.Equal(SoftwareItem.DataProperties.Count, dataLine.Split('\t').Length);
+        Assert.Equal(SoftwareItem.ExtraProperties.Count, extraLine.Split('\t').Length);
+        Assert.DoesNotContain('\n', dataLine);
+        Assert.DoesNotContain('\r', dataLine);
+        Assert.DoesNotContain('\n', extraLine);
+        Assert.DoesNotContain('\r', extraLine);
+    }
+
+    /// <summary>
+    /// The escaped form is what the file has always held and what the grid shows,
+    /// so writing a value that already carries it must not double-escape.
+    /// </summary>
+    [Fact]
+    public void AlreadyEscapedValuesAreWrittenUnchanged()
+    {
+        var item = new SoftwareItem { XPathOrScript1 = "const a = 1;`nclick(a);" };
+
+        var line = item.ToDataLine(SoftwareItem.DataProperties);
+
+        Assert.Contains("const a = 1;`nclick(a);", line);
+        Assert.DoesNotContain("``n", line);
+    }
+
     [Fact]
     public void SettingFewerScriptsClearsTheRemainingSlots()
     {
