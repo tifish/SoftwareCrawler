@@ -100,26 +100,6 @@ public class OldVersionDeletionTests : IDisposable
         Assert.Equal(12, Directory.GetFiles(_folder, "*.exe").Length);
     }
 
-    /// <summary>
-    /// The download in flight is staged in this very folder, and a pattern like
-    /// "Example-*" would match it.
-    /// </summary>
-    [Fact]
-    public async Task TheDownloadInFlightIsNeverDeleted()
-    {
-        var inFlight = CreateFile("Example-2.0.exe" + DownloadPipeline.PartialSuffix);
-        var old = CreateFile("Example-1.0.exe");
-
-        var deleted = await DownloadPipeline.DeleteOldVersions(
-            _folder,
-            "Example-*",
-            ""
-        );
-
-        Assert.Equal([old], deleted);
-        Assert.True(File.Exists(inFlight));
-    }
-
     [Fact]
     public async Task AMissingFolderIsNotAnError()
     {

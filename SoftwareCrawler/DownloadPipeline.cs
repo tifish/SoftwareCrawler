@@ -419,6 +419,14 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             downloadFileSize = item.TotalBytes;
             downloadFileTime = item.EndTime;
 
+            // Download to the system download folder first, then move to the
+            // download directory once it is complete. The destination is not
+            // assumed to be an ordinary local folder: it may be a network share,
+            // or a folder something else is watching and syncing. Writing a
+            // growing file there would have it synced over and over, and an
+            // interrupted one would be propagated to every device. Nothing shows
+            // up in the destination until it is a finished file.
+            downloadedFilePath = Path.Combine(SoftwareItem.SystemDownloadFolder, suggestedFileName);
             var ext = Path.GetExtension(item.SuggestedFileName).ToLower();
 
             if (!ExecutableFileTypes.Contains(ext) && !ArchiveFileTypes.Contains(ext))
@@ -433,7 +441,6 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             }
 
             targetFilePath = Path.Join(_item.FinalDownloadDirectory, suggestedFileName);
-            downloadedFilePath = StagingPathFor(targetFilePath);
 
             // Compare file size to determine download or not.
             // Epic Launcher download page may change its file name for each download.
@@ -446,10 +453,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             {
                 oldFile = Directory
                     .GetFiles(_item.FinalDownloadDirectory, _item.FilePatternToDeleteBeforeDownload)
-                    // An interrupted attempt is not a previous version to compare against.
-                    .FirstOrDefault(file =>
-                        !file.EndsWith(PartialSuffix, StringComparison.OrdinalIgnoreCase)
-                    );
+                    .FirstOrDefault();
             }
 
             if (File.Exists(oldFile))
@@ -489,19 +493,6 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             }
 
             beginDownloadResult = BeginDownloadResult.Started;
-
-            // Clear out what an interrupted attempt left behind, or the browser
-            // would download to "name.exe (1).partial" instead.
-            try
-            {
-                if (File.Exists(downloadedFilePath))
-                    File.Delete(downloadedFilePath);
-            }
-            catch (Exception ex)
-            {
-                Log.ZLogWarning($"Could not remove the stale {downloadedFilePath}: {ex.Message}");
-            }
-
             // Tell the browser to download to the downloadingFilePath.
             item.DownloadedFilePath = downloadedFilePath;
         }
@@ -738,48 +729,6 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
     /// it has to be recognisable there: never offered as the finished file, never
     /// swept up by a delete pattern.
     /// </summary>
-    internal const string PartialSuffix = ".partial";
-
-    /// <summary>
-    /// Where the bytes go while they are arriving.
-    ///
-    /// A local destination is staged in place: finishing is then a rename rather
-    /// than a copy, which for a 3 GB installer heading to another volume is the
-    /// difference between instant and writing it twice.
-    ///
-    /// A network destination is not, because streaming a download straight onto a
-    /// share means every write crosses the wire and one blip loses the transfer.
-    /// Those keep the old route - land locally, copy once when it is complete.
-    /// </summary>
-    internal static string StagingPathFor(string targetFilePath) =>
-        IsNetworkPath(Path.GetDirectoryName(targetFilePath))
-            ? Path.Combine(SoftwareItem.SystemDownloadFolder, Path.GetFileName(targetFilePath))
-            : targetFilePath + PartialSuffix;
-
-    /// <summary>True for a UNC path or a drive letter mapped to a share.</summary>
-    internal static bool IsNetworkPath(string? directory)
-    {
-        if (string.IsNullOrWhiteSpace(directory))
-            return false;
-
-        try
-        {
-            var full = Path.GetFullPath(directory);
-            if (full.StartsWith(@"\\", StringComparison.Ordinal))
-                return true;
-
-            var root = Path.GetPathRoot(full);
-            return !string.IsNullOrEmpty(root)
-                && new DriveInfo(root).DriveType == DriveType.Network;
-        }
-        catch
-        {
-            // An unreadable path is not worth guessing about; treat it as local
-            // and let the download itself report the real problem.
-            return false;
-        }
-    }
-
     /// <summary>
     /// More matches than one item's download history could plausibly be. Past this
     /// the pattern is not describing old versions any more - it is describing
@@ -809,9 +758,6 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         var doomed = Directory
             .GetFiles(directory, pattern)
             .Where(file => !string.Equals(file, keepFile, StringComparison.OrdinalIgnoreCase))
-            // The download in flight lives here too, and a pattern like "name.*"
-            // would happily match it.
-            .Where(file => !file.EndsWith(PartialSuffix, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         if (doomed.Count > MaxOldVersionsToDelete)

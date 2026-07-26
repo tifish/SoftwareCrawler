@@ -228,23 +228,6 @@ internal static class DebugMcpServer
             Task.Run(() => SoftwareManager.Load()).GetAwaiter().GetResult();
 
         /// <summary>
-        /// Where an item's next download would be staged while it arrives: beside
-        /// its destination for a local folder, in the system Downloads folder for
-        /// a network share.
-        /// </summary>
-        public string StagingLocationFor(string name)
-        {
-            var item = SoftwareManager.Items.FirstOrDefault(candidate =>
-                candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
-            );
-            if (item is null)
-                return $"No software item named '{name}'.";
-
-            var target = Path.Join(item.FinalDownloadDirectory, "example.exe");
-            return Path.GetDirectoryName(DownloadPipeline.StagingPathFor(target)) ?? "";
-        }
-
-        /// <summary>
         /// Lists the files an item's delete pattern would remove from its download
         /// directory the next time it downloads, without removing anything.
         /// </summary>
