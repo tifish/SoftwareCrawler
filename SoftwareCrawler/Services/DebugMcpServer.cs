@@ -210,8 +210,14 @@ internal static class DebugMcpServer
         public IReadOnlyList<string> UnclaimedLocalSettings =>
             SoftwareManager.UnclaimedLocalSettingNames;
 
-        /// <summary>Writes the software list immediately, skipping the save debounce.</summary>
-        public void FlushSoftwareList() => SoftwareManager.FlushAsync().GetAwaiter().GetResult();
+        /// <summary>
+        /// Writes the software list immediately, skipping the save debounce.
+        /// Runs off the UI thread for the same reason as
+        /// <see cref="ReloadSoftwareList"/>: tools are invoked on it, and a save
+        /// that has to merge will load.
+        /// </summary>
+        public bool FlushSoftwareList() =>
+            Task.Run(() => SoftwareManager.FlushAsync()).GetAwaiter().GetResult();
 
         /// <summary>
         /// Reloads the software list from disk, as an outside edit would. Runs on

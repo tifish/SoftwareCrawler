@@ -212,9 +212,16 @@ public partial class MainForm : Form
 
         if (InvokeRequired)
         {
-            // BeginInvoke, not Invoke: a caller blocking on Load while the UI
-            // thread waits here would deadlock.
-            BeginInvoke(BindSoftwareList);
+            try
+            {
+                // BeginInvoke, not Invoke: a caller blocking on Load while the UI
+                // thread waits here would deadlock.
+                BeginInvoke(BindSoftwareList);
+            }
+            catch (ObjectDisposedException)
+            {
+                // The form went away between the check and here; closing anyway.
+            }
             return;
         }
 
@@ -612,8 +619,8 @@ public partial class MainForm : Form
         else
             MessageBox.Show(
                 this,
-                "Nothing was removed: the config files changed outside the app, so saving was skipped. "
-                    + "Reload the list and try again.",
+                "Nothing was removed: the list could not be saved. Check the log, reload the list "
+                    + "and try again.",
                 caption,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning

@@ -186,7 +186,11 @@ public static class SoftwareManager
         var extraTask = File.Exists(localSettingsPath)
             ? File.ReadAllLinesAsync(localSettingsPath)
             : Task.FromResult<string[]>([]);
-        await Task.WhenAll(dataTask, extraTask);
+        // Never resume on the UI thread: closing the form and the debug tools both
+        // block it waiting for a save, and a save may load. Resuming there would
+        // deadlock. Everything below is thread-safe, and the reload event marshals
+        // itself to the UI.
+        await Task.WhenAll(dataTask, extraTask).ConfigureAwait(false);
 
         // Enabled used to be the first column of the shared list. Read such a
         // file with the layout it was written in; the next save moves the flags
@@ -250,7 +254,92 @@ public static class SoftwareManager
 
         Log.ZLogInformation($"Loaded {Items.Count} software items from {softwarePath}");
 
+        CaptureBaseline();
         Reloaded?.Invoke();
+    }
+
+    /// <summary>
+    /// What the list looked like the last time it was read or written, keyed by
+    /// name. A save compares against this to tell the app's own edits from the
+    /// values it merely read, which is what makes merging an outside edit possible.
+    /// </summary>
+    private static Dictionary<string, (string Data, string Extra)> _baseline = new(
+        StringComparer.OrdinalIgnoreCase
+    );
+
+    private static void CaptureBaseline() =>
+        _baseline = Items
+            .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => (
+                    group.First().ToDataLine(SoftwareItem.DataProperties),
+                    group.First().ToDataLine(SoftwareItem.ExtraProperties)
+                ),
+                StringComparer.OrdinalIgnoreCase
+            );
+
+    /// <summary>
+    /// Folds the app's edits into a list somebody else has written since it was
+    /// read. Anything the app did not touch keeps the value now on disk, so an
+    /// outside edit survives; anything it did touch wins, so the user's work in
+    /// the app survives too. Rows added or removed in the app are added or removed
+    /// here as well, and a row that vanished from disk stays gone.
+    ///
+    /// Order comes from disk. The app's own reordering is the one thing a merge
+    /// cannot keep, and losing it costs nothing that cannot be redone by dragging.
+    /// </summary>
+    internal static IReadOnlyList<string> ApplyLocalEdits(
+        IReadOnlyDictionary<string, (string Data, string Extra)> baseline,
+        IReadOnlyList<SoftwareItem> local,
+        List<SoftwareItem> disk
+    )
+    {
+        var applied = new List<string>();
+        var onDisk = disk.GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var localNames = local.Select(item => item.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in local)
+        {
+            var data = item.ToDataLine(SoftwareItem.DataProperties);
+            var extra = item.ToDataLine(SoftwareItem.ExtraProperties);
+
+            if (!baseline.TryGetValue(item.Name, out var before))
+            {
+                // Added in the app since the last read.
+                if (!onDisk.ContainsKey(item.Name))
+                {
+                    disk.Add(item);
+                    applied.Add($"+{item.Name}");
+                }
+                continue;
+            }
+
+            // Deleted on disk. The app did not ask to keep it, so it stays deleted.
+            if (!onDisk.TryGetValue(item.Name, out var target))
+                continue;
+
+            if (!string.Equals(data, before.Data, StringComparison.Ordinal))
+            {
+                target.FromDataLine(data, SoftwareItem.DataProperties);
+                applied.Add(item.Name);
+            }
+
+            if (!string.Equals(extra, before.Extra, StringComparison.Ordinal))
+            {
+                target.FromDataLine(extra, SoftwareItem.ExtraProperties);
+                if (!applied.Contains(item.Name))
+                    applied.Add(item.Name);
+            }
+        }
+
+        // Removed in the app since the last read.
+        foreach (var name in baseline.Keys.Where(name => !localNames.Contains(name)))
+            if (onDisk.TryGetValue(name, out var target) && disk.Remove(target))
+                applied.Add($"-{name}");
+
+        return applied;
     }
 
     /// <summary>
@@ -343,6 +432,40 @@ public static class SoftwareManager
         return result;
     }
 
+    /// <summary>
+    /// Re-reads the list somebody else has written and puts the app's own edits
+    /// back on top, leaving <see cref="Items"/> holding the merged result ready to
+    /// be written. Returns false if the merge could not be done, in which case the
+    /// caller must not write - the file on disk is still the only good copy.
+    /// </summary>
+    private static async Task<bool> MergeWithDisk()
+    {
+        try
+        {
+            var baseline = _baseline;
+            var local = Items.ToList();
+
+            // Load replaces Items with what is on disk and re-baselines against it.
+            await Load().ConfigureAwait(false);
+
+            var applied = ApplyLocalEdits(baseline, local, Items);
+            Log.ZLogInformation(
+                $"The software list changed outside the app; merged {applied.Count} local edit(s) "
+                    + $"into it: {(applied.Count == 0 ? "(none)" : string.Join(", ", applied))}"
+            );
+
+            if (applied.Count > 0)
+                Reloaded?.Invoke();
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.ZLogError(ex, $"Could not merge the software list with the copy on disk");
+            return false;
+        }
+    }
+
     /// <summary>Returns false when the write was skipped to protect an outside edit.</summary>
     private static async Task<bool> SaveCore()
     {
@@ -351,19 +474,16 @@ public static class SoftwareManager
         Directory.CreateDirectory(Path.GetDirectoryName(softwarePath)!);
 
         // The two files are one document keyed by name, so an outside edit to
-        // either makes the in-memory list stale. Writing it back would silently
-        // undo that edit, which is worse than losing the app-side change - the
-        // app can reload, the user's text editor cannot. The watcher reports the
-        // change within its quiet period and the app reloads from disk.
+        // either makes the in-memory list stale. Writing it back as-is would
+        // silently undo that edit; refusing to write would silently undo the
+        // user's work in the app. Neither is acceptable, so the two are merged.
         if (
             ConfigChangeMonitor.HasExternalChange(softwarePath)
             || ConfigChangeMonitor.HasExternalChange(localSettingsPath)
         )
         {
-            Log.ZLogWarning(
-                $"Skipped saving the software list: {softwarePath} changed outside the app since it was last read"
-            );
-            return false;
+            if (!await MergeWithDisk().ConfigureAwait(false))
+                return false;
         }
 
         var dataItems = new List<string>(Items.Count + 1)
@@ -405,6 +525,9 @@ public static class SoftwareManager
                 )
                 .ConfigureAwait(false);
         }
+
+        // What is on disk is now what we hold, so later edits are measured from here.
+        CaptureBaseline();
 
         return true;
     }
