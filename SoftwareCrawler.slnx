@@ -2,4 +2,5 @@
   <Project Path="SoftwareCrawler/SoftwareCrawler.csproj" />
   <Project Path="JeekTools.NET/JeekTools.csproj" />
   <Project Path="Tools/DebugMcpBridge/DebugMcpBridge.csproj" />
+  <Project Path="Tests/SoftwareCrawler.Tests/SoftwareCrawler.Tests.csproj" />
 </Solution>

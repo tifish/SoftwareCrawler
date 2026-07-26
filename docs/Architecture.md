@@ -20,8 +20,11 @@
 SoftwareCrawler.slnx
 ├── SoftwareCrawler/            WinForms 主程序
 ├── JeekTools.NET/              共享库（git submodule，多个应用复用）
-└── Tools/DebugMcpBridge/       stdio MCP 桥接进程，仅开发期使用
+├── Tools/DebugMcpBridge/       stdio MCP 桥接进程，仅开发期使用
+└── Tests/SoftwareCrawler.Tests/ xunit 测试，覆盖不依赖 UI 的逻辑
 ```
+
+测试跑 `dotnet test Tests/SoftwareCrawler.Tests/SoftwareCrawler.Tests.csproj`，CI 在发布前会执行。因为测试项目引用主程序，构建会写 `bin/SoftwareCrawler.exe`，**跑之前要先停掉本 worktree 正在运行的实例**。目前覆盖两块最经不起回归的纯逻辑：`.tab` 的读写与历史布局、设置的三方合并。`.tab` 往返测试是按 `DataProperties` 遍历写的，新增字段会自动纳入覆盖。
 
 主程序内部分层（依赖方向自上而下）：
 
