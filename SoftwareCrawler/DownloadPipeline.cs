@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.IO.Enumeration;
 using System.Net;
 using JeekTools;
 using Microsoft.Extensions.Logging;
@@ -616,12 +615,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
 
             var dir = Path.GetDirectoryName(filePath)!;
 
-            return DeleteOldVersions(
-                dir,
-                _item.FilePatternToDeleteBeforeDownload,
-                filePath,
-                SoftwareManager.OtherItemPatternsInDirectory(_item, dir)
-            );
+            return DeleteOldVersions(dir, _item.FilePatternToDeleteBeforeDownload, filePath);
         }
 
         // When download fails, return error message.
@@ -759,57 +753,31 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
     private const int MaxOldVersionsToDelete = 10;
 
     /// <summary>
-    /// Deletes what <paramref name="pattern"/> claims are this item's earlier
-    /// downloads, keeping <paramref name="keepFile"/>.
-    ///
-    /// Items commonly share a download folder on purpose and separate their files
-    /// by naming them precisely, so a shared folder is not by itself a reason to
-    /// stand down. What is: a file that one of <paramref name="otherPatterns"/>
-    /// also matches, which may belong to that item rather than this one. That is
-    /// what keeps a broad pattern like "*.exe" from clearing out a folder full of
-    /// other items' installers. A pattern that suddenly matches far more files
-    /// than one item's history could be is refused outright.
+    /// Picks the files <paramref name="pattern"/> claims are this item's earlier
+    /// downloads, keeping <paramref name="keepFile"/>. The pattern is the whole
+    /// contract: it is written to name this item's files and nothing else, which
+    /// is what lets several items share a folder. The only thing checked here is
+    /// that it has not obviously stopped describing one item's history, which is
+    /// the shape of a pattern aimed at a general downloads folder.
     ///
     /// Returns what it deleted, for the log and for the tests.
     /// </summary>
     internal static IReadOnlyList<string> SelectOldVersions(
         string directory,
         string pattern,
-        string keepFile,
-        IReadOnlyList<string> otherPatterns
+        string keepFile
     )
     {
         if (string.IsNullOrWhiteSpace(pattern) || !Directory.Exists(directory))
             return [];
 
-        var candidates = Directory
+        var doomed = Directory
             .GetFiles(directory, pattern)
             .Where(file => !string.Equals(file, keepFile, StringComparison.OrdinalIgnoreCase))
             // The download in flight lives here too, and a pattern like "name.*"
             // would happily match it.
             .Where(file => !file.EndsWith(PartialSuffix, StringComparison.OrdinalIgnoreCase))
             .ToList();
-
-        var claimedByOthers = candidates
-            .Where(file =>
-                otherPatterns.Any(other =>
-                    FileSystemName.MatchesWin32Expression(
-                        other,
-                        Path.GetFileName(file),
-                        ignoreCase: true
-                    )
-                )
-            )
-            .ToList();
-
-        if (claimedByOthers.Count > 0)
-            Log.ZLogWarning(
-                $"Keeping {claimedByOthers.Count} file(s) in {directory} that another "
-                    + $"item's pattern also matches: "
-                    + $"{string.Join(", ", claimedByOthers.Select(Path.GetFileName))}"
-            );
-
-        var doomed = candidates.Except(claimedByOthers).ToList();
 
         if (doomed.Count > MaxOldVersionsToDelete)
         {
@@ -827,8 +795,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
     internal static Task<IReadOnlyList<string>> DeleteOldVersions(
         string directory,
         string pattern,
-        string keepFile,
-        IReadOnlyList<string> otherPatterns
+        string keepFile
     )
     {
         // Run on a background thread to avoid blocking the UI while scanning /
@@ -837,7 +804,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         {
             try
             {
-                var doomed = SelectOldVersions(directory, pattern, keepFile, otherPatterns);
+                var doomed = SelectOldVersions(directory, pattern, keepFile);
 
                 foreach (var file in doomed)
                     File.Delete(file);

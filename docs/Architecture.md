@@ -101,7 +101,7 @@ flowchart TD
 - **文件类型白名单**：可执行 `.exe .msi .vsix .msix`、压缩包 `.zip .rar .7z`。其它一律判失败——这是"点错了链接、下到 HTML"的兜底。
 - **"是不是同一个文件"**：优先比服务器给的大小；没有 `Content-Length` 时比服务器 `Last-Modified` 与本地文件修改时间（±2 秒）；两者都没有就当作需要下载。为让第二条成立，落盘后会用服务器时间戳回写文件的 `LastWriteTime`。
 - **文件名会变的站点**（如 Epic Launcher）：靠 `FilePatternToDeleteBeforeDownload` 找到目录里的旧文件再比对。
-- **旧版本清理的边界**：多个软件项共用一个下载目录是常规用法（7 个 JetBrains IDE 一个目录、每个 CUDA 版本一个目录），各自靠精确模式区分自己的文件。所以判断依据不是"目录是否共用"，而是**待删文件是否也被同目录另一项的模式匹配**——是则不删（`SelectOldVersions`）。这样 `*.exe` 这种宽泛模式在共用目录里最多只能删到无人认领的文件。另有一道上限：单次匹配超过 10 个就整体放弃并记警告，防止模式指向通用下载目录。
+- **旧版本清理的边界**：多个软件项共用一个下载目录是常规用法（7 个 JetBrains IDE 一个目录、每个 CUDA 版本一个目录），**靠模式本身区分彼此**——`FilePatternToDeleteBeforeDownload` 就是这个约定，程序不去猜别的项想要什么，各项之间也不产生关联。唯一的兜底是数量上限：单次匹配超过 10 个就整体放弃并记警告（`SelectOldVersions`），挡住把模式指向通用下载目录这类事故。在途的 `.partial` 永远不参与。
 - **`testOnly`**：走完整个链路直到能判断"有没有更新"，随即取消下载，状态记为 `HasUpdate`。菜单里的 Test 和 MCP 的 `download_probe` 默认走这条路。
 
 落盘顺序（`DownloadPipeline.Succeeded()`）：**直接下载到目标目录**，用 `<最终文件名>.partial` 作为在途名；完成后按 `FilePatternToDeleteBeforeDownload` 清理旧文件，再把 `.partial` 改名成最终文件（同卷改名是瞬时的，失败则退化为复制——WebView2 的安全扫描可能仍锁着文件）。若配置了 `DownloadDirectory2` 再复制一份。两个目录各自独立地执行解压与钩子。

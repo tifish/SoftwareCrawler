@@ -107,65 +107,6 @@ public static class SoftwareManager
         return false;
     }
 
-    /// <summary>
-    /// The other items that download into <paramref name="directory"/>. Sharing a
-    /// folder is a normal arrangement - every JetBrains IDE in one place, every
-    /// CUDA release in another - and each item tells its own files apart by
-    /// naming them precisely in FilePatternToDeleteBeforeDownload.
-    /// Only the directories somebody typed in are compared: an item that leaves
-    /// its directory blank gets one named after itself, which cannot collide.
-    /// </summary>
-    public static IReadOnlyList<SoftwareItem> OtherItemsUsingDirectory(
-        SoftwareItem item,
-        string directory
-    )
-    {
-        if (string.IsNullOrWhiteSpace(directory))
-            return [];
-
-        return Items
-            .Where(candidate => !ReferenceEquals(candidate, item))
-            .Where(candidate =>
-                IsSameDirectory(candidate.DownloadDirectory, directory)
-                || IsSameDirectory(candidate.DownloadDirectory2, directory)
-            )
-            .ToArray();
-    }
-
-    /// <summary>
-    /// The delete patterns the other items apply in <paramref name="directory"/>.
-    /// A file one of these matches may be theirs, so it is not ours to delete.
-    /// </summary>
-    public static IReadOnlyList<string> OtherItemPatternsInDirectory(
-        SoftwareItem item,
-        string directory
-    ) =>
-        OtherItemsUsingDirectory(item, directory)
-            .Select(candidate => candidate.FilePatternToDeleteBeforeDownload)
-            .Where(pattern => !string.IsNullOrWhiteSpace(pattern))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-    private static bool IsSameDirectory(string left, string right)
-    {
-        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
-            return false;
-
-        try
-        {
-            return string.Equals(Normalize(left), Normalize(right), StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            // An unusable path cannot be the folder we are about to write to.
-            return false;
-        }
-
-        static string Normalize(string path) =>
-            Path.GetFullPath(path)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-    }
-
     public static async Task Load()
     {
         var softwarePath = SoftwarePath;

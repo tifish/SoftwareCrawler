@@ -239,34 +239,14 @@ internal static class DebugMcpServer
             if (item is null)
                 return [$"No software item named '{name}'."];
 
-            var directory = item.FinalDownloadDirectory;
             return DownloadPipeline
                 .SelectOldVersions(
-                    directory,
+                    item.FinalDownloadDirectory,
                     item.FilePatternToDeleteBeforeDownload,
-                    keepFile: "",
-                    SoftwareManager.OtherItemPatternsInDirectory(item, directory)
+                    keepFile: ""
                 )
                 .Select(Path.GetFileName)
                 .ToArray()!;
-        }
-
-        /// <summary>
-        /// Reports the download directories more than one item writes to, which
-        /// is what makes the pattern delete stand down.
-        /// </summary>
-        public IReadOnlyList<string> SharedDownloadDirectories()
-        {
-            var shared = new List<string>();
-            foreach (var item in SoftwareManager.Items)
-            foreach (var directory in new[] { item.DownloadDirectory, item.DownloadDirectory2 })
-            {
-                var others = SoftwareManager.OtherItemsUsingDirectory(item, directory);
-                if (others.Count > 0)
-                    shared.Add($"{directory}: {item.Name} + {string.Join(", ", others)}");
-            }
-
-            return shared;
         }
 
         /// <summary>
