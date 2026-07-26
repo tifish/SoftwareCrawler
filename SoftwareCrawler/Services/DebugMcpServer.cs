@@ -240,7 +240,7 @@ internal static class DebugMcpServer
                 return [$"No software item named '{name}'."];
 
             var directory = item.FinalDownloadDirectory;
-            return SoftwareItem
+            return DownloadPipeline
                 .SelectOldVersions(
                     directory,
                     item.FilePatternToDeleteBeforeDownload,
@@ -270,12 +270,28 @@ internal static class DebugMcpServer
         }
 
         /// <summary>
+        /// Runs the pipeline's extraction step for one item against a given
+        /// archive, for checking that a broken one is reported rather than passed.
+        /// </summary>
+        public void ExtractProbe(string name, string archiveFile)
+        {
+            var item =
+                SoftwareManager.Items.FirstOrDefault(candidate =>
+                    candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
+                ) ?? throw new InvalidOperationException($"No software item named '{name}'.");
+
+            Task.Run(() => DownloadPipeline.ExtractOnly(item, archiveFile))
+                .GetAwaiter()
+                .GetResult();
+        }
+
+        /// <summary>
         /// Runs a helper process the way the pipeline runs 7-Zip and event
         /// scripts, and returns its exit code (-1 when it could not start).
         /// </summary>
         public int RunProcessProbe(string fileName, string arguments, string workingDirectory) =>
             Task.Run(() =>
-                    SoftwareItem.RunProcessAsync(fileName, arguments, workingDirectory, "probe")
+                    DownloadPipeline.RunProcessAsync(fileName, arguments, workingDirectory, "probe")
                 )
                 .GetAwaiter()
                 .GetResult();
@@ -286,7 +302,7 @@ internal static class DebugMcpServer
         /// file is gone.
         /// </summary>
         public bool DeleteStagedFileProbe(string path) =>
-            Task.Run(() => SoftwareItem.DeleteStagedFile(path)).GetAwaiter().GetResult();
+            Task.Run(() => DownloadPipeline.DeleteStagedFile(path)).GetAwaiter().GetResult();
 
         /// <summary>Takes today's config backup now, without waiting for a save.</summary>
         public string BackupConfigNow()

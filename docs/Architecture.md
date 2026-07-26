@@ -32,7 +32,8 @@ SoftwareCrawler.slnx
 | --- | --- | --- |
 | 入口 | `Program.cs` | 命令行解析、日志、watcher、MCP、启动主窗体 |
 | UI | `MainForm.cs` / `SettingsForm.cs` / `SearchForm.cs` | 表格绑定、菜单动作、设置对话框、查找 |
-| 领域 | `SoftwareItem.cs` | 一个软件的配方 + 完整下载流水线 |
+| 领域 | `SoftwareItem.cs` | 一个软件的配方、序列化，以及绑定到表格的运行状态 |
+| 领域 | `DownloadPipeline.cs` | 一次下载尝试的全过程；每次尝试新建一个实例 |
 | 领域 | `SoftwareManager.cs` | 清单的加载/保存/合并/迁移 |
 | 浏览器 | `BrowserObject.cs` | WebView2 封装，全局单例 `Browser` |
 | 服务 | `Services/*` | 设置、配置监视、备份、自动更新、调试通道 |
@@ -70,7 +71,7 @@ SoftwareCrawler.slnx
 
 关键语义：
 
-- **XPath 还是脚本**：以 `//字母` 或 `(//字母` 开头视为 XPath（`SoftwareItem.cs:741`），否则整段当 JavaScript 执行。
+- **XPath 还是脚本**：以 `//字母` 或 `(//字母` 开头视为 XPath（`DownloadPipeline.ClickAndTriggerDownload`），否则整段当 JavaScript 执行。
 - **多步点击**：`XPathOrScript1..5` 按顺序执行，最后一步应触发下载。`Frames` 用反引号 `` ` `` 分隔，按下标与每一步对应，指定该步在哪个 iframe 里执行。
 - **控制字符编码**：`.tab` 是制表符分隔的单行记录，换行以 `` `n ``、制表符以 `` `t `` 存储。属性里存的就是这个转义形式（表格显示的也是它），`GetXPathOrScripts()` / `SetXPathOrScripts()` 在编辑脚本时做还原与编码；`ToDataLine` 对**所有**字符串列再兜一次底，粘进单元格的制表符不会挪动后面的列。
 - **`DirectDownload`**：跳过浏览器，直接用 `HttpClient` 拉 `WebPage`。为 SourceForge 这类"对自动化浏览器发 Cloudflare 挑战、对普通 HTTP 客户端放行"的站点准备；User-Agent 里保留 `Windows NT` 使 `latest/download` 之类链接解析到 Windows 版本。
@@ -78,7 +79,7 @@ SoftwareCrawler.slnx
 
 ## 5. 下载流水线
 
-`SoftwareItem.Download()` 是重试外壳，`DownloadOnce()` 是一次完整尝试，其结果只有三种：`Succeeded` / `FailedAndRetry` / `FailedAndNoRetry`。重试次数来自 `Settings.DownloadRetryCount`，间隔 `DownloadRetryInterval` 秒。**只有可能是瞬时故障的错误才标记重试**（点击失败、脚本失败、超时、HTTP 非 2xx、字节数不足）；目录创建失败、文件名不合法、复制失败一律不重试。
+`SoftwareItem.Download()` 是重试外壳（含串行闸门），`DownloadPipeline.RunAsync()` 是一次完整尝试——每次尝试新建一个 `DownloadPipeline`，那一趟的中间状态（建议文件名、大小、时间戳、目标路径、暂存路径）就是它的字段。其结果只有三种：`Succeeded` / `FailedAndRetry` / `FailedAndNoRetry`。重试次数来自 `Settings.DownloadRetryCount`，间隔 `DownloadRetryInterval` 秒。**只有可能是瞬时故障的错误才标记重试**（点击失败、脚本失败、超时、HTTP 非 2xx、字节数不足）；目录创建失败、文件名不合法、复制失败一律不重试。
 
 ```mermaid
 flowchart TD
@@ -95,7 +96,7 @@ flowchart TD
     F -->|继续| G[下载 → 落盘 → 移动 → 解压 → 钩子]
 ```
 
-几个必须知道的决策规则（都在 `OnBeginDownloadHandler`，`SoftwareItem.cs:802`）：
+几个必须知道的决策规则（都在 `DownloadPipeline.OnBeginDownloadHandler`）：
 
 - **文件类型白名单**：可执行 `.exe .msi .vsix .msix`、压缩包 `.zip .rar .7z`。其它一律判失败——这是"点错了链接、下到 HTML"的兜底。
 - **"是不是同一个文件"**：优先比服务器给的大小；没有 `Content-Length` 时比服务器 `Last-Modified` 与本地文件修改时间（±2 秒）；两者都没有就当作需要下载。为让第二条成立，落盘后会用服务器时间戳回写文件的 `LastWriteTime`。
@@ -103,7 +104,7 @@ flowchart TD
 - **旧版本清理的边界**：多个软件项共用一个下载目录是常规用法（7 个 JetBrains IDE 一个目录、每个 CUDA 版本一个目录），各自靠精确模式区分自己的文件。所以判断依据不是"目录是否共用"，而是**待删文件是否也被同目录另一项的模式匹配**——是则不删（`SelectOldVersions`）。这样 `*.exe` 这种宽泛模式在共用目录里最多只能删到无人认领的文件。另有一道上限：单次匹配超过 10 个就整体放弃并记警告，防止模式指向通用下载目录。
 - **`testOnly`**：走完整个链路直到能判断"有没有更新"，随即取消下载，状态记为 `HasUpdate`。菜单里的 Test 和 MCP 的 `download_probe` 默认走这条路。
 
-落盘顺序（`Succeeded()`）：**直接下载到目标目录**，用 `<最终文件名>.partial` 作为在途名；完成后按 `FilePatternToDeleteBeforeDownload` 清理旧文件，再把 `.partial` 改名成最终文件（同卷改名是瞬时的，失败则退化为复制——WebView2 的安全扫描可能仍锁着文件）。若配置了 `DownloadDirectory2` 再复制一份。两个目录各自独立地执行解压与钩子。
+落盘顺序（`DownloadPipeline.Succeeded()`）：**直接下载到目标目录**，用 `<最终文件名>.partial` 作为在途名；完成后按 `FilePatternToDeleteBeforeDownload` 清理旧文件，再把 `.partial` 改名成最终文件（同卷改名是瞬时的，失败则退化为复制——WebView2 的安全扫描可能仍锁着文件）。若配置了 `DownloadDirectory2` 再复制一份。两个目录各自独立地执行解压与钩子。
 
 在途文件就放在目标目录里，因此几处按模式扫描的地方都显式跳过 `.partial`：它既不能被当作"已下载的旧版本"参与判重，也不能被删除模式扫走。下载开始前会清掉上次中断留下的同名 `.partial`，否则浏览器会自动改名成 `xxx (1).partial`。
 
@@ -120,14 +121,14 @@ flowchart TD
 机制要点：
 
 - **等待模型**：导航完成和下载完成各用一个 `TaskCompletionSource`，`PrepareLoadEvents()` 在每次动作前重建它们，`WithTimeout` 提供超时。所以"等待"永远不会跨动作串味。
-- **启动参数**：关闭 SafeBrowsing 下载保护与下载气泡等 UI（`--safebrowsing-disable-download-protection` 等），否则自动下载会被拦。用户数据目录固定为工作目录下的 `Cache`，代理来自设置。
+- **启动参数**：关闭 SafeBrowsing 下载保护与下载气泡等 UI（`--safebrowsing-disable-download-protection` 等），否则自动下载会被拦。用户数据目录固定为**可执行文件目录**下的 `Cache`（不是当前工作目录——计划任务的 cwd 是 system32，那样会得到另一份 profile），代理来自设置。
 - **弹窗**：`NewWindowRequested` 一律拦下，在当前窗口导航过去——爬取流程里不能出现第二个窗口。
 - **取文件时间**：走 DevTools Protocol 订阅 `Network.responseReceived`，解析 `Last-Modified` 存进 `_lastRespondTime`，`DownloadStarting` 时作为 `DownloadItem.EndTime`。JSON 解析放到线程池，否则繁忙页面会把 UI 卡住。
 - **下载拦截**：`DownloadStarting` 里设 `e.Handled = true` 抑制默认 UI，并把 `ResultFilePath` 改成流水线指定的路径；进度事件按 200ms 节流；文件名里的 ` (1)` 后缀会被去掉。
 - **完成判定有两条路径**：`StateChanged == Completed`（正常路径，也是无 `Content-Length` 时唯一的路径）和"已收字节 == 总字节"（Edge 阻断状态变更时的兜底）。
 - **iframe**：`FrameCreated` 时按名字登记 `CoreWebView2Frame`，脚本按 `Frames` 指定的名字投递到对应帧。
 
-`DirectDownload` 分支复用了同一套 `DownloadItem` 与回调（`SoftwareItem.cs:545`），因此**判重、进度、落盘逻辑对两种下载方式是同一份**。
+`DirectDownload` 分支复用了同一套 `DownloadItem` 与回调，因此**判重、进度、落盘逻辑对两种下载方式是同一份**。
 
 ## 7. 配置与数据存储
 
@@ -242,6 +243,6 @@ Claude Code ──stdio──> Tools/DebugMcpBridge ──HTTP JSON-RPC──> �
 | 给配方加一个字段 | `SoftwareItem` 属性 + `DataProperties`；旧文件靠"列数可少于属性数"自动兼容，无需迁移代码 |
 | 加一个本机私有字段 | `SoftwareItem` 属性 + `ExtraProperties`；同时确认 `LegacyExtraProperties` 的读取路径仍成立 |
 | 加一个设置项 | `MachineAppSettings` 或 `RoamingAppSettings` 二选一 + `AppSettings` 加一行转发（+ 需要范围限制就写进 `Normalize*`）→ `SettingsForm` 加控件 |
-| 支持一种新的下载方式 | 优先复用 `OnBeginDownloadHandler` / `Succeeded` 这条决策与落盘链路（`DirectDownload` 就是这么接的） |
+| 支持一种新的下载方式 | 在 `DownloadPipeline` 里复用 `OnBeginDownloadHandler` / `Succeeded` 这条决策与落盘链路（`DirectDownload` 就是这么接的） |
 | 加一个调试能力 | `DebugMcpServer.CreateHost()` 注册工具 + `DebugMcpContract.BuildToolList()` 声明 schema；简单读写优先挂到 `AppRoot` 上，用 `get_value`/`invoke` 直接触达 |
 | 排查"配置被覆盖/没保存" | MCP `config_monitor`：watcher 是否存活、pending 事件、每个文件的基线哈希与 `externallyChanged`、备份清单 |

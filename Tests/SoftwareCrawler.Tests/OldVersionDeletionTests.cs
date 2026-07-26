@@ -52,7 +52,7 @@ public class OldVersionDeletionTests : IDisposable
         var keep = CreateFile("Example-2.0.exe");
         var old = CreateFile("Example-1.0.exe");
 
-        var deleted = await SoftwareItem.DeleteOldVersions(_folder, "*.exe", keep, NoOtherPatterns);
+        var deleted = await DownloadPipeline.DeleteOldVersions(_folder, "*.exe", keep, NoOtherPatterns);
 
         Assert.Equal([old], deleted);
         Assert.True(File.Exists(keep));
@@ -65,7 +65,7 @@ public class OldVersionDeletionTests : IDisposable
         var keep = CreateFile("Example-2.0.exe");
         var unrelated = CreateFile("notes.txt");
 
-        await SoftwareItem.DeleteOldVersions(_folder, "*.exe", keep, NoOtherPatterns);
+        await DownloadPipeline.DeleteOldVersions(_folder, "*.exe", keep, NoOtherPatterns);
 
         Assert.True(File.Exists(unrelated));
     }
@@ -82,7 +82,7 @@ public class OldVersionDeletionTests : IDisposable
         var myOldVersion = CreateFile("bellsoft-jdk21.0.4.exe");
         var theirs = CreateFile("bellsoft-jdk17.0.9.exe");
 
-        var deleted = await SoftwareItem.DeleteOldVersions(
+        var deleted = await DownloadPipeline.DeleteOldVersions(
             _folder,
             "bellsoft-jdk21*.exe",
             keep,
@@ -105,7 +105,7 @@ public class OldVersionDeletionTests : IDisposable
         var myOldVersion = CreateFile("Example-1.0.exe");
         var theirs = CreateFile("CLion-2024.1.exe");
 
-        var deleted = await SoftwareItem.DeleteOldVersions(
+        var deleted = await DownloadPipeline.DeleteOldVersions(
             _folder,
             "*.exe",
             keep,
@@ -122,7 +122,7 @@ public class OldVersionDeletionTests : IDisposable
         var keep = CreateFile("Example-2.0.exe");
         var theirs = CreateFile("CLION-2024.1.EXE");
 
-        var deleted = await SoftwareItem.DeleteOldVersions(
+        var deleted = await DownloadPipeline.DeleteOldVersions(
             _folder,
             "*.exe",
             keep,
@@ -144,7 +144,7 @@ public class OldVersionDeletionTests : IDisposable
         for (var i = 0; i < 11; i++)
             CreateFile($"Unrelated-{i}.exe");
 
-        var deleted = await SoftwareItem.DeleteOldVersions(_folder, "*.exe", keep, NoOtherPatterns);
+        var deleted = await DownloadPipeline.DeleteOldVersions(_folder, "*.exe", keep, NoOtherPatterns);
 
         Assert.Empty(deleted);
         Assert.Equal(12, Directory.GetFiles(_folder, "*.exe").Length);
@@ -157,10 +157,10 @@ public class OldVersionDeletionTests : IDisposable
     [Fact]
     public async Task TheDownloadInFlightIsNeverDeleted()
     {
-        var inFlight = CreateFile("Example-2.0.exe" + SoftwareItem.PartialSuffix);
+        var inFlight = CreateFile("Example-2.0.exe" + DownloadPipeline.PartialSuffix);
         var old = CreateFile("Example-1.0.exe");
 
-        var deleted = await SoftwareItem.DeleteOldVersions(
+        var deleted = await DownloadPipeline.DeleteOldVersions(
             _folder,
             "Example-*",
             "",
@@ -174,7 +174,7 @@ public class OldVersionDeletionTests : IDisposable
     [Fact]
     public async Task AMissingFolderIsNotAnError()
     {
-        var deleted = await SoftwareItem.DeleteOldVersions(
+        var deleted = await DownloadPipeline.DeleteOldVersions(
             Path.Combine(_folder, "does-not-exist"),
             "*.exe",
             "",
