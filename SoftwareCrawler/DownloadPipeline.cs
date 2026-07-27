@@ -333,23 +333,49 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             var xpathOrScripts = _item.GetXPathOrScripts();
             for (var i = 0; i < xpathOrScripts.Count; i++)
             {
+                var stepWatch = Stopwatch.StartNew();
+
                 _item.Status = DownloadingStatus.WaitingForLoadEnd;
+
+                // A click that swaps the page in place - GitHub does this - raises no load
+                // event at all, so this loop waits out the whole timeout. Breaking out on a
+                // quiet network instead was tried and reverted: the fetch goes quiet before
+                // the new document is in place, and the next step ran against the old one.
+                var loaded = false;
                 for (var seconds = 0; seconds < Settings.LoadPageEndTimeout; seconds++)
                 {
                     if (_item.HasCancelled)
                         return DownloadOnceResult.FailedAndNoRetry;
                     if (await Browser.WaitForMainFrameLoadEnd(TimeSpan.FromSeconds(1)))
+                    {
+                        loaded = true;
                         break;
+                    }
                 }
 
-                // Some script may be executed after page loaded, wait for it.
-                await Task.Delay((_item.WaitSecondsBeforeClick + 1) * 1000);
+                // Which of the two it was decides how to read every number after it.
+                Log.ZLogDebug(
+                    $"{_item.Name} step {i + 1}: load wait {(loaded ? "ended" : "timed out")} after {stepWatch.Elapsed.TotalSeconds:F1}s"
+                );
 
-                // If still not loaded, try to click the link directly.
-                Browser.PrepareLoadEvents();
+                // A floor for the pages known to need one, no longer a toll every item pays:
+                // what the page still owes us is waited for below, by watching for it.
+                if (_item.WaitSecondsBeforeClick > 0)
+                    await Task.Delay(_item.WaitSecondsBeforeClick * 1000);
 
                 var xpathOrScript = xpathOrScripts[i];
                 var frameName = i < frameNames.Count ? frameNames[i] : string.Empty;
+
+                // Whatever is left of the page budget, and never less than the click budget.
+                // The wait above now ends at DOMContentLoaded, so the slack it used to burn
+                // is spent here instead - waiting for the page's own scripts, which is what
+                // "the page is not ready yet" actually means.
+                var readyBudget = TimeSpan.FromSeconds(
+                    Math.Max(
+                        Math.Max(1, Settings.TryClickCount * Settings.TryClickInterval),
+                        Settings.LoadPageEndTimeout - stepWatch.Elapsed.TotalSeconds
+                    )
+                );
 
                 // Is XPath
                 if (
@@ -362,6 +388,22 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                 )
                 {
                     _item.Status = DownloadingStatus.Clicking;
+
+                    var targetState = await WaitForClickTarget(
+                        xpathOrScript,
+                        frameName,
+                        readyBudget
+                    );
+                    if (_item.HasCancelled)
+                        return DownloadOnceResult.FailedAndNoRetry;
+                    if (targetState != ClickTargetState.Ready)
+                        Log.ZLogInformation(
+                            $"{_item.Name}: clicking a {targetState} target after {stepWatch.Elapsed.TotalSeconds:F1}s: {xpathOrScript}"
+                        );
+
+                    // Arm the load and download waits before the click - the click is what
+                    // navigates or starts the download.
+                    Browser.PrepareLoadEvents();
 
                     // Scroll to the element first
                     var scrollScript = $$"""
@@ -381,15 +423,10 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                         );
                     }
 
-                    // Then click
-                    if (
-                        !await Browser.TryClick(
-                            xpathOrScript,
-                            frameName,
-                            Settings.TryClickCount,
-                            Settings.TryClickInterval * 1000
-                        )
-                    )
+                    // Then click - exactly once. The target was waited for rather than
+                    // hammered, and a second click on a page that did accept the first one
+                    // would start a second download.
+                    if (!await Browser.Click(xpathOrScript, frameName))
                         return Failed(
                             $"Failed to click, error: {Browser.LastJavascriptError}",
                             DownloadOnceResult.FailedAndRetry
@@ -398,6 +435,15 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                 else // Is JavaScript
                 {
                     _item.Status = DownloadingStatus.ExecutingScript;
+
+                    // The script drives the page, so the page's own scripts have to be there
+                    // first: DOMContentLoaded is too early to tell, settling says they are.
+                    await WaitForPageSettled(readyBudget);
+                    if (_item.HasCancelled)
+                        return DownloadOnceResult.FailedAndNoRetry;
+
+                    Browser.PrepareLoadEvents();
+
                     // Scripts often include their own wait/retry loops (and may return a
                     // Promise that WebView2 awaits). Do not re-run the whole script many
                     // times — each attempt can take a long time.
@@ -651,6 +697,49 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                     $"{eventName} script exited with code {exitCode}: {script}"
                 );
         }
+    }
+
+    /// <summary>How often the page is asked whether it is ready to be acted on.</summary>
+    private const int ReadyPollIntervalMs = 200;
+
+    /// <summary>
+    /// Waits for a click target to become clickable, and reports the state it is in when
+    /// the wait ends. A target that exists but is not wired up yet is not waited out to
+    /// the end of the budget: once the page has settled, nothing more is coming, so the
+    /// caller may as well try it. A missing one is waited for to the last moment - the
+    /// click can only fail without it.
+    /// </summary>
+    private async Task<ClickTargetState> WaitForClickTarget(
+        string xpath,
+        string frameName,
+        TimeSpan budget
+    )
+    {
+        var watch = Stopwatch.StartNew();
+        var state = ClickTargetState.Missing;
+
+        while (!_item.HasCancelled)
+        {
+            state = await Browser.ProbeClickTarget(xpath, frameName);
+            if (state == ClickTargetState.Ready)
+                break;
+            if (state == ClickTargetState.Pending && Browser.IsPageSettled)
+                break;
+            if (watch.Elapsed >= budget)
+                break;
+
+            await Task.Delay(ReadyPollIntervalMs);
+        }
+
+        return state;
+    }
+
+    /// <summary>Waits until the page stops fetching, or the budget runs out.</summary>
+    private async Task WaitForPageSettled(TimeSpan budget)
+    {
+        var watch = Stopwatch.StartNew();
+        while (!_item.HasCancelled && !Browser.IsPageSettled && watch.Elapsed < budget)
+            await Task.Delay(ReadyPollIntervalMs);
     }
 
     private static readonly List<string> ExecutableFileTypes = [".exe", ".msi", ".vsix", ".msix"];

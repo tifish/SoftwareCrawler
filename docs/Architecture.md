@@ -116,11 +116,13 @@ flowchart TD
 
 ## 6. 浏览器层（BrowserObject）
 
-单例，包住一个 `WebView2`。设计上只暴露"爬取需要的动作"：`Load` / `TryClick` / `TryEvaluateJavascript` / `WaitForMainFrameLoadEnd` / `WaitForDownloaded` / `Cancel` / `ClearCookies` / `ShowDevTools`。
+单例，包住一个 `WebView2`。设计上只暴露"爬取需要的动作"：`Load` / `Click` / `ProbeClickTarget` / `TryEvaluateJavascript` / `WaitForMainFrameLoadEnd` / `WaitForDownloaded` / `Cancel` / `ClearCookies` / `ShowDevTools`。
 
 机制要点：
 
 - **等待模型**：导航完成和下载完成各用一个 `TaskCompletionSource`，`PrepareLoadEvents()` 在每次动作前重建它们，`WithTimeout` 提供超时。所以"等待"永远不会跨动作串味。
+- **"加载完"由三个信号合成**，见下节"页面就绪判定"：`DOMContentLoaded`（文档可脚本化，最早）、`NavigationCompleted`（load 事件，成功失败都算）、DevTools `Page.lifecycleEvent` 的 `networkAlmostIdle`（网络静默）。
+- **事件按导航编号过滤**：`NavigationStarting` 记下 `NavigationId`，`PrepareLoadEvents()` 把它清零；只有编号对得上的 `DOMContentLoaded` / `NavigationCompleted` 才算数。点击导航走时旧导航会以 `ConnectionAborted` 结束，不过滤的话那个中止会被当成"要等的页面加载好了"，下一步就跑在旧页面上。
 - **启动参数**：关闭 SafeBrowsing 下载保护与下载气泡等 UI（`--safebrowsing-disable-download-protection` 等），否则自动下载会被拦。用户数据目录固定为**可执行文件目录**下的 `Cache`（不是当前工作目录——计划任务的 cwd 是 system32，那样会得到另一份 profile），代理来自设置。
 - **弹窗**：`NewWindowRequested` 一律拦下，在当前窗口导航过去——爬取流程里不能出现第二个窗口。
 - **取文件时间**：走 DevTools Protocol 订阅 `Network.responseReceived`，解析 `Last-Modified` 存进 `_lastRespondTime`，`DownloadStarting` 时作为 `DownloadItem.EndTime`。JSON 解析放到线程池，否则繁忙页面会把 UI 卡住。
@@ -129,6 +131,22 @@ flowchart TD
 - **iframe**：`FrameCreated` 时按名字登记 `CoreWebView2Frame`，脚本按 `Frames` 指定的名字投递到对应帧。
 
 `DirectDownload` 分支复用了同一套 `DownloadItem` 与回调，因此**判重、进度、落盘逻辑对两种下载方式是同一份**。
+
+### 页面就绪判定
+
+每一步点击/执行脚本前的等待长什么样，是这一层最容易踩坑的地方，规则如下（`DownloadPipeline.ClickAndTriggerDownload`）：
+
+1. **等加载**：`WaitForMainFrameLoadEnd` 在 `DOMContentLoaded` 或 `NavigationCompleted` 任一到来时结束，上限 `LoadPageEndTimeout`。失败的导航也算结束——只认成功会让"导航变成下载""导航被中止"白等满超时。
+2. **`WaitSecondsBeforeClick`**：只对配了值的项生效，是**下限**而不是每项都交的过路费（原先无条件 `+1` 秒）。
+3. **XPath 步骤**：以 200ms 轮询 `ProbeClickTarget`，`Ready` 就点，**只点一次**。`Missing` 一直等；`Pending`（元素在但 disabled/不可见/`href` 还是 `#`、`javascript:void(0)` 且没挂处理器）等到页面 settled 就尽力点一次。预算取 `LoadPageEndTimeout` 剩余量与 `TryClickCount × TryClickInterval` 的较大者。
+4. **脚本步骤**：无从探测目标，改为等页面 settled 再执行，同样受预算约束。
+
+**settled 的定义是 `IsPageSettled`：网络静默持续 ≥2 秒，或 load 事件已过去 ≥5 秒。** 两个阈值都不是随手取的：
+
+- `networkAlmostIdle` 允许最多两个连接还开着，刚触发时懒加载的片段可能仍在路上，所以要求它**持续**一段时间。
+- **load 事件本身不代表"能用了"**：GitHub 仓库页的 load 在 2.2 秒触发，而爬取要点的 releases 侧栏（`include-fragment` 懒加载）6.3 秒才出现——正好是网络静默的时刻。所以 load 只作为"页面一直不静默"（长连接、轮询）时的兜底，并且要再宽限 5 秒。
+
+> 试过在等加载那一步"网络静默就提前跳出"，为的是省掉 GitHub 同文档跳转（点击后不触发任何 load 事件，要白等满 60 秒）的那一分钟。**已撤回**：turbo 抓取先静默、文档后换上，下一步会跑在旧页面上，反而整项失败重试。那 60 秒目前照旧付。
 
 ## 7. 配置与数据存储
 
@@ -209,7 +227,7 @@ Claude Code ──stdio──> Tools/DebugMcpBridge ──HTTP JSON-RPC──> �
 - 监听 `127.0.0.1`，默认端口 8747 起向上扫描，`SC_MCP_PORT` 可指定；端口用全局 `Mutex` 预定，多个 worktree 并行时自动错开。
 - 启动后写 `bin/debug-mcp.json`（URL、pid、可执行路径、instance id、worktree 根、Config 根）。桥接进程会**校验 workspace 是否是自己那一个、进程是否还活着、可执行路径是否吻合**，三者任一不符就明确报错，杜绝"连到隔壁 worktree"。
 - 实例身份由 `DebugInstanceContext` 计算：可执行目录哈希取前 12 位作 InstanceId，再从 `.git`（支持 worktree 的 `gitdir:` 标记）读分支与短 commit，拼成窗口标题后缀，肉眼即可分辨多开实例。
-- 工具清单集中在 `DebugMcpContract.BuildToolList()`——**放在应用侧，桥接进程未启动应用时也能回答 `tools/list`**。通用工具 `describe` `get_value` `set_value` `invoke` `list_members` `read_logs` 来自 `DebugMcpHost` + `ObjectGraph`；应用工具为 `control_tree` `screenshot` `software_list` `download_probe` `storage_info` `config_monitor`。
+- 工具清单集中在 `DebugMcpContract.BuildToolList()`——**放在应用侧，桥接进程未启动应用时也能回答 `tools/list`**。通用工具 `describe` `get_value` `set_value` `invoke` `list_members` `read_logs` 来自 `DebugMcpHost` + `ObjectGraph`；应用工具为 `control_tree` `screenshot` `software_list` `download_probe` `page_state` `storage_info` `config_monitor`。`page_state` 报当前 URL、load 事件与网络静默各自过去了多久、是否 settled，带 `xpath` 时还报点击目标是 `Ready` / `Pending` / `Missing`——"页面慢"和"XPath 不对"就是靠它分开的。
 - 对象路径根：`App`（聚合入口，还挂着 `FlushSoftwareList` / `ReloadSoftwareList` / `BackupConfigNow` / `CleanUpLocalSettings` 等动作）、`MainForm`、`Settings`、`SettingsStore`、`Browser`、`Software`。`#Name` 按名字深搜控件。
 - 所有工具在 UI 线程上执行，带 15 秒超时；`download_probe` 特意只在 UI 线程上**启动**下载，随后在池线程 await，避免死锁。
 

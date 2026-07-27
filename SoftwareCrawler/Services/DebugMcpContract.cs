@@ -131,6 +131,19 @@ public static class DebugMcpContract
                 ["name"]
             ),
             Tool(
+                "page_state",
+                "Report what the crawling browser sees right now: the current URL, whether the load "
+                    + "event fired and whether the page stopped fetching. With an xpath, also probe "
+                    + "that click target: ready, pending (there but disabled, invisible, or a "
+                    + "placeholder link whose scripts have not wired it up), or missing. "
+                    + "Use this to tell 'the page is slow' from 'the target never becomes clickable'.",
+                new()
+                {
+                    ["xpath"] = Prop("string", "Optional XPath of a click target to probe."),
+                    ["frame"] = Prop("string", "Optional frame name the XPath lives in."),
+                }
+            ),
+            Tool(
                 "storage_info",
                 "Report the resolved settings paths: machine config, roaming config, storage mode, and whether portable mode is forced.",
                 new()

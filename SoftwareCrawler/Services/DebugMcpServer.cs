@@ -70,6 +70,7 @@ internal static class DebugMcpServer
         host.AddTool("screenshot", _ => ScreenshotAsync());
         host.AddTool("software_list", SoftwareListAsync);
         host.AddTool("download_probe", DownloadProbeAsync);
+        host.AddTool("page_state", PageStateAsync);
         host.AddTool("storage_info", _ => Task.FromResult(StorageInfo()));
         host.AddTool("config_monitor", _ => Task.FromResult(ConfigMonitorInfo()));
         return host;
@@ -509,6 +510,49 @@ internal static class DebugMcpServer
                 + $"Progress: {item.Progress}\n"
                 + $"Error: {item.ErrorMessage}"
         );
+    }
+
+    /// <summary>
+    /// What the crawler is waiting on right now. The click target probe is the same one
+    /// the pipeline polls, so this answers "is the page slow, or is the XPath wrong".
+    /// </summary>
+    private static async Task<JsonObject> PageStateAsync(JsonObject args)
+    {
+        var xpath = args["xpath"]?.GetValue<string>() ?? "";
+        var frame = args["frame"]?.GetValue<string>() ?? "";
+
+        var sb = new StringBuilder();
+
+        var state = await OnUiAsync(() =>
+        {
+            var core = Browser.WebView2?.CoreWebView2;
+            return (
+                Url: core?.Source ?? "(browser not initialized)",
+                LoadEndedFor: Browser.LoadEndedFor,
+                QuietFor: Browser.NetworkQuietFor,
+                Settled: Browser.IsPageSettled,
+                Ready: core != null
+            );
+        });
+
+        static string Age(TimeSpan? span, string never) =>
+            span is { } value ? $"{value.TotalSeconds:F1}s ago" : never;
+
+        sb.AppendLine($"URL: {state.Url}");
+        sb.AppendLine($"Load ended: {Age(state.LoadEndedFor, "(not yet)")}");
+        sb.AppendLine($"Network went quiet: {Age(state.QuietFor, "(still fetching)")}");
+        sb.AppendLine($"Page settled: {state.Settled}");
+
+        if (xpath.Length > 0 && state.Ready)
+        {
+            var probe = await await OnUiAsync(() => Browser.ProbeClickTarget(xpath, frame));
+            sb.AppendLine($"Click target: {probe}");
+            sb.AppendLine($"XPath: {xpath}");
+            if (frame.Length > 0)
+                sb.AppendLine($"Frame: {frame}");
+        }
+
+        return ToolText(sb.ToString());
     }
 
     private static JsonObject StorageInfo()

@@ -39,6 +39,11 @@ public class BrowserObject
         _navigationCompletedTaskCompletionSource = null;
         _downloadTaskCompletionSource = null;
 
+        _currentNavigationId = 0;
+        Volatile.Write(ref _networkQuietSinceTicks, 0);
+        Volatile.Write(ref _loadEndedTicks, 0);
+        _mainFrameId = "";
+
         _lastRespondTime = null;
         _proxyServer = proxyServer;
 
@@ -86,6 +91,8 @@ public class BrowserObject
         WebView2.CoreWebView2.Settings.AreDevToolsEnabled = true;
 
         // Setup event handlers
+        WebView2.CoreWebView2.NavigationStarting += WebView2OnNavigationStarting;
+        WebView2.CoreWebView2.DOMContentLoaded += WebView2OnDomContentLoaded;
         WebView2.CoreWebView2.NavigationCompleted += WebView2OnNavigationCompleted;
         WebView2.CoreWebView2.DownloadStarting += WebView2OnDownloadStarting;
         WebView2.CoreWebView2.NewWindowRequested += WebView2OnNewWindowRequested;
@@ -93,6 +100,9 @@ public class BrowserObject
 
         // Setup DevTools Protocol to capture response headers
         await SetupDevToolsProtocolForResponseHeaders();
+
+        // Setup DevTools Protocol to know when the page stopped fetching
+        await SetupDevToolsProtocolForPageLifecycle();
 
         // Navigate to blank page
         WebView2.CoreWebView2.Navigate("about:blank");
@@ -103,13 +113,99 @@ public class BrowserObject
 
     private TaskCompletionSource<bool>? _navigationCompletedTaskCompletionSource;
 
+    /// <summary>When the network first went quiet for this page; 0 while it is still fetching.</summary>
+    private long _networkQuietSinceTicks;
+
+    /// <summary>When the load event was raised for this page; 0 before that.</summary>
+    private long _loadEndedTicks;
+
+    /// <summary>
+    /// How long 'networkAlmostIdle' has to hold before it counts as settled. That event
+    /// tolerates up to two open connections, so something can still be on its way the
+    /// moment it first fires.
+    /// </summary>
+    private static readonly TimeSpan NetworkQuietHold = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// How long the load event alone takes to count as settled. It is a weak signal on its
+    /// own: GitHub raises it around four seconds before the lazily fetched releases panel
+    /// - which is what the crawl is after - shows up. It is only here to bound the wait on
+    /// pages that keep a connection open and therefore never go quiet.
+    /// </summary>
+    private static readonly TimeSpan LoadEndedGrace = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// The navigation the waits belong to. Load events name the navigation they report on,
+    /// and a click that navigates away aborts whatever was in flight: without this, that
+    /// abort would be read as "the page we are waiting for has loaded".
+    /// </summary>
+    private ulong _currentNavigationId;
+
+    /// <summary>How long the page has been quiet, or null while it is still fetching.</summary>
+    public TimeSpan? NetworkQuietFor => Since(ref _networkQuietSinceTicks);
+
+    /// <summary>How long ago the load event was raised, or null if it has not been.</summary>
+    public TimeSpan? LoadEndedFor => Since(ref _loadEndedTicks);
+
+    private static TimeSpan? Since(ref long ticks)
+    {
+        var stamp = Volatile.Read(ref ticks);
+        return stamp == 0 ? null : TimeSpan.FromTicks(DateTime.UtcNow.Ticks - stamp);
+    }
+
+    /// <summary>
+    /// The page has settled: nothing has been in flight for a while, or the load event
+    /// came and went long enough ago. Not a precondition for acting on the page - it is
+    /// the point past which waiting for the page's own scripts buys nothing.
+    /// </summary>
+    public bool IsPageSettled =>
+        NetworkQuietFor >= NetworkQuietHold || LoadEndedFor >= LoadEndedGrace;
+
+    private void WebView2OnNavigationStarting(
+        object? sender,
+        CoreWebView2NavigationStartingEventArgs e
+    )
+    {
+        // A redirect keeps the id of the navigation it continues, so this stays put
+        // across them and only moves when something genuinely new starts.
+        _currentNavigationId = e.NavigationId;
+        Volatile.Write(ref _networkQuietSinceTicks, 0);
+        Volatile.Write(ref _loadEndedTicks, 0);
+    }
+
+    /// <summary>
+    /// Whether a load event belongs to the navigation being waited on. Zero means nothing
+    /// has started since the wait was armed, so any event arriving is about the page we
+    /// are navigating away from.
+    /// </summary>
+    private bool IsCurrentNavigation(ulong navigationId) =>
+        _currentNavigationId != 0 && navigationId == _currentNavigationId;
+
+    private void WebView2OnDomContentLoaded(object? sender, CoreWebView2DOMContentLoadedEventArgs e)
+    {
+        // The document is parsed and scriptable from here on. NavigationCompleted only
+        // comes after every image, ad and tracker finished, which crawling does not need
+        // to wait for - whether the click target is usable is decided by probing it.
+        if (IsCurrentNavigation(e.NavigationId) && WebView2.Source.ToString() != "about:blank")
+            _navigationCompletedTaskCompletionSource?.TrySetResult(true);
+    }
+
     private void WebView2OnNavigationCompleted(
         object? sender,
         CoreWebView2NavigationCompletedEventArgs e
     )
     {
-        if (e.IsSuccess && WebView2.Source.ToString() != "about:blank")
-            _navigationCompletedTaskCompletionSource?.TrySetResult(true);
+        if (!IsCurrentNavigation(e.NavigationId) || WebView2.Source.ToString() == "about:blank")
+            return;
+
+        // A failed navigation is still the end of one. Treating only success as "loaded"
+        // left the waiter hanging for the whole LoadPageEndTimeout whenever a navigation
+        // turned into a download or errored out.
+        if (!e.IsSuccess)
+            Log.ZLogDebug($"Navigation ended with {e.WebErrorStatus}: {WebView2.Source}");
+
+        Volatile.Write(ref _loadEndedTicks, DateTime.UtcNow.Ticks);
+        _navigationCompletedTaskCompletionSource?.TrySetResult(true);
     }
 
     private static Task<bool> WithTimeout(Task<bool> task, TimeSpan timeout)
@@ -138,6 +234,115 @@ public class BrowserObject
             return await WithTimeout(_navigationCompletedTaskCompletionSource.Task, timeout);
 
         return false;
+    }
+
+    #endregion
+
+    #region Page lifecycle
+
+    /// <summary>
+    /// The frame id of the top-level document. Lifecycle events are reported per frame
+    /// and a sub-frame going quiet says nothing about the page.
+    /// </summary>
+    private string _mainFrameId = "";
+
+    private async Task SetupDevToolsProtocolForPageLifecycle()
+    {
+        try
+        {
+            await WebView2.CoreWebView2.CallDevToolsProtocolMethodAsync("Page.enable", "{}");
+            await WebView2.CoreWebView2.CallDevToolsProtocolMethodAsync(
+                "Page.setLifecycleEventsEnabled",
+                """{"enabled":true}"""
+            );
+
+            var frameTree = await WebView2.CoreWebView2.CallDevToolsProtocolMethodAsync(
+                "Page.getFrameTree",
+                "{}"
+            );
+            _mainFrameId = ReadMainFrameId(frameTree);
+
+            WebView2
+                .CoreWebView2.GetDevToolsProtocolEventReceiver("Page.frameNavigated")
+                .DevToolsProtocolEventReceived += OnPageFrameNavigated;
+            WebView2
+                .CoreWebView2.GetDevToolsProtocolEventReceiver("Page.lifecycleEvent")
+                .DevToolsProtocolEventReceived += OnPageLifecycleEvent;
+        }
+        catch (Exception ex)
+        {
+            Log.ZLogWarning($"Failed to setup DevTools Protocol for page lifecycle: {ex.Message}");
+        }
+    }
+
+    private static string ReadMainFrameId(string frameTreeJson)
+    {
+        try
+        {
+            var json = System.Text.Json.JsonDocument.Parse(frameTreeJson);
+            if (
+                json.RootElement.TryGetProperty("frameTree", out var tree)
+                && tree.TryGetProperty("frame", out var frame)
+                && frame.TryGetProperty("id", out var id)
+            )
+                return id.GetString() ?? "";
+        }
+        catch (Exception ex)
+        {
+            Log.ZLogDebug($"Failed to read the main frame id: {ex.Message}");
+        }
+
+        return "";
+    }
+
+    private void OnPageFrameNavigated(
+        object? sender,
+        CoreWebView2DevToolsProtocolEventReceivedEventArgs e
+    )
+    {
+        try
+        {
+            var json = System.Text.Json.JsonDocument.Parse(e.ParameterObjectAsJson);
+            if (!json.RootElement.TryGetProperty("frame", out var frame))
+                return;
+            // No parent means this is the top-level document.
+            if (frame.TryGetProperty("parentId", out _))
+                return;
+            if (frame.TryGetProperty("id", out var id))
+                _mainFrameId = id.GetString() ?? _mainFrameId;
+        }
+        catch (Exception ex)
+        {
+            Log.ZLogDebug($"Failed to parse Page.frameNavigated: {ex.Message}");
+        }
+    }
+
+    private void OnPageLifecycleEvent(
+        object? sender,
+        CoreWebView2DevToolsProtocolEventReceivedEventArgs e
+    )
+    {
+        try
+        {
+            var json = System.Text.Json.JsonDocument.Parse(e.ParameterObjectAsJson);
+            if (!json.RootElement.TryGetProperty("name", out var name))
+                return;
+            if (name.GetString() != "networkAlmostIdle")
+                return;
+            if (
+                _mainFrameId.Length > 0
+                && json.RootElement.TryGetProperty("frameId", out var frameId)
+                && frameId.GetString() != _mainFrameId
+            )
+                return;
+
+            // Keep the first moment it went quiet - that is what the hold is measured from.
+            Interlocked.CompareExchange(ref _networkQuietSinceTicks, DateTime.UtcNow.Ticks, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.ZLogDebug($"Failed to parse Page.lifecycleEvent: {ex.Message}");
+        }
     }
 
     #endregion
@@ -440,6 +645,11 @@ public class BrowserObject
     public void PrepareLoadEvents()
     {
         _hasDownloadCancelled = false;
+        // Nothing has started yet: until it does, any load event belongs to the page
+        // being left behind, not to the one this wait is for.
+        _currentNavigationId = 0;
+        Volatile.Write(ref _networkQuietSinceTicks, 0);
+        Volatile.Write(ref _loadEndedTicks, 0);
         _navigationCompletedTaskCompletionSource?.TrySetResult(false);
         _navigationCompletedTaskCompletionSource = new TaskCompletionSource<bool>();
         _downloadTaskCompletionSource?.TrySetResult(false);
@@ -472,27 +682,103 @@ public class BrowserObject
         await Task.Delay(100); // Give navigation time to start
     }
 
-    public async Task<bool> TryClick(string xpath, string frameName, int count, int interval)
-    {
-        var success = false;
-        for (var i = 0; i < count; i++)
-        {
-            success = await Click(xpath, frameName);
-            if (success)
-                break;
-
-            await Task.Delay(interval);
-        }
-
-        return success;
-    }
-
     public async Task<bool> Click(string xpath, string frameName = "")
     {
         xpath = xpath.Replace('\"', '\'');
         var js =
             $"""document.evaluate("{xpath}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue.click()""";
         return await EvaluateJavascript(js, frameName);
+    }
+
+    /// <summary>What a click target looks like right now.</summary>
+    public enum ClickTargetState
+    {
+        /// <summary>Nothing matches the XPath - the page has not built it yet, if ever.</summary>
+        Missing,
+
+        /// <summary>
+        /// The node is there but not actionable yet: disabled, invisible, or still a
+        /// placeholder link ('#', 'javascript:void(0)') with no handler on it. Typical of
+        /// a page whose scripts have not finished wiring the download button up.
+        /// </summary>
+        Pending,
+
+        /// <summary>The node can be clicked.</summary>
+        Ready,
+    }
+
+    /// <summary>
+    /// Ask the page about a click target without touching it. Polling this is what
+    /// replaced clicking repeatedly and hoping: one click, once the target can take it.
+    /// </summary>
+    public async Task<ClickTargetState> ProbeClickTarget(string xpath, string frameName = "")
+    {
+        var js = $$"""
+            (function () {
+                try {
+                    var node = document.evaluate("{{xpath.Replace('"', '\'')}}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                    if (!node)
+                        return 'missing';
+                    if (node.disabled === true || node.getAttribute('aria-disabled') === 'true')
+                        return 'pending';
+                    var style = window.getComputedStyle(node);
+                    var rect = node.getBoundingClientRect();
+                    if (style.display === 'none' || style.visibility === 'hidden' || (rect.width === 0 && rect.height === 0))
+                        return 'pending';
+                    var href = node.getAttribute('href');
+                    if (href !== null) {
+                        var target = href.trim().toLowerCase();
+                        var placeholder = target === '' || target === '#' || target.indexOf('javascript:void') === 0;
+                        if (placeholder && !node.onclick && !node.getAttribute('onclick'))
+                            return 'pending';
+                    }
+                    return 'ready';
+                } catch (e) {
+                    return 'missing';
+                }
+            })()
+            """;
+
+        return await EvaluateJavascriptForResult(js, frameName) switch
+        {
+            "ready" => ClickTargetState.Ready,
+            "pending" => ClickTargetState.Pending,
+            _ => ClickTargetState.Missing,
+        };
+    }
+
+    /// <summary>Runs a script and returns what it evaluated to, or null if it could not run.</summary>
+    private async Task<string?> EvaluateJavascriptForResult(string script, string frameName)
+    {
+        try
+        {
+            string json;
+            if (!string.IsNullOrWhiteSpace(frameName))
+            {
+                CoreWebView2Frame? frame;
+                lock (_frames)
+                {
+                    _frames.TryGetValue(frameName, out frame);
+                }
+
+                if (frame == null)
+                    return null;
+
+                json = await frame.ExecuteScriptAsync(script);
+            }
+            else
+            {
+                json = await WebView2.CoreWebView2.ExecuteScriptAsync(script);
+            }
+
+            LastJavascriptError = "";
+            return System.Text.Json.JsonDocument.Parse(json).RootElement.GetString();
+        }
+        catch (Exception ex)
+        {
+            LastJavascriptError = ex.Message;
+            return null;
+        }
     }
 
     public async Task<bool> TryEvaluateJavascript(
