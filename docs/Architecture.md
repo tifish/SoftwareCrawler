@@ -138,7 +138,9 @@ flowchart TD
 
 1. **等加载**：`WaitForMainFrameLoadEnd` 在 `DOMContentLoaded` 或 `NavigationCompleted` 任一到来时结束，上限 `LoadPageEndTimeout`。失败的导航也算结束——只认成功会让"导航变成下载""导航被中止"白等满超时。若页面是被原地替换的（下面"同文档跳转"），则以"原地替换 + settled"结束。
 2. **`WaitSecondsBeforeClick`**：只对配了值的项生效，是**下限**而不是每项都交的过路费（原先无条件 `+1` 秒）。
-3. **XPath 步骤**：以 200ms 轮询 `ProbeClickTarget`，`Ready` 就点，**只点一次**。`Missing` 一直等；`Pending`（元素在但 disabled/不可见/`href` 还是 `#`、`javascript:void(0)` 且没挂处理器）等到页面 settled 就尽力点一次。预算取 `LoadPageEndTimeout` 剩余量与 `TryClickCount × TryClickInterval` 的较大者。
+3. **XPath 步骤**：以 200ms 轮询 `ProbeClickTarget`，**只点一次**。预算取 `LoadPageEndTimeout` 剩余量与 `TryClickCount × TryClickInterval` 的较大者，超预算就尽力点一次。分两类：
+   - `ReadyLink`（`<a>` 且 href 是真地址）：**立刻点**。跟随链接不依赖页面脚本，没什么可等的——大部分配方走这条，也是速度提升的来源。
+   - 其它（`Ready` 的按钮/`span`，或 `Pending` 的 disabled、不可见、占位 href）：**等页面 settled 再点**。这类元素只有页面脚本给它绑上处理器才动得了，而**元素本身看不出绑没绑**——框架普遍用事件委托，处理器挂在根节点上，查元素自身的 listener 是查不到的。WPS 就栽在这：`//button[…'立即下载']` 在首屏 HTML 里就有，DOMContentLoaded 后 0.5 秒点下去毫无反应，白等 60 秒 `StartDownloadTimeout` 再靠整项重试兜住；等 settled 后点，一次就成，65 秒变 3.4 秒。
 4. **脚本步骤**：无从探测目标，改为等页面 settled 再执行，同样受预算约束。
 
 **settled 的定义是 `IsPageSettled`：网络静默持续 ≥2 秒，或页面"自报家门"（load 事件 / 原地替换）已过去 ≥5 秒。** 阈值都不是随手取的：
@@ -236,7 +238,7 @@ Claude Code ──stdio──> Tools/DebugMcpBridge ──HTTP JSON-RPC──> �
 - 监听 `127.0.0.1`，默认端口 8747 起向上扫描，`SC_MCP_PORT` 可指定；端口用全局 `Mutex` 预定，多个 worktree 并行时自动错开。
 - 启动后写 `bin/debug-mcp.json`（URL、pid、可执行路径、instance id、worktree 根、Config 根）。桥接进程会**校验 workspace 是否是自己那一个、进程是否还活着、可执行路径是否吻合**，三者任一不符就明确报错，杜绝"连到隔壁 worktree"。
 - 实例身份由 `DebugInstanceContext` 计算：可执行目录哈希取前 12 位作 InstanceId，再从 `.git`（支持 worktree 的 `gitdir:` 标记）读分支与短 commit，拼成窗口标题后缀，肉眼即可分辨多开实例。
-- 工具清单集中在 `DebugMcpContract.BuildToolList()`——**放在应用侧，桥接进程未启动应用时也能回答 `tools/list`**。通用工具 `describe` `get_value` `set_value` `invoke` `list_members` `read_logs` 来自 `DebugMcpHost` + `ObjectGraph`；应用工具为 `control_tree` `screenshot` `software_list` `download_probe` `page_state` `storage_info` `config_monitor`。`page_state` 报当前 URL、load 事件与网络静默各自过去了多久、是否 settled，带 `xpath` 时还报点击目标是 `Ready` / `Pending` / `Missing`——"页面慢"和"XPath 不对"就是靠它分开的。
+- 工具清单集中在 `DebugMcpContract.BuildToolList()`——**放在应用侧，桥接进程未启动应用时也能回答 `tools/list`**。通用工具 `describe` `get_value` `set_value` `invoke` `list_members` `read_logs` 来自 `DebugMcpHost` + `ObjectGraph`；应用工具为 `control_tree` `screenshot` `software_list` `download_probe` `page_state` `storage_info` `config_monitor`。`page_state` 报当前 URL、load 事件 / 网络静默 / 原地替换各自过去了多久、是否 settled，带 `xpath` 时还报点击目标是 `ReadyLink` / `Ready` / `Pending` / `Missing`——"页面慢""XPath 不对""点了但没绑上处理器"就是靠它分开的。
 - 对象路径根：`App`（聚合入口，还挂着 `FlushSoftwareList` / `ReloadSoftwareList` / `BackupConfigNow` / `CleanUpLocalSettings` 等动作）、`MainForm`、`Settings`、`SettingsStore`、`Browser`、`Software`。`#Name` 按名字深搜控件。
 - 所有工具在 UI 线程上执行，带 15 秒超时；`download_probe` 特意只在 UI 线程上**启动**下载，随后在池线程 await，避免死锁。
 

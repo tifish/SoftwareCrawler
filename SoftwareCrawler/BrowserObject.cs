@@ -766,8 +766,20 @@ public class BrowserObject
         /// </summary>
         Pending,
 
-        /// <summary>The node can be clicked.</summary>
+        /// <summary>
+        /// The node is actionable, but only the page's own scripts can act on it - a
+        /// button, or anything else that is not a link. Clicking one before its handler
+        /// is bound does nothing at all, and nothing about the node says whether it is:
+        /// frameworks bind by delegation, far from the node itself. So this waits for the
+        /// page to settle, where a link does not have to.
+        /// </summary>
         Ready,
+
+        /// <summary>
+        /// A plain link with a real target. Following it does not depend on any script
+        /// having run, so there is nothing left to wait for.
+        /// </summary>
+        ReadyLink,
     }
 
     /// <summary>
@@ -791,8 +803,10 @@ public class BrowserObject
                     var href = node.getAttribute('href');
                     if (href !== null) {
                         var target = href.trim().toLowerCase();
-                        var placeholder = target === '' || target === '#' || target.indexOf('javascript:void') === 0;
-                        if (placeholder && !node.onclick && !node.getAttribute('onclick'))
+                        var placeholder = target === '' || target === '#' || target.indexOf('javascript:') === 0;
+                        if (!placeholder)
+                            return 'ready-link';
+                        if (!node.onclick && !node.getAttribute('onclick'))
                             return 'pending';
                     }
                     return 'ready';
@@ -804,6 +818,7 @@ public class BrowserObject
 
         return await EvaluateJavascriptForResult(js, frameName) switch
         {
+            "ready-link" => ClickTargetState.ReadyLink,
             "ready" => ClickTargetState.Ready,
             "pending" => ClickTargetState.Pending,
             _ => ClickTargetState.Missing,

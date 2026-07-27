@@ -401,9 +401,12 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                     );
                     if (_item.HasCancelled)
                         return DownloadOnceResult.FailedAndNoRetry;
-                    if (targetState != ClickTargetState.Ready)
+                    // Anything other than a link clicked on a page that never settled is a
+                    // click that may well land on nothing - worth saying so up front when
+                    // the download then fails to start.
+                    if (targetState != ClickTargetState.ReadyLink && !Browser.IsPageSettled)
                         Log.ZLogInformation(
-                            $"{_item.Name}: clicking a {targetState} target after {stepWatch.Elapsed.TotalSeconds:F1}s: {xpathOrScript}"
+                            $"{_item.Name}: clicking a {targetState} target on an unsettled page after {stepWatch.Elapsed.TotalSeconds:F1}s: {xpathOrScript}"
                         );
 
                     // Arm the load and download waits before the click - the click is what
@@ -709,10 +712,10 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
 
     /// <summary>
     /// Waits for a click target to become clickable, and reports the state it is in when
-    /// the wait ends. A target that exists but is not wired up yet is not waited out to
-    /// the end of the budget: once the page has settled, nothing more is coming, so the
-    /// caller may as well try it. A missing one is waited for to the last moment - the
-    /// click can only fail without it.
+    /// the wait ends. A plain link is clicked the moment it appears. Anything else only
+    /// works if the page's scripts have run, so it waits for the page to settle - but no
+    /// longer: once settled, nothing more is coming, and a missing target is waited for to
+    /// the last moment because the click can only fail without it.
     /// </summary>
     private async Task<ClickTargetState> WaitForClickTarget(
         string xpath,
@@ -726,9 +729,9 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         while (!_item.HasCancelled)
         {
             state = await Browser.ProbeClickTarget(xpath, frameName);
-            if (state == ClickTargetState.Ready)
+            if (state == ClickTargetState.ReadyLink)
                 break;
-            if (state == ClickTargetState.Pending && Browser.IsPageSettled)
+            if (state != ClickTargetState.Missing && Browser.IsPageSettled)
                 break;
             if (watch.Elapsed >= budget)
                 break;
