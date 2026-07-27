@@ -40,6 +40,7 @@ public class BrowserObject
         _downloadTaskCompletionSource = null;
 
         _currentNavigationId = 0;
+        Volatile.Write(ref _navigatedInPlaceTicks, 0);
         Volatile.Write(ref _networkQuietSinceTicks, 0);
         Volatile.Write(ref _loadEndedTicks, 0);
         _mainFrameId = "";
@@ -92,6 +93,7 @@ public class BrowserObject
 
         // Setup event handlers
         WebView2.CoreWebView2.NavigationStarting += WebView2OnNavigationStarting;
+        WebView2.CoreWebView2.SourceChanged += WebView2OnSourceChanged;
         WebView2.CoreWebView2.DOMContentLoaded += WebView2OnDomContentLoaded;
         WebView2.CoreWebView2.NavigationCompleted += WebView2OnNavigationCompleted;
         WebView2.CoreWebView2.DownloadStarting += WebView2OnDownloadStarting;
@@ -127,12 +129,14 @@ public class BrowserObject
     private static readonly TimeSpan NetworkQuietHold = TimeSpan.FromSeconds(2);
 
     /// <summary>
-    /// How long the load event alone takes to count as settled. It is a weak signal on its
-    /// own: GitHub raises it around four seconds before the lazily fetched releases panel
-    /// - which is what the crawl is after - shows up. It is only here to bound the wait on
-    /// pages that keep a connection open and therefore never go quiet.
+    /// How long after the page announces itself - the load event, or a swap in place - it
+    /// counts as settled. Neither announcement means the page is done: GitHub raises load
+    /// about four seconds before the lazily fetched releases panel the crawl is after. The
+    /// grace is what bounds the wait when the network never reports going quiet, which
+    /// happens on pages holding a connection open and after in-place swaps, where Chrome
+    /// does not report idle again for a navigation it does not consider new.
     /// </summary>
-    private static readonly TimeSpan LoadEndedGrace = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan AnnouncedGrace = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// The navigation the waits belong to. Load events name the navigation they report on,
@@ -140,6 +144,23 @@ public class BrowserObject
     /// abort would be read as "the page we are waiting for has loaded".
     /// </summary>
     private ulong _currentNavigationId;
+
+    /// <summary>
+    /// When the page was last replaced under us without a navigation - pushState, or a
+    /// framework like GitHub's turbo swapping the document in place; 0 if that has not
+    /// happened. No load event is ever raised for such a page, so this is the only
+    /// announcement it gets.
+    /// </summary>
+    private long _navigatedInPlaceTicks;
+
+    /// <summary>How long ago the page was swapped in place, or null if it has not been.</summary>
+    public TimeSpan? NavigatedInPlaceFor => Since(ref _navigatedInPlaceTicks);
+
+    /// <summary>
+    /// The URL changed without a navigation: the page was swapped in place. Waiting for a
+    /// load event past this point is waiting for something that is never coming.
+    /// </summary>
+    public bool HasNavigatedInPlace => NavigatedInPlaceFor is not null;
 
     /// <summary>How long the page has been quiet, or null while it is still fetching.</summary>
     public TimeSpan? NetworkQuietFor => Since(ref _networkQuietSinceTicks);
@@ -159,7 +180,9 @@ public class BrowserObject
     /// the point past which waiting for the page's own scripts buys nothing.
     /// </summary>
     public bool IsPageSettled =>
-        NetworkQuietFor >= NetworkQuietHold || LoadEndedFor >= LoadEndedGrace;
+        NetworkQuietFor >= NetworkQuietHold
+        || LoadEndedFor >= AnnouncedGrace
+        || NavigatedInPlaceFor >= AnnouncedGrace;
 
     private void WebView2OnNavigationStarting(
         object? sender,
@@ -169,8 +192,25 @@ public class BrowserObject
         // A redirect keeps the id of the navigation it continues, so this stays put
         // across them and only moves when something genuinely new starts.
         _currentNavigationId = e.NavigationId;
+        Volatile.Write(ref _navigatedInPlaceTicks, 0);
+        // The document being replaced stops speaking for the page here; the loader of the
+        // one taking its place is only known once it commits (Page.frameNavigated).
+        _currentLoaderId = "";
         Volatile.Write(ref _networkQuietSinceTicks, 0);
         Volatile.Write(ref _loadEndedTicks, 0);
+    }
+
+    private void WebView2OnSourceChanged(object? sender, CoreWebView2SourceChangedEventArgs e)
+    {
+        if (e.IsNewDocument)
+            return;
+
+        // The URL changed with no navigation behind it. Restart the quiet measurement from
+        // here: whatever the old page had settled into says nothing about this one, and
+        // "quiet since the swap" is what tells us the new page has finished arriving.
+        Volatile.Write(ref _networkQuietSinceTicks, 0);
+        Volatile.Write(ref _navigatedInPlaceTicks, DateTime.UtcNow.Ticks);
+        Log.ZLogDebug($"Page swapped in place: {WebView2.Source}");
     }
 
     /// <summary>
@@ -246,6 +286,14 @@ public class BrowserObject
     /// </summary>
     private string _mainFrameId = "";
 
+    /// <summary>
+    /// The loader of the document currently in the main frame, or empty while a navigation
+    /// is in flight. Lifecycle events name the document they describe, and they arrive late:
+    /// about:blank's "network is idle" routinely lands after the next navigation has started,
+    /// where it would otherwise be read as the new page having settled.
+    /// </summary>
+    private string _currentLoaderId = "";
+
     private async Task SetupDevToolsProtocolForPageLifecycle()
     {
         try
@@ -310,6 +358,9 @@ public class BrowserObject
                 return;
             if (frame.TryGetProperty("id", out var id))
                 _mainFrameId = id.GetString() ?? _mainFrameId;
+            // The new document is in: lifecycle events carrying this loader describe it.
+            if (frame.TryGetProperty("loaderId", out var loaderId))
+                _currentLoaderId = loaderId.GetString() ?? "";
         }
         catch (Exception ex)
         {
@@ -335,9 +386,20 @@ public class BrowserObject
                 && frameId.GetString() != _mainFrameId
             )
                 return;
+            // Belongs to a document that has already been navigated away from, or to one
+            // that has not committed yet - either way it says nothing about this page.
+            if (
+                _currentLoaderId.Length == 0
+                || !json.RootElement.TryGetProperty("loaderId", out var eventLoaderId)
+                || eventLoaderId.GetString() != _currentLoaderId
+            )
+                return;
 
-            // Keep the first moment it went quiet - that is what the hold is measured from.
-            Interlocked.CompareExchange(ref _networkQuietSinceTicks, DateTime.UtcNow.Ticks, 0);
+            // Chrome reports this every time the page falls idle, and the first report
+            // routinely lands in a lull early in the load - GitHub goes quiet for a moment
+            // before fetching the panels the crawl is after. So the hold runs from the
+            // latest report, which is what makes "quiet" mean "nothing since".
+            Volatile.Write(ref _networkQuietSinceTicks, DateTime.UtcNow.Ticks);
         }
         catch (Exception ex)
         {
@@ -648,6 +710,7 @@ public class BrowserObject
         // Nothing has started yet: until it does, any load event belongs to the page
         // being left behind, not to the one this wait is for.
         _currentNavigationId = 0;
+        Volatile.Write(ref _navigatedInPlaceTicks, 0);
         Volatile.Write(ref _networkQuietSinceTicks, 0);
         Volatile.Write(ref _loadEndedTicks, 0);
         _navigationCompletedTaskCompletionSource?.TrySetResult(false);

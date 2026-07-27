@@ -336,26 +336,31 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                 var stepWatch = Stopwatch.StartNew();
 
                 _item.Status = DownloadingStatus.WaitingForLoadEnd;
-
-                // A click that swaps the page in place - GitHub does this - raises no load
-                // event at all, so this loop waits out the whole timeout. Breaking out on a
-                // quiet network instead was tried and reverted: the fetch goes quiet before
-                // the new document is in place, and the next step ran against the old one.
-                var loaded = false;
+                var outcome = "timed out";
                 for (var seconds = 0; seconds < Settings.LoadPageEndTimeout; seconds++)
                 {
                     if (_item.HasCancelled)
                         return DownloadOnceResult.FailedAndNoRetry;
                     if (await Browser.WaitForMainFrameLoadEnd(TimeSpan.FromSeconds(1)))
                     {
-                        loaded = true;
+                        outcome = "ended";
+                        break;
+                    }
+
+                    // A click that swaps the page in place - GitHub's turbo does this -
+                    // raises no load event, so the wait above can only time out. The URL
+                    // changing under us says the new page is in; the network going quiet
+                    // since then says it has finished arriving.
+                    if (Browser.HasNavigatedInPlace && Browser.IsPageSettled)
+                    {
+                        outcome = "settled in place";
                         break;
                     }
                 }
 
-                // Which of the two it was decides how to read every number after it.
+                // Which of the three it was decides how to read every number after it.
                 Log.ZLogDebug(
-                    $"{_item.Name} step {i + 1}: load wait {(loaded ? "ended" : "timed out")} after {stepWatch.Elapsed.TotalSeconds:F1}s"
+                    $"{_item.Name} step {i + 1}: load wait {outcome} after {stepWatch.Elapsed.TotalSeconds:F1}s"
                 );
 
                 // A floor for the pages known to need one, no longer a toll every item pays:

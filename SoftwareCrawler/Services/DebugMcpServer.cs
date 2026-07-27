@@ -530,6 +530,7 @@ internal static class DebugMcpServer
                 Url: core?.Source ?? "(browser not initialized)",
                 LoadEndedFor: Browser.LoadEndedFor,
                 QuietFor: Browser.NetworkQuietFor,
+                InPlaceFor: Browser.NavigatedInPlaceFor,
                 Settled: Browser.IsPageSettled,
                 Ready: core != null
             );
@@ -541,6 +542,7 @@ internal static class DebugMcpServer
         sb.AppendLine($"URL: {state.Url}");
         sb.AppendLine($"Load ended: {Age(state.LoadEndedFor, "(not yet)")}");
         sb.AppendLine($"Network went quiet: {Age(state.QuietFor, "(still fetching)")}");
+        sb.AppendLine($"Swapped in place: {Age(state.InPlaceFor, "(no)")}");
         sb.AppendLine($"Page settled: {state.Settled}");
 
         if (xpath.Length > 0 && state.Ready)

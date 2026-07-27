@@ -121,7 +121,7 @@ flowchart TD
 机制要点：
 
 - **等待模型**：导航完成和下载完成各用一个 `TaskCompletionSource`，`PrepareLoadEvents()` 在每次动作前重建它们，`WithTimeout` 提供超时。所以"等待"永远不会跨动作串味。
-- **"加载完"由三个信号合成**，见下节"页面就绪判定"：`DOMContentLoaded`（文档可脚本化，最早）、`NavigationCompleted`（load 事件，成功失败都算）、DevTools `Page.lifecycleEvent` 的 `networkAlmostIdle`（网络静默）。
+- **"加载完"由四个信号合成**，见下节"页面就绪判定"：`DOMContentLoaded`（文档可脚本化，最早）、`NavigationCompleted`（load 事件，成功失败都算）、DevTools `Page.lifecycleEvent` 的 `networkAlmostIdle`（网络静默）、`SourceChanged` 且非新文档（原地替换）。
 - **事件按导航编号过滤**：`NavigationStarting` 记下 `NavigationId`，`PrepareLoadEvents()` 把它清零；只有编号对得上的 `DOMContentLoaded` / `NavigationCompleted` 才算数。点击导航走时旧导航会以 `ConnectionAborted` 结束，不过滤的话那个中止会被当成"要等的页面加载好了"，下一步就跑在旧页面上。
 - **启动参数**：关闭 SafeBrowsing 下载保护与下载气泡等 UI（`--safebrowsing-disable-download-protection` 等），否则自动下载会被拦。用户数据目录固定为**可执行文件目录**下的 `Cache`（不是当前工作目录——计划任务的 cwd 是 system32，那样会得到另一份 profile），代理来自设置。
 - **弹窗**：`NewWindowRequested` 一律拦下，在当前窗口导航过去——爬取流程里不能出现第二个窗口。
@@ -136,17 +136,26 @@ flowchart TD
 
 每一步点击/执行脚本前的等待长什么样，是这一层最容易踩坑的地方，规则如下（`DownloadPipeline.ClickAndTriggerDownload`）：
 
-1. **等加载**：`WaitForMainFrameLoadEnd` 在 `DOMContentLoaded` 或 `NavigationCompleted` 任一到来时结束，上限 `LoadPageEndTimeout`。失败的导航也算结束——只认成功会让"导航变成下载""导航被中止"白等满超时。
+1. **等加载**：`WaitForMainFrameLoadEnd` 在 `DOMContentLoaded` 或 `NavigationCompleted` 任一到来时结束，上限 `LoadPageEndTimeout`。失败的导航也算结束——只认成功会让"导航变成下载""导航被中止"白等满超时。若页面是被原地替换的（下面"同文档跳转"），则以"原地替换 + settled"结束。
 2. **`WaitSecondsBeforeClick`**：只对配了值的项生效，是**下限**而不是每项都交的过路费（原先无条件 `+1` 秒）。
 3. **XPath 步骤**：以 200ms 轮询 `ProbeClickTarget`，`Ready` 就点，**只点一次**。`Missing` 一直等；`Pending`（元素在但 disabled/不可见/`href` 还是 `#`、`javascript:void(0)` 且没挂处理器）等到页面 settled 就尽力点一次。预算取 `LoadPageEndTimeout` 剩余量与 `TryClickCount × TryClickInterval` 的较大者。
 4. **脚本步骤**：无从探测目标，改为等页面 settled 再执行，同样受预算约束。
 
-**settled 的定义是 `IsPageSettled`：网络静默持续 ≥2 秒，或 load 事件已过去 ≥5 秒。** 两个阈值都不是随手取的：
+**settled 的定义是 `IsPageSettled`：网络静默持续 ≥2 秒，或页面"自报家门"（load 事件 / 原地替换）已过去 ≥5 秒。** 阈值都不是随手取的：
 
 - `networkAlmostIdle` 允许最多两个连接还开着，刚触发时懒加载的片段可能仍在路上，所以要求它**持续**一段时间。
-- **load 事件本身不代表"能用了"**：GitHub 仓库页的 load 在 2.2 秒触发，而爬取要点的 releases 侧栏（`include-fragment` 懒加载）6.3 秒才出现——正好是网络静默的时刻。所以 load 只作为"页面一直不静默"（长连接、轮询）时的兜底，并且要再宽限 5 秒。
+- **load 事件本身不代表"能用了"**：GitHub 仓库页的 load 在 2.2 秒触发，而爬取要点的 releases 侧栏（`include-fragment` 懒加载）6.3 秒才出现——正好是网络静默的时刻。所以 load 只在"页面一直不静默"时兜底，并且要再宽限 5 秒。
 
-> 试过在等加载那一步"网络静默就提前跳出"，为的是省掉 GitHub 同文档跳转（点击后不触发任何 load 事件，要白等满 60 秒）的那一分钟。**已撤回**：turbo 抓取先静默、文档后换上，下一步会跑在旧页面上，反而整项失败重试。那 60 秒目前照旧付。
+静默信号有两个坑，踩过才发现，改动时别退回去：
+
+- **`networkAlmostIdle` 一个页面会报很多次**，第一次往往落在加载早期的空档里（GitHub 首屏 HTML 到手后短暂安静，随后才去取懒加载面板）。所以计时锚点必须取**最近一次**上报，取第一次会让"静默 2 秒"在 2.9 秒就成立，脚本步骤跑在半成品页面上——sing-box 时好时坏的真正原因就是这个，不是网络。
+- **CDP 生命周期事件送达有延迟**，`about:blank` 的静默事件经常在下一次导航开始之后才到。所以按 `loaderId` 过滤：`Page.frameNavigated` 记下当前文档的 loader，导航开始时清空（新文档还没提交），对不上的一律丢弃。
+
+### 同文档跳转（GitHub turbo）
+
+点击后 URL 变了却没有任何导航事件，等加载只能白等满超时。靠 `SourceChanged` 且 `IsNewDocument == false` 识别：这是这种页面唯一的"到货通知"，收到后重置静默计时（旧页面的安静说明不了新页面），并按上面的宽限期计入 settled；等加载的循环见到"原地替换 + settled"就跳出。
+
+注意 **Chrome 对同文档跳转不保证再报一次 `networkAlmostIdle`**（实测有时报有时不报），所以那 5 秒宽限是这条路径的唯一下界，不能只靠静默。sing-box 因此从 71 秒降到 13–18 秒。
 
 ## 7. 配置与数据存储
 
