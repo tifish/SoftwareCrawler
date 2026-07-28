@@ -1,6 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
-
 namespace SoftwareCrawler.Services;
 
 public sealed record DebugInstanceInfo(
@@ -9,7 +6,7 @@ public sealed record DebugInstanceInfo(
     string InstanceLabel,
     string WorkspaceRoot,
     int ProcessId,
-    string McpUrl,
+    string McpPipeName,
     string ConfigRoot,
     string RuntimeTempRoot
 );
@@ -40,9 +37,17 @@ public static class DebugInstanceContext
             ? Path.Combine(Path.GetTempPath(), SettingsService.AppName, InstanceId)
             : Path.Combine(Path.GetTempPath(), SettingsService.AppName);
 
+    /// <summary>
+    /// Pipe the debug MCP surface listens on, shared with the ScMcp adapter through
+    /// <see cref="McpPipeNames"/>. Debug builds carry the worktree's instance id.
+    /// </summary>
+    public static string DebugMcpPipeName { get; } =
+        McpPipeNames.Debug(IsDebugBuild ? InstanceId : null);
+
+    /// <summary>Written for manual troubleshooting only; the adapter connects without it.</summary>
     public static string DiscoveryPath => Path.Combine(AppContext.BaseDirectory, "debug-mcp.json");
 
-    private static string _mcpUrl = "";
+    private static string _mcpPipeName = "";
 
     static DebugInstanceContext()
     {
@@ -60,22 +65,19 @@ public static class DebugInstanceContext
             InstanceLabel,
             WorkspaceRoot,
             Environment.ProcessId,
-            _mcpUrl,
+            _mcpPipeName,
             SettingsStore.ResolveConfigRoot(),
             RuntimeTempRoot
         );
 
-    internal static void SetMcpUrl(string value) => _mcpUrl = value ?? "";
+    internal static void SetMcpPipeName(string value) => _mcpPipeName = value ?? "";
 
     public static string DecorateTitle(string title) =>
         IsDebugBuild ? $"{title} [Debug: {InstanceLabel}]" : title;
 
+    /// <summary>Shared with the ScMcp adapter through <see cref="McpPipeNames"/>.</summary>
     public static string CreateInstanceId(string executableDirectory) =>
-        Convert
-            .ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(NormalizePath(executableDirectory))))[
-                ..12
-            ]
-            .ToLowerInvariant();
+        McpPipeNames.InstanceId(executableDirectory);
 
     public static bool IsCurrentExecutable(string? executablePath)
     {
@@ -90,11 +92,6 @@ public static class DebugInstanceContext
                 StringComparison.OrdinalIgnoreCase
             );
     }
-
-    private static string NormalizePath(string path) =>
-        Path.GetFullPath(path)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            .ToUpperInvariant();
 
     private static (string Branch, string Commit, string Worktree) ReadGitIdentity(string root)
     {

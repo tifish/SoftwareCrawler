@@ -10,11 +10,14 @@ using ZLogger;
 namespace SoftwareCrawler.Services;
 
 /// <summary>
-/// App-specific configuration over the generic <see cref="DebugMcpHost"/> in
+/// App-specific configuration over the generic <see cref="McpHost"/> in
 /// JeekTools: object-graph roots, '#Name' control lookup, the WinForms tools
 /// (control_tree, screenshot), the app probes, and the instance discovery file.
 /// Compiled into all configurations so Debug and Release behave identically,
-/// but the listener only starts in Debug builds.
+/// but the listener only starts in Debug builds. Agents reach it through
+/// <c>bin\ScMcp.exe</c>, which forwards stdio to this instance's named pipe —
+/// the pipe name carries the worktree's instance id, so parallel Debug builds
+/// never answer for each other and there is no port to collide over.
 /// </summary>
 internal static class DebugMcpServer
 {
@@ -40,29 +43,37 @@ internal static class DebugMcpServer
         }
     );
 
-    private static readonly DebugMcpHost Host = CreateHost();
+    private static readonly McpHost Host = CreateHost();
 
-    public static void Start() => Host.Start();
-
-    public static void Stop() => Host.Stop();
-
-    private static DebugMcpHost CreateHost()
+    public static void Start()
     {
-        var host = new DebugMcpHost(
-            new DebugMcpHostOptions
+        Host.Start();
+        OnEndpointChanged();
+    }
+
+    public static void Stop()
+    {
+        Host.Stop();
+        OnEndpointChanged();
+    }
+
+    private static McpHost CreateHost()
+    {
+        var host = new McpHost(
+            new McpHostOptions
             {
                 ServerName = "software-crawler-debug",
                 ServerTitle = "SoftwareCrawler Debug Server",
                 Graph = Graph,
                 GetVersion = () => AutoUpdateService.GetDisplayVersion(),
                 Enabled = ListeningEnabled,
-                DefaultPort = 8747,
-                PortEnvironmentVariable = "SC_MCP_PORT",
-                PortMutexPrefix = "SoftwareCrawler.DebugMcp.Port.",
+                // Named pipe only: nothing to allocate, so worktree instances cannot
+                // collide over a port and the adapter needs no discovery to connect.
+                PipeName = DebugInstanceContext.DebugMcpPipeName,
+                DefaultPort = 0,
                 UiInvoker = InvokeOnUiThread,
                 Describe = BuildDescribeText,
                 ToolListProvider = DebugMcpContract.BuildToolList,
-                UrlChanged = OnUrlChanged,
             }
         );
 
@@ -79,7 +90,7 @@ internal static class DebugMcpServer
     private static Task<T> OnUiAsync<T>(Func<T> func) => Host.OnUiAsync(func);
 
     private static JsonObject ToolText(string text, bool isError = false) =>
-        DebugMcpHost.ToolText(text, isError);
+        McpHost.ToolText(text, isError);
 
     #region UI thread
 
@@ -119,14 +130,20 @@ internal static class DebugMcpServer
 
     #region Discovery
 
-    private static void OnUrlChanged(string url)
+    /// <summary>
+    /// The discovery file is no longer how the adapter finds us — it derives the pipe name
+    /// from its own folder — but it stays as the human-readable record of which worktree,
+    /// process, and config root this instance is.
+    /// </summary>
+    private static void OnEndpointChanged()
     {
-        DebugInstanceContext.SetMcpUrl(url);
-        if (url.Length > 0)
+        var pipe = Host.PipeName;
+        DebugInstanceContext.SetMcpPipeName(pipe);
+        if (pipe.Length > 0)
         {
             WriteDiscovery();
             Log.ZLogInformation(
-                $"Debug MCP server listening on {url} for {DebugInstanceContext.InstanceLabel}"
+                $@"Debug MCP server listening on \\.\pipe\{pipe} for {DebugInstanceContext.InstanceLabel}"
             );
         }
         else
@@ -142,7 +159,7 @@ internal static class DebugMcpServer
             var info = DebugInstanceContext.Info;
             var discovery = new DebugMcpDiscovery
             {
-                Url = Host.Url,
+                PipeName = Host.PipeName,
                 ProcessId = Environment.ProcessId,
                 ExecutablePath = Environment.ProcessPath ?? "",
                 InstanceId = info.InstanceId,
@@ -347,7 +364,7 @@ internal static class DebugMcpServer
         var sb = new StringBuilder();
         var instance = DebugInstanceContext.Info;
         sb.AppendLine(
-            $"SoftwareCrawler debug MCP server at {Host.Url} (build {AutoUpdateService.GetDisplayVersion()})."
+            $@"SoftwareCrawler debug MCP server on \\.\pipe\{Host.PipeName} (build {AutoUpdateService.GetDisplayVersion()})."
         );
         sb.AppendLine($"InstanceId: {instance.InstanceId}");
         sb.AppendLine($"InstanceLabel: {instance.InstanceLabel}");
@@ -486,7 +503,7 @@ internal static class DebugMcpServer
 
     private static async Task<JsonObject> DownloadProbeAsync(JsonObject args)
     {
-        var name = DebugMcpHost.RequiredString(args, "name");
+        var name = McpHost.RequiredString(args, "name");
         var testOnly = args["test_only"]?.GetValue<bool>() ?? true;
 
         var item = SoftwareManager.Items.FirstOrDefault(candidate =>

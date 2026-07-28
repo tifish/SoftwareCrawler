@@ -2,10 +2,14 @@ using System.Text.Json.Nodes;
 
 namespace SoftwareCrawler.Services;
 
-/// <summary>The discovery file the app writes so the bridge can find this instance.</summary>
+/// <summary>
+/// The record the app writes next to itself while the debug surface listens. The ScMcp
+/// adapter derives the pipe name from its own folder, so this is for humans checking which
+/// instance is up, not part of connecting.
+/// </summary>
 public sealed class DebugMcpDiscovery
 {
-    public string Url { get; set; } = "";
+    public string PipeName { get; set; } = "";
     public int ProcessId { get; set; }
     public string ExecutablePath { get; set; } = "";
     public string InstanceId { get; set; } = "";

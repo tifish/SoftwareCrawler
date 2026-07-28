@@ -2,17 +2,10 @@
   "mcpServers": {
     "sc-debug": {
       "type": "stdio",
-      "command": "dotnet",
+      "command": "cmd",
       "args": [
-        "run",
-        "--project",
-        "Tools/DebugMcpBridge/DebugMcpBridge.csproj",
-        "--configuration",
-        "Debug",
-        "--no-launch-profile",
-        "--",
-        "--workspace",
-        "."
+        "/c",
+        ".\\bin\\ScMcp.exe"
       ],
       "cwd": "."
     }

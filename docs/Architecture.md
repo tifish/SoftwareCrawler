@@ -20,7 +20,7 @@
 SoftwareCrawler.slnx
 ├── SoftwareCrawler/            WinForms 主程序
 ├── JeekTools.NET/              共享库（git submodule，多个应用复用）
-├── Tools/DebugMcpBridge/       stdio MCP 桥接进程，仅开发期使用
+├── Tools/ScMcp/                stdio MCP 适配器，编译到 bin/ScMcp.exe，仅开发期使用
 └── Tests/SoftwareCrawler.Tests/ xunit 测试，覆盖不依赖 UI 的逻辑
 ```
 
@@ -38,7 +38,7 @@ SoftwareCrawler.slnx
 | 浏览器 | `BrowserObject.cs` | WebView2 封装，全局单例 `Browser` |
 | 服务 | `Services/*` | 设置、配置监视、备份、自动更新、调试通道 |
 
-`JeekTools.NET` 提供与业务无关的通用件：`SettingsStorage`（存储位置方案）、`JsonSettingsFile`（三方合并写入）、`SharedDataFile`（跨进程锁 + 原子写）、`LogManager`（ZLogger 封装）、`AutoUpdater`、`DebugMcpHost` + `ObjectGraph`（通用调试宿主）。**修改这些文件等于修改 submodule，会影响其它应用**。
+`JeekTools.NET` 提供与业务无关的通用件：`SettingsStorage`（存储位置方案）、`JsonSettingsFile`（三方合并写入）、`SharedDataFile`（跨进程锁 + 原子写）、`LogManager`（ZLogger 封装）、`AutoUpdater`、`McpHost` + `McpPipeServer` + `ObjectGraph`（通用 MCP 宿主与命名管道传输）。**修改这些文件等于修改 submodule，会影响其它应用**。
 
 两个 `global using static` 让单例随处可用，读代码时注意这些"凭空出现"的标识符：
 
@@ -232,15 +232,17 @@ flowchart TD
 用途：让 AI agent（或人）在程序**运行时**读写对象、看控件树、截图、跑单项爬取。
 
 ```
-Claude Code ──stdio──> Tools/DebugMcpBridge ──HTTP JSON-RPC──> 运行中的 Debug 实例
-                              ↑ 读 bin/debug-mcp.json 定位
+Claude Code ──stdio──> bin/ScMcp.exe ──命名管道 JSON-RPC──> 运行中的 Debug 实例
+                          ↑ 用自身所在目录算出管道名
 ```
 
 - **只有 Debug 构建监听**（`DebugMcpServer.ListeningEnabled`），但代码在所有配置下都编译，避免 `#if DEBUG` 造成两套行为。
-- 监听 `127.0.0.1`，默认端口 8747 起向上扫描，`SC_MCP_PORT` 可指定；端口用全局 `Mutex` 预定，多个 worktree 并行时自动错开。
-- 启动后写 `bin/debug-mcp.json`（URL、pid、可执行路径、instance id、worktree 根、Config 根）。桥接进程会**校验 workspace 是否是自己那一个、进程是否还活着、可执行路径是否吻合**，三者任一不符就明确报错，杜绝"连到隔壁 worktree"。
-- 实例身份由 `DebugInstanceContext` 计算：可执行目录哈希取前 12 位作 InstanceId，再从 `.git`（支持 worktree 的 `gitdir:` 标记）读分支与短 commit，拼成窗口标题后缀，肉眼即可分辨多开实例。
-- 工具清单集中在 `DebugMcpContract.BuildToolList()`——**放在应用侧，桥接进程未启动应用时也能回答 `tools/list`**。通用工具 `describe` `get_value` `set_value` `invoke` `list_members` `read_logs` 来自 `DebugMcpHost` + `ObjectGraph`；应用工具为 `control_tree` `screenshot` `software_list` `download_probe` `page_state` `storage_info` `config_monitor`。`page_state` 报当前 URL、load 事件 / 网络静默 / 原地替换各自过去了多久、是否 settled，带 `xpath` 时还报点击目标是 `ReadyLink` / `Ready` / `Pending` / `Missing`——"页面慢""XPath 不对""点了但没绑上处理器"就是靠它分开的。
+- 传输是 **Windows 命名管道，不用 TCP 端口**：没有端口要分配和错开、不弹防火墙、名字固定可以写死在 `.mcp.json` 里，访问控制交给管道 ACL（当前用户 + SYSTEM）而不是 URL 里的 token。管道是全双工的，为将来服务端主动推送留了余地。
+- 管道名由 `McpPipeNames` 生成：`SoftwareCrawler.Mcp.Debug.<instance id>`，instance id 是可执行目录规范化后 SHA256 的前 12 位。**这个文件被适配器工程 `Compile Include` 共享**，两端不可能对不上。
+- 适配器 `bin/ScMcp.exe` 与程序同目录，因此某个副本只可能连到同目录的那个实例，多 worktree 天然隔离，不需要任何参数。程序没起来时它本地应答 `initialize` / `ping` / `tools/list`（握手不失败，客户端不会把 server 标成 failed），`tools/call` 返回可读的软报错；每次调用前检查连接，断了自动重连——**程序重启后 agent 会话不用重开**，这是 HTTP 方案做不到的。
+- 启动后仍写 `bin/debug-mcp.json`（管道名、pid、可执行路径、instance id、worktree 根、Config 根），但那只是给人排查用的记录，连接不再依赖它。
+- 实例身份由 `DebugInstanceContext` 计算：InstanceId 同上，再从 `.git`（支持 worktree 的 `gitdir:` 标记）读分支与短 commit，拼成窗口标题后缀，肉眼即可分辨多开实例。
+- 工具清单集中在 `DebugMcpContract.BuildToolList()`——**放在应用侧，适配器未启动应用时也能回答 `tools/list`**。通用工具 `describe` `get_value` `set_value` `invoke` `list_members` `read_logs` 来自 `McpHost` + `ObjectGraph`；应用工具为 `control_tree` `screenshot` `software_list` `download_probe` `page_state` `storage_info` `config_monitor`。`page_state` 报当前 URL、load 事件 / 网络静默 / 原地替换各自过去了多久、是否 settled，带 `xpath` 时还报点击目标是 `ReadyLink` / `Ready` / `Pending` / `Missing`——"页面慢""XPath 不对""点了但没绑上处理器"就是靠它分开的。
 - 对象路径根：`App`（聚合入口，还挂着 `FlushSoftwareList` / `ReloadSoftwareList` / `BackupConfigNow` / `CleanUpLocalSettings` 等动作）、`MainForm`、`Settings`、`SettingsStore`、`Browser`、`Software`。`#Name` 按名字深搜控件。
 - 所有工具在 UI 线程上执行，带 15 秒超时；`download_probe` 特意只在 UI 线程上**启动**下载，随后在池线程 await，避免死锁。
 
