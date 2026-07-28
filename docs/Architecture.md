@@ -140,7 +140,9 @@ flowchart TD
 2. **`WaitSecondsBeforeClick`**：只对配了值的项生效，是**下限**而不是每项都交的过路费（原先无条件 `+1` 秒）。
 3. **XPath 步骤**：以 200ms 轮询 `ProbeClickTarget`，**只点一次**。预算取 `LoadPageEndTimeout` 剩余量与 `TryClickCount × TryClickInterval` 的较大者，超预算就尽力点一次。分两类：
    - `ReadyLink`（`<a>` 且 href 是真地址）：**立刻点**。跟随链接不依赖页面脚本，没什么可等的——大部分配方走这条，也是速度提升的来源。
-   - 其它（`Ready` 的按钮/`span`，或 `Pending` 的 disabled、不可见、占位 href）：**等页面 settled 再点**。这类元素只有页面脚本给它绑上处理器才动得了，而**元素本身看不出绑没绑**——框架普遍用事件委托，处理器挂在根节点上，查元素自身的 listener 是查不到的。WPS 就栽在这：`//button[…'立即下载']` 在首屏 HTML 里就有，DOMContentLoaded 后 0.5 秒点下去毫无反应，白等 60 秒 `StartDownloadTimeout` 再靠整项重试兜住；等 settled 后点，一次就成，65 秒变 3.4 秒。
+   - 其它（`Ready` 的按钮/`span`，或 `Pending` 的 disabled、不可见、占位 href）：**等页面 settled 再点**。这类元素只有页面脚本让它工作才动得了。WPS 就栽在这：`//button[…'立即下载']` 在首屏 HTML 里就有，DOMContentLoaded 后 0.5 秒点下去毫无反应，白等 60 秒 `StartDownloadTimeout` 再靠整项重试兜住；等 settled 后点，一次就成，65 秒变 3.4 秒。
+
+> **别再试"检测处理器绑没绑"来省掉这个等待。** 试过：在文档创建时挂钩 `EventTarget.prototype.addEventListener`，把注册过 click 的节点记进 `WeakSet`，探测时沿祖先链查（覆盖事件委托），绑上就点。98 项确实快了约 40 秒（Evernote 11→5s、GPU-Z 14→5.7s），**但 WPS 又开始失败**。实测那个按钮从 0.5 秒起处理器就绑在它自己身上（不是委托），点了照样没反应——处理器在，它依赖的下载地址还没取回来。**"绑没绑"从 DOM 上看得见，"能不能用"看不见**，而后者才是我们要的条件。为一项失败换 8% 速度不值当。
 4. **脚本步骤**：无从探测目标，改为等页面 settled 再执行，同样受预算约束。
 
 **settled 的定义是 `IsPageSettled`：网络静默持续 ≥2 秒，或页面"自报家门"（load 事件 / 原地替换）已过去 ≥5 秒。** 阈值都不是随手取的：
