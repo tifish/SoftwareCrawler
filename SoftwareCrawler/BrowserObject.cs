@@ -796,6 +796,10 @@ public class BrowserObject
                         return 'missing';
                     if (node.disabled === true || node.getAttribute('aria-disabled') === 'true')
                         return 'pending';
+                    // Visibility is checked before the href on purpose - see the note in
+                    // docs/Architecture.md. A real link that is still hidden usually means
+                    // the page has not finished setting it up, and clicking it then does
+                    // nothing at all.
                     var style = window.getComputedStyle(node);
                     var rect = node.getBoundingClientRect();
                     if (style.display === 'none' || style.visibility === 'hidden' || (rect.width === 0 && rect.height === 0))

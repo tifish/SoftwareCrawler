@@ -139,8 +139,10 @@ flowchart TD
 1. **等加载**：`WaitForMainFrameLoadEnd` 在 `DOMContentLoaded` 或 `NavigationCompleted` 任一到来时结束，上限 `LoadPageEndTimeout`。失败的导航也算结束——只认成功会让"导航变成下载""导航被中止"白等满超时。若页面是被原地替换的（下面"同文档跳转"），则以"原地替换 + settled"结束。
 2. **`WaitSecondsBeforeClick`**：只对配了值的项生效，是**下限**而不是每项都交的过路费（原先无条件 `+1` 秒）。
 3. **XPath 步骤**：以 200ms 轮询 `ProbeClickTarget`，**只点一次**。预算取 `LoadPageEndTimeout` 剩余量与 `TryClickCount × TryClickInterval` 的较大者，超预算就尽力点一次。分两类：
-   - `ReadyLink`（`<a>` 且 href 是真地址）：**立刻点**。跟随链接不依赖页面脚本，没什么可等的——大部分配方走这条，也是速度提升的来源。
+   - `ReadyLink`（`<a>` 且 href 是真地址、且元素可见）：**立刻点**。跟随链接不依赖页面脚本，没什么可等的——大部分配方走这条，也是速度提升的来源。
    - 其它（`Ready` 的按钮/`span`，或 `Pending` 的 disabled、不可见、占位 href）：**等页面 settled 再点**。这类元素只有页面脚本让它工作才动得了。WPS 就栽在这：`//button[…'立即下载']` 在首屏 HTML 里就有，DOMContentLoaded 后 0.5 秒点下去毫无反应，白等 60 秒 `StartDownloadTimeout` 再靠整项重试兜住；等 settled 后点，一次就成，65 秒变 3.4 秒。
+
+> **可见性判断排在 href 判断之前，别对调。** 试过对调：理由是"跟随真链接是浏览器自己的事，跟可见与否无关"，Android Studio 的下载链接确实藏在没打开的对话框里（`display:none`），隐藏着点也能触发下载，对调后它从 9–11 秒降到 5.6 秒。**但 TIM 冷缓存时会失败**：`office.qq.com` 的 `.exe` 链接一开始就在 DOM 里且 href 是真地址，隐藏状态下点它毫无反应，白等 60 秒 `StartDownloadTimeout` 再重试（实测冷缓存 65.2 秒，之后缓存命中的两次都是 0.7 秒——**夜间无人值守跑的恰恰是冷缓存**）。结论：**真链接但还隐藏着，通常说明页面还没把它装配好**，这时的 href 不可信。
 
 > **别再试"检测处理器绑没绑"来省掉这个等待。** 试过：在文档创建时挂钩 `EventTarget.prototype.addEventListener`，把注册过 click 的节点记进 `WeakSet`，探测时沿祖先链查（覆盖事件委托），绑上就点。98 项确实快了约 40 秒（Evernote 11→5s、GPU-Z 14→5.7s），**但 WPS 又开始失败**。实测那个按钮从 0.5 秒起处理器就绑在它自己身上（不是委托），点了照样没反应——处理器在，它依赖的下载地址还没取回来。**"绑没绑"从 DOM 上看得见，"能不能用"看不见**，而后者才是我们要的条件。为一项失败换 8% 速度不值当。
 4. **脚本步骤**：无从探测目标，改为等页面 settled 再执行，同样受预算约束。
