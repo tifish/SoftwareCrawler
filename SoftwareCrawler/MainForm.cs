@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Text.RegularExpressions;
 using JeekTools;
 using Microsoft.Extensions.Logging;
 using SoftwareCrawler.Models;
@@ -73,8 +72,6 @@ public partial class MainForm : Form
             _mainForm.cleanUpLocalSettingsToolStripMenuItem.Enabled = true;
 
             _mainForm.cancelToolStripMenuItem.Enabled = false;
-
-            _mainForm._currentDownloadItem = null;
         }
     }
 
@@ -245,92 +242,41 @@ public partial class MainForm : Form
         softwareListDataGridView.Columns[1].Width = 5 * softwareListDataGridView.Columns[1].Width;
     }
 
-    private SoftwareItem? _currentDownloadItem;
+    /// <summary>
+    /// The batch the menu, the shortcut and the debug tools all drive; it holds the
+    /// cancel flag, so cancelling reaches whichever of them started the run.
+    /// </summary>
+    public DownloadBatch DownloadBatch { get; } = new();
 
-    public async Task<bool> DownloadAll()
+    public Task<bool> DownloadAll() =>
+        RunBatchAsync(
+            SoftwareManager.Items,
+            retryCount: Settings.DownloadRetryCount,
+            operation: "DownloadAll"
+        );
+
+    public Task<bool> DownloadSelected() =>
+        RunBatchAsync(
+            GetSelectedItems(),
+            retryCount: Settings.DownloadRetryCount,
+            operation: "DownloadSelected"
+        );
+
+    /// <summary>
+    /// Wraps a batch in what only the window can supply: waiting for the browser
+    /// that Load sets up, and locking the menu items for the duration.
+    /// </summary>
+    internal async Task<bool> RunBatchAsync(
+        IEnumerable<SoftwareItem> items,
+        bool testOnly = false,
+        int retryCount = 0,
+        string operation = "Download"
+    )
     {
-        Log.ZLogInformation($"DownloadAll starts");
-
         await _onLoadTaskCompletionSource.Task;
 
-        _hasCancelled = false;
-        var success = true;
-
         using (new DownloadUIDisabler(this))
-        {
-            var items = SoftwareManager.Items.ToList();
-
-            foreach (var item in items)
-            {
-                if (_hasCancelled)
-                {
-                    success = false;
-                    break;
-                }
-
-                item.ResetStatus();
-            }
-
-            foreach (var item in items)
-            {
-                if (_hasCancelled)
-                {
-                    success = false;
-                    break;
-                }
-
-                _currentDownloadItem = item;
-                if (!await item.Download(retryCount: Settings.DownloadRetryCount))
-                    success = false;
-            }
-        }
-
-        Log.ZLogInformation($"DownloadAll ends with success = {success}");
-        return success;
-    }
-
-    public async Task<bool> DownloadSelected()
-    {
-        Log.ZLogInformation($"DownloadSelected starts");
-
-        await _onLoadTaskCompletionSource.Task;
-
-        _hasCancelled = false;
-        var success = true;
-
-        using (new DownloadUIDisabler(this))
-        {
-            var items = GetSelectedItems();
-
-            foreach (var item in items)
-            {
-                if (_hasCancelled)
-                {
-                    success = false;
-                    break;
-                }
-
-                item.ResetStatus();
-            }
-
-            foreach (var item in items)
-            {
-                if (_hasCancelled)
-                {
-                    success = false;
-                    break;
-                }
-
-                _currentDownloadItem = item;
-                if (!await item.Download(retryCount: Settings.DownloadRetryCount))
-                {
-                    success = false;
-                }
-            }
-        }
-
-        Log.ZLogInformation($"DownloadSelected ends with success = {success}");
-        return success;
+            return await DownloadBatch.RunAsync(items, testOnly, retryCount, operation);
     }
 
     private List<SoftwareItem> GetSelectedItems()
@@ -356,39 +302,12 @@ public partial class MainForm : Form
 
     private async void testSelectedToolStripMenuItem_Click(object sender, EventArgs e)
     {
-        _hasCancelled = false;
-
-        using (new DownloadUIDisabler(this))
-        {
-            var items = GetSelectedItems();
-
-            foreach (var item in items.TakeWhile(_ => !_hasCancelled))
-                item.ResetStatus();
-
-            foreach (var item in items.TakeWhile(_ => !_hasCancelled))
-            {
-                _currentDownloadItem = item;
-                // ReSharper disable once RedundantSuppressNullableWarningExpression
-                await item!.Download(true);
-            }
-        }
+        await RunBatchAsync(GetSelectedItems(), testOnly: true, operation: "TestSelected");
     }
 
     private async void testAllToolStripMenuItem_Click(object sender, EventArgs e)
     {
-        _hasCancelled = false;
-
-        using (new DownloadUIDisabler(this))
-        {
-            foreach (var item in SoftwareManager.Items.TakeWhile(_ => !_hasCancelled))
-                item.ResetStatus();
-
-            foreach (var item in SoftwareManager.Items.TakeWhile(_ => !_hasCancelled))
-            {
-                _currentDownloadItem = item;
-                await item.Download(true);
-            }
-        }
+        await RunBatchAsync(SoftwareManager.Items, testOnly: true, operation: "TestAll");
     }
 
     private async void reloadToolStripMenuItem_Click(object sender, EventArgs e)
@@ -396,77 +315,40 @@ public partial class MainForm : Form
         await Reload();
     }
 
-    private static string SanitizeFileName(string fileName)
-    {
-        var invalidChars = Path.GetInvalidFileNameChars();
-        var pattern = "[" + Regex.Escape(new string(invalidChars)) + "]";
-        return Regex.Replace(fileName, pattern, "_");
-    }
-
     private async void editScriptToolStripMenuItem_Click(object sender, EventArgs e)
     {
-        if (softwareListDataGridView.CurrentRow?.DataBoundItem == null)
+        if (softwareListDataGridView.CurrentRow?.DataBoundItem is not SoftwareItem item)
             return;
 
-        const string scriptSeparator = "\n// ``\n";
+        var session = new ScriptEditSession(item);
 
-        var item = (SoftwareItem)softwareListDataGridView.CurrentRow.DataBoundItem;
-        // Join scripts into one file
-        var script = string.Join(scriptSeparator, item.GetXPathOrScripts());
-        // Add a newline at the end of the script
-        script += '\n';
-
-        // Save script to a temp file or reload from file
-        var tempScriptDir = Path.Join(Path.GetTempPath(), "SoftwareCrawler");
-        Directory.CreateDirectory(tempScriptDir);
-        var tempScriptFilePath = Path.Join(tempScriptDir, SanitizeFileName(item.Name) + ".js");
-
-        if (File.Exists(tempScriptFilePath))
+        // A leftover file means an earlier edit was never applied; only the user
+        // knows whether it is worth more than what is in the list.
+        if (
+            session.HasUnappliedFile
+            && MessageBox.Show(
+                "The script file already exists. Press Yes to reload or No to override?",
+                "",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning
+            ) == DialogResult.Yes
+        )
         {
-            if (
-                MessageBox.Show(
-                    "The script file already exists. Press Yes to reload or No to override?",
-                    "",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning
-                ) == DialogResult.Yes
-            )
-            {
-                await GetScriptFromFile(tempScriptFilePath, item);
-                return;
-            }
+            if (await session.ApplyAsync())
+                await SoftwareManager.Save();
+            return;
         }
 
-        await File.WriteAllTextAsync(tempScriptFilePath, script);
+        await session.WriteAsync();
 
-        // Edit the script with an external editor
-        var editor = Settings.ExternalJavascriptEditor;
-        if (editor == "" || !File.Exists(editor))
-            editor = "notepad.exe";
-
-        using var proc = Process.Start(editor, $"\"{tempScriptFilePath}\"");
-        if (proc == null)
+        using var editor = session.StartEditor();
+        if (editor == null)
             return;
 
         MessageBox.Show("Edit the script and save it. Then click OK to reload the script.");
 
-        // Read script from the temp file
-        await GetScriptFromFile(tempScriptFilePath, item);
-        return;
-
-        async Task GetScriptFromFile(string scriptFile, SoftwareItem softwareItem)
-        {
-            script = await File.ReadAllTextAsync(scriptFile);
-            File.Delete(scriptFile);
-
-            // Trim end of file
-            script = script.Trim();
-            // Ensure line endings are \n
-            script = script.Replace("\r\n", "\n");
-
-            softwareItem.SetXPathOrScripts(script.Split(scriptSeparator).ToList());
+        if (await session.ApplyAsync())
             await SoftwareManager.Save();
-        }
     }
 
     private async void softwareListDataGridView_CellEndEdit(
@@ -627,12 +509,9 @@ public partial class MainForm : Form
             );
     }
 
-    private bool _hasCancelled;
-
     private void cancelToolStripMenuItem_Click(object sender, EventArgs e)
     {
-        _hasCancelled = true;
-        _currentDownloadItem?.CancelDownload();
+        DownloadBatch.Cancel();
     }
 
     private void Restart()

@@ -977,7 +977,10 @@ public class BrowserObject
             _currentDownloadOperation.Cancel();
         }
 
-        WebView2.CoreWebView2.Navigate("about:blank");
+        // Cancel is reachable before Init has run - the menu item during startup,
+        // a batch driven by the debug tools - and there is nothing to navigate
+        // away from until then. The flags above are what matters in that case.
+        WebView2?.CoreWebView2?.Navigate("about:blank");
     }
 
     public void ShowDevTools()

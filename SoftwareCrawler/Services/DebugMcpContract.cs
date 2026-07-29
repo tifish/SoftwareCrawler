@@ -135,6 +135,49 @@ public static class DebugMcpContract
                 ["name"]
             ),
             Tool(
+                "download_batch",
+                "Drive the whole download queue the way the menu does: run a batch, cancel the "
+                    + "running one, or report what it is on. Use this to check ordering, the "
+                    + "cancel path, or a run of several items; use download_probe for just one.",
+                new()
+                {
+                    ["action"] = Prop(
+                        "string",
+                        "run, cancel or status (default status).",
+                        ["run", "cancel", "status"]
+                    ),
+                    ["names"] = Prop(
+                        "string",
+                        "Comma-separated item names to run, in order. Omit for every item."
+                    ),
+                    ["test_only"] = Prop(
+                        "boolean",
+                        "Resolve the download URLs without saving the files (default true)."
+                    ),
+                    ["wait"] = Prop(
+                        "boolean",
+                        "Wait for the batch to finish (default true). Pass false to return at "
+                            + "once, then use action=cancel or action=status."
+                    ),
+                }
+            ),
+            Tool(
+                "script_edit",
+                "Round-trip one item's XPaths and scripts through the file an external editor "
+                    + "would open, without the dialogs the menu item puts around it. Export, edit "
+                    + "the file yourself, then apply.",
+                new()
+                {
+                    ["name"] = Prop("string", "Software item name."),
+                    ["action"] = Prop(
+                        "string",
+                        "export, apply, discard or status (default status).",
+                        ["export", "apply", "discard", "status"]
+                    ),
+                },
+                ["name"]
+            ),
+            Tool(
                 "page_state",
                 "Report what the crawling browser sees right now: the current URL, whether the load "
                     + "event fired and whether the page stopped fetching. With an xpath, also probe "
@@ -185,8 +228,13 @@ public static class DebugMcpContract
         };
     }
 
-    private static JsonObject Prop(string type, string description) =>
-        new() { ["type"] = type, ["description"] = description };
+    private static JsonObject Prop(string type, string description, string[]? allowed = null)
+    {
+        var prop = new JsonObject { ["type"] = type, ["description"] = description };
+        if (allowed is { Length: > 0 })
+            prop["enum"] = new JsonArray(allowed.Select(value => (JsonNode)value!).ToArray());
+        return prop;
+    }
 
     private static JsonObject Tool(
         string name,

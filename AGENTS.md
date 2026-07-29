@@ -37,7 +37,7 @@ Agents talk to a running instance over a Windows named pipe, never a TCP port. `
 - Register a tool in two places: the handler in `DebugMcpServer`, the schema in `DebugMcpContract`. A tool missing from the contract is invisible to clients.
 - Tool work that touches UI state runs on the UI thread through the host's invoker.
 - Standard tools: `describe`, `get_value`, `set_value`, `invoke`, `list_members`, `read_logs`.
-- App tools: `control_tree`, `screenshot`, `software_list`, `download_probe`, `page_state`, `storage_info`, `config_monitor`.
+- App tools: `control_tree`, `screenshot`, `software_list`, `download_probe`, `download_batch`, `script_edit`, `page_state`, `storage_info`, `config_monitor`.
 - Object path roots: `App`, `MainForm`, `Settings`, `SettingsStore`, `Browser`, `Software`. `#Name` finds a control by name.
 - `bin/debug-mcp.json` still records which instance is up (pipe name, pid, worktree, config root), but it is for manual troubleshooting only — connecting no longer needs it.
 - The adapter is published as a single file (`dotnet publish`, not a plain build) so NetBeauty cannot patch its runtimeconfig; a patched adapter would hold `libloader.dll` open and fail the app's next build.

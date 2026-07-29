@@ -33,6 +33,8 @@ SoftwareCrawler.slnx
 | 入口 | `Program.cs` | 命令行解析、日志、watcher、MCP、启动主窗体 |
 | UI | `MainForm.cs` / `SettingsForm.cs` / `SearchForm.cs` | 表格绑定、菜单动作、设置对话框、查找 |
 | 领域 | `SoftwareItem.cs` | 一个软件的配方、序列化，以及绑定到表格的运行状态 |
+| 领域 | `DownloadBatch.cs` | 一批条目的顺序、重置、取消标志；不认识窗体 |
+| 领域 | `ScriptEditSession.cs` | 脚本在临时 `.js` 文件与 1..5 槽之间的往返 |
 | 领域 | `DownloadPipeline.cs` | 一次下载尝试的全过程；每次尝试新建一个实例 |
 | 领域 | `SoftwareManager.cs` | 清单的加载/保存/合并/迁移 |
 | 浏览器 | `BrowserObject.cs` | WebView2 封装，全局单例 `Browser` |
@@ -79,6 +81,10 @@ SoftwareCrawler.slnx
 
 ## 5. 下载流水线
 
+三层各管一件事：`DownloadBatch.RunAsync()` 管一批（顺序、开跑前统一 `ResetStatus`、取消标志），`SoftwareItem.Download()` 是重试外壳（含串行闸门），`DownloadPipeline.RunAsync()` 是一次完整尝试。
+
+`DownloadBatch` 由 `MainForm.DownloadBatch` 持有，但不引用任何 UI 类型——菜单、快捷键和调试工具驱动的是同一个实例，所以取消能落到当前那一项上，无论是谁起的头。窗体只补它独有的两件事（`RunBatchAsync`）：等 `OnLoad` 把浏览器建好，以及运行期间锁住菜单项。测试注入自己的下载委托，因此批量的顺序与取消语义能脱离浏览器验证（`Tests/SoftwareCrawler.Tests/DownloadBatchTests.cs`）。
+
 `SoftwareItem.Download()` 是重试外壳（含串行闸门），`DownloadPipeline.RunAsync()` 是一次完整尝试——每次尝试新建一个 `DownloadPipeline`，那一趟的中间状态（建议文件名、大小、时间戳、目标路径、暂存路径）就是它的字段。其结果只有三种：`Succeeded` / `FailedAndRetry` / `FailedAndNoRetry`。重试次数来自 `Settings.DownloadRetryCount`，间隔 `DownloadRetryInterval` 秒。**只有可能是瞬时故障的错误才标记重试**（点击失败、脚本失败、超时、HTTP 非 2xx、字节数不足）；目录创建失败、文件名不合法、复制失败一律不重试。
 
 ```mermaid
@@ -112,7 +118,7 @@ flowchart TD
 
 这两类外部进程都**不显示控制台窗口、检查退出码、失败时把输出记进日志**（`RunProcessAsync`）。失败即视为该项失败且不重试——文件已经在盘上，重下没有意义；状态停在 `Extracting` 或 `RunningEventScript`，错误信息里能看出是哪一步。7-Zip 的退出码 1 是非致命警告，按成功处理，2 及以上才算失败。
 
-取消：`CancelDownload()` 置 `_hasCancelled` 并调 `Browser.Cancel()`；流水线中的等待循环都会检查这个标志。
+取消：`DownloadBatch.Cancel()` 停下这一批并把请求转给当前项，`CancelDownload()` 置 `_hasCancelled` 并调 `Browser.Cancel()`；流水线中的等待循环都会检查这个标志。`Browser.Cancel()` 在 `Init` 之前也可能被调到（启动途中点取消），所以它对未建好的 WebView2 是空操作。
 
 ## 6. 浏览器层（BrowserObject）
 
@@ -227,7 +233,7 @@ flowchart TD
 - 下载是**串行**的：全局只有一个浏览器和一组下载回调，两个下载同时跑会互相应答对方的事件。菜单本来就逐项 await，`SoftwareItem.Download()` 里的信号量（`DownloadGate`）负责挡住从别处发起的下载——调试工具、第二个菜单动作——不与之重叠。
 - 表格的重新绑定由 `SoftwareManager.Reloaded` 事件驱动，而不是写在某个菜单处理器里：`Load()` 是把 `Items` 清空重填，绑定它的 `BindingList` 收不到任何通知，所以**任何**路径触发的重载都必须重新绑定，包括不经过 UI 的调试入口。
 - 反射性能敏感处都做了退让：列宽只按 `DisplayedCells` 测量、查找放到线程池并防抖 150ms、高亮只重画变化的行。
-- **外部编辑脚本**：右键 Edit script 会把 1..5 步脚本用 `\n// ``\n` 拼成一个 `.js` 临时文件，交给 `ExternalJavascriptEditor`（缺省 notepad）打开，确认后再按分隔符拆回去。这是编写爬取脚本的主要工作流。
+- **外部编辑脚本**：右键 Edit script 会把 1..5 步脚本用 `\n// ``\n` 拼成一个 `.js` 临时文件，交给 `ExternalJavascriptEditor`（缺省 notepad）打开，确认后再按分隔符拆回去。这是编写爬取脚本的主要工作流。规则都在 `ScriptEditSession`：分隔符、临时文件名（软件名里的 `/` `:` 换成 `_`）、编辑器回退、以及读回时的 `Trim` 与 `\r\n`→`\n` 归一化——**少了归一化，用 CRLF 保存的编辑器光是打开一次就会改写配方**。窗体只留两个提问：临时文件还在时是重载还是覆盖，以及等用户编辑完；保存也由窗体调，会话本身不碰清单。调试通道的 `script_edit` 走的是同一个会话，因此这条路可以不弹框地自动化。
 
 ## 10. 调试通道：Debug MCP
 
@@ -245,7 +251,7 @@ Claude Code ──stdio──> bin/SoftwareCrawlerMcp.exe ──命名管道 JSO
 - 适配器是**单文件发布**到 `bin`（`Build.cmd` / `Run.cmd` 里那一步是 `dotnet publish`）：runtimeconfig 被打进 exe，NetBeauty 就扫不到它。否则适配器会被打上主程序的 `libloader` 启动钩子，agent 会话期间它一直开着 `libloader.dll`，**主程序下一次构建就会失败**。
 - 启动后仍写 `bin/debug-mcp.json`（管道名、pid、可执行路径、instance id、worktree 根、Config 根），但那只是给人排查用的记录，连接不再依赖它。
 - 实例身份由 `DebugInstanceContext` 计算：InstanceId 同上，再从 `.git`（支持 worktree 的 `gitdir:` 标记）读分支与短 commit，拼成窗口标题后缀，肉眼即可分辨多开实例。
-- 工具清单集中在 `DebugMcpContract.BuildToolList()`——**放在应用侧，适配器未启动应用时也能回答 `tools/list`**。通用工具 `describe` `get_value` `set_value` `invoke` `list_members` `read_logs` 来自 `McpHost` + `ObjectGraph`；应用工具为 `control_tree` `screenshot` `software_list` `download_probe` `page_state` `storage_info` `config_monitor`。`page_state` 报当前 URL、load 事件 / 网络静默 / 原地替换各自过去了多久、是否 settled，带 `xpath` 时还报点击目标是 `ReadyLink` / `Ready` / `Pending` / `Missing`——"页面慢""XPath 不对""点了但没绑上处理器"就是靠它分开的。
+- 工具清单集中在 `DebugMcpContract.BuildToolList()`——**放在应用侧，适配器未启动应用时也能回答 `tools/list`**。通用工具 `describe` `get_value` `set_value` `invoke` `list_members` `read_logs` 来自 `McpHost` + `ObjectGraph`；应用工具为 `control_tree` `screenshot` `software_list` `download_probe` `download_batch` `script_edit` `page_state` `storage_info` `config_monitor`。`download_batch` 驱动的是菜单同一条路径（`run` / `cancel` / `status`，`wait: false` 用来先起后停），验取消和顺序靠它，验单个配方靠 `download_probe`。`page_state` 报当前 URL、load 事件 / 网络静默 / 原地替换各自过去了多久、是否 settled，带 `xpath` 时还报点击目标是 `ReadyLink` / `Ready` / `Pending` / `Missing`——"页面慢""XPath 不对""点了但没绑上处理器"就是靠它分开的。
 - 对象路径根：`App`（聚合入口，还挂着 `FlushSoftwareList` / `ReloadSoftwareList` / `BackupConfigNow` / `CleanUpLocalSettings` 等动作）、`MainForm`、`Settings`、`SettingsStore`、`Browser`、`Software`。`#Name` 按名字深搜控件。
 - 所有工具在 UI 线程上执行，带 15 秒超时；`download_probe` 特意只在 UI 线程上**启动**下载，随后在池线程 await，避免死锁。
 

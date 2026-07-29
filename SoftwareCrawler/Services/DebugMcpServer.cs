@@ -81,6 +81,8 @@ internal static class DebugMcpServer
         host.AddTool("screenshot", _ => ScreenshotAsync());
         host.AddTool("software_list", SoftwareListAsync);
         host.AddTool("download_probe", DownloadProbeAsync);
+        host.AddTool("download_batch", DownloadBatchAsync);
+        host.AddTool("script_edit", ScriptEditAsync);
         host.AddTool("page_state", PageStateAsync);
         host.AddTool("storage_info", _ => Task.FromResult(StorageInfo()));
         host.AddTool("config_monitor", _ => Task.FromResult(ConfigMonitorInfo()));
@@ -97,6 +99,10 @@ internal static class DebugMcpServer
     private static Form? MainForm =>
         Application.OpenForms.OfType<MainForm>().FirstOrDefault()
         ?? Application.OpenForms.Cast<Form>().FirstOrDefault();
+
+    /// <summary>The main window as itself, for the tools that need more than <see cref="Form"/>.</summary>
+    private static MainForm? CrawlerForm =>
+        Application.OpenForms.OfType<MainForm>().FirstOrDefault();
 
     /// <summary>
     /// Marshals onto the UI thread through the main form, with a timeout so a
@@ -214,6 +220,9 @@ internal static class DebugMcpServer
 
         /// <summary>True while a download holds the gate that keeps them one at a time.</summary>
         public bool IsDownloading => SoftwareItem.IsDownloading;
+
+        /// <summary>The queue behind the download and test menu items.</summary>
+        public DownloadBatch? DownloadBatch => CrawlerForm?.DownloadBatch;
 
         /// <summary>Rows the grid is currently showing, to compare against the loaded list.</summary>
         public int GridRowCount =>
@@ -528,6 +537,161 @@ internal static class DebugMcpServer
                 + $"Error: {item.ErrorMessage}"
         );
     }
+
+    /// <summary>
+    /// Drives a whole batch the way the menu does, so the ordering, the cancel
+    /// path and the "one at a time" rule can be exercised without clicking.
+    /// </summary>
+    private static async Task<JsonObject> DownloadBatchAsync(JsonObject args)
+    {
+        var action = args["action"]?.GetValue<string>() ?? "status";
+        var form = CrawlerForm;
+        if (form is null)
+            return ToolText("The main window is not open yet.", isError: true);
+
+        var batch = form.DownloadBatch;
+
+        switch (action)
+        {
+            case "cancel":
+                await OnUiAsync<object?>(() =>
+                {
+                    batch.Cancel();
+                    return null;
+                });
+                return ToolText(BatchStatus(batch, "Cancel requested."));
+
+            case "status":
+                return ToolText(BatchStatus(batch));
+
+            case "run":
+                break;
+
+            default:
+                return ToolText($"Unknown action '{action}'. Use run, cancel or status.", true);
+        }
+
+        if (batch.IsRunning)
+            return ToolText(BatchStatus(batch, "A batch is already running."), isError: true);
+
+        var testOnly = args["test_only"]?.GetValue<bool>() ?? true;
+        var wait = args["wait"]?.GetValue<bool>() ?? true;
+        var names = args["names"]?.GetValue<string>() ?? "";
+
+        List<SoftwareItem> items;
+        if (string.IsNullOrWhiteSpace(names))
+        {
+            items = SoftwareManager.Items.ToList();
+        }
+        else
+        {
+            items = [];
+            foreach (
+                var name in names.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            )
+            {
+                var item = SoftwareManager.Items.FirstOrDefault(candidate =>
+                    candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
+                );
+                if (item is null)
+                    return ToolText($"No software item named '{name}'.", isError: true);
+                items.Add(item);
+            }
+        }
+
+        // Same shape as download_probe: start on the UI thread the browser lives
+        // on, then await the returned task off it so the request is not blocked.
+        var run = await OnUiAsync(() =>
+            form.RunBatchAsync(
+                items,
+                testOnly,
+                testOnly ? 0 : Settings.DownloadRetryCount,
+                "DebugMcp"
+            )
+        );
+
+        if (!wait)
+        {
+            _ = run.ContinueWith(
+                task => Log.ZLogError(task.Exception!, $"Detached debug batch failed"),
+                TaskContinuationOptions.OnlyOnFaulted
+            );
+            return ToolText(BatchStatus(batch, $"Started {items.Count} item(s), not waiting."));
+        }
+
+        var succeeded = await run;
+
+        var lines = items.Select(item =>
+            $"{item.Name}\t{item.Status}\t{item.Progress}\t{item.ErrorMessage}"
+        );
+        return ToolText(
+            $"Batch {(succeeded ? "succeeded" : "failed")} over {items.Count} item(s), "
+                + $"cancelled = {batch.HasCancelled}\n"
+                + "Name\tStatus\tProgress\tError\n"
+                + string.Join('\n', lines)
+        );
+    }
+
+    /// <summary>
+    /// The edit-script round trip without the dialogs the menu item puts around
+    /// it: export the slots to the file an editor would open, then apply it back.
+    /// </summary>
+    private static async Task<JsonObject> ScriptEditAsync(JsonObject args)
+    {
+        var name = McpHost.RequiredString(args, "name");
+        var action = args["action"]?.GetValue<string>() ?? "status";
+
+        var item = SoftwareManager.Items.FirstOrDefault(candidate =>
+            candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
+        );
+        if (item is null)
+            return ToolText($"No software item named '{name}'.", isError: true);
+
+        var session = new ScriptEditSession(item);
+
+        switch (action)
+        {
+            case "export":
+                await session.WriteAsync();
+                return ToolText($"Wrote {item.GetXPathOrScripts().Count} slot(s) to {session.FilePath}");
+
+            case "apply":
+                if (!await session.ApplyAsync())
+                    return ToolText($"Nothing to apply: {session.FilePath} does not exist.", true);
+
+                // Start the save on the UI thread the grid is bound on, then await
+                // it off that thread, the same way download_probe does.
+                await await OnUiAsync(() => SoftwareManager.Save());
+                return ToolText(
+                    $"Applied {session.FilePath} to {item.Name}:\n"
+                        + string.Join("\n---\n", item.GetXPathOrScripts())
+                );
+
+            case "discard":
+                session.Discard();
+                return ToolText($"Discarded {session.FilePath}");
+
+            case "status":
+                return ToolText(
+                    $"File: {session.FilePath}\n"
+                        + $"Waiting to be applied: {session.HasUnappliedFile}\n"
+                        + $"Slots in the item: {item.GetXPathOrScripts().Count}"
+                );
+
+            default:
+                return ToolText(
+                    $"Unknown action '{action}'. Use export, apply, discard or status.",
+                    isError: true
+                );
+        }
+    }
+
+    private static string BatchStatus(DownloadBatch batch, string? prefix = null) =>
+        (prefix is null ? "" : prefix + "\n")
+        + $"Running: {batch.IsRunning}\n"
+        + $"Cancelled: {batch.HasCancelled}\n"
+        + $"Current item: {batch.CurrentItem?.Name ?? "(none)"}\n"
+        + $"Status: {batch.CurrentItem?.Status.ToString() ?? "(none)"}";
 
     /// <summary>
     /// What the crawler is waiting on right now. The click target probe is the same one
