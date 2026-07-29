@@ -38,8 +38,8 @@ public static class DebugInstanceContext
             : Path.Combine(Path.GetTempPath(), SettingsService.AppName);
 
     /// <summary>
-    /// Pipe the debug MCP surface listens on, shared with the ScMcp adapter through
-    /// <see cref="McpPipeNames"/>. Debug builds carry the worktree's instance id.
+    /// Pipe the debug MCP surface listens on, shared with the SoftwareCrawlerMcp adapter
+    /// through <see cref="McpPipeNames"/>. Debug builds carry the worktree's instance id.
     /// </summary>
     public static string DebugMcpPipeName { get; } =
         McpPipeNames.Debug(IsDebugBuild ? InstanceId : null);
@@ -75,7 +75,7 @@ public static class DebugInstanceContext
     public static string DecorateTitle(string title) =>
         IsDebugBuild ? $"{title} [Debug: {InstanceLabel}]" : title;
 
-    /// <summary>Shared with the ScMcp adapter through <see cref="McpPipeNames"/>.</summary>
+    /// <summary>Shared with the SoftwareCrawlerMcp adapter through <see cref="McpPipeNames"/>.</summary>
     public static string CreateInstanceId(string executableDirectory) =>
         McpPipeNames.InstanceId(executableDirectory);
 

@@ -4,8 +4,8 @@ using System.Text;
 namespace SoftwareCrawler.Services;
 
 /// <summary>
-/// Named-pipe naming convention shared by the app and the <c>ScMcp</c> stdio adapter.
-/// The adapter links this file instead of copying the rule, so the two ends cannot drift.
+/// Named-pipe naming convention shared by the app and the <c>SoftwareCrawlerMcp</c> stdio
+/// adapter. It links this file instead of copying the rule, so the two ends cannot drift.
 ///
 /// A pipe replaces the loopback HTTP endpoint: there is no port to allocate, so the name is
 /// stable across runs and a client config never goes stale, and access is limited by the

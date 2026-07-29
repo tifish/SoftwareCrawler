@@ -3,9 +3,9 @@ using System.Text.Json.Nodes;
 namespace SoftwareCrawler.Services;
 
 /// <summary>
-/// The record the app writes next to itself while the debug surface listens. The ScMcp
-/// adapter derives the pipe name from its own folder, so this is for humans checking which
-/// instance is up, not part of connecting.
+/// The record the app writes next to itself while the debug surface listens. The
+/// SoftwareCrawlerMcp adapter derives the pipe name from its own folder, so this is for
+/// humans checking which instance is up, not part of connecting.
 /// </summary>
 public sealed class DebugMcpDiscovery
 {

@@ -5,7 +5,7 @@
       "command": "cmd",
       "args": [
         "/c",
-        ".\\bin\\ScMcp.exe"
+        ".\\bin\\SoftwareCrawlerMcp.exe"
       ],
       "cwd": "."
     }

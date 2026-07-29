@@ -15,7 +15,7 @@ namespace SoftwareCrawler.Services;
 /// (control_tree, screenshot), the app probes, and the instance discovery file.
 /// Compiled into all configurations so Debug and Release behave identically,
 /// but the listener only starts in Debug builds. Agents reach it through
-/// <c>bin\ScMcp.exe</c>, which forwards stdio to this instance's named pipe —
+/// <c>bin\SoftwareCrawlerMcp.exe</c>, which forwards stdio to this instance's named pipe —
 /// the pipe name carries the worktree's instance id, so parallel Debug builds
 /// never answer for each other and there is no port to collide over.
 /// </summary>

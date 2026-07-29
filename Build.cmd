@@ -13,10 +13,11 @@ if errorlevel 1 (
     exit /b 1
 )
 
-rem The MCP stdio adapter lives beside the app. An agent's session keeps it open,
-rem which locks the exe, so a failure here is a warning and not a failed build.
-dotnet build "%~dp0Tools\ScMcp\ScMcp.csproj" -c %CONFIG%
-if errorlevel 1 echo WARNING: ScMcp was not updated ^(likely in use by an MCP client^).
+rem The MCP stdio adapter is published beside the app as a single file. An agent's
+rem session keeps it open, which locks the exe, so a failure here is a warning and
+rem not a failed build.
+dotnet publish "%~dp0Tools\SoftwareCrawlerMcp\SoftwareCrawlerMcp.csproj" -c %CONFIG%
+if errorlevel 1 echo WARNING: SoftwareCrawlerMcp was not updated ^(likely in use by an MCP client^).
 
 echo.
 echo Build succeeded -^> "%~dp0bin"

@@ -7,7 +7,7 @@
 
 - `SoftwareCrawler/` — the WinForms app (WebView2 drives the crawling).
 - `JeekTools.NET/` — shared library, a git submodule.
-- `Tools/ScMcp/` — stdio MCP adapter, built to `bin/ScMcp.exe`, that forwards to the running Debug app over a named pipe.
+- `Tools/SoftwareCrawlerMcp/` — stdio MCP adapter, published to `bin/SoftwareCrawlerMcp.exe`, that forwards to the running Debug app over a named pipe.
 - `bin/` — build output plus the version-controlled runtime files: `Templates/Software.tab` (the crawl recipes), `7-Zip/`, and the scripts. Everything else under `bin/` is generated or user data.
 - `bin/Config/` — user data only, git-ignored apart from the `.gitkeep` that keeps the folder present (its existence is what selects portable mode). `LocalSettings.tab` holds this machine's enabled flags and download directories and has no version control; a Debug build reads and writes `Templates/Software.tab` directly, a released build works on a copy seeded into `Config/`.
 - `Tests/SoftwareCrawler.Tests/` — xunit tests for the logic that runs without a UI: the `.tab` format and the settings merge.
@@ -20,7 +20,7 @@
     - Add any interface it need for testing to debug MCP interface.
     - Automatically build and launch the program.
         - If the program from the current worktree is already running, kill only the process whose executable path matches this worktree, then run it again. Leave Debug instances from other worktrees running.
-    - Use the current worktree's Debug MCP (`bin\ScMcp.exe`, which forwards stdio to this worktree's named pipe) to test the feature or bug, if anything wrong, try to fix it and test again, until all done.
+    - Use the current worktree's Debug MCP (`bin\SoftwareCrawlerMcp.exe`, which forwards stdio to this worktree's named pipe) to test the feature or bug, if anything wrong, try to fix it and test again, until all done.
 - When reading code, logs and the Debug MCP interface are not enough to locate a problem, use a debugger:
     - Use netcoredbg on the Debug build to set breakpoints, step, and inspect variables; feed it a command script via stdin, and drive the program to the breakpoint through the Debug MCP interface.
     - Use dotnet-dump to analyze hangs and crashes.
@@ -31,7 +31,7 @@
 
 ## Debug MCP
 
-Agents talk to a running instance over a Windows named pipe, never a TCP port. `bin\ScMcp.exe` is the stdio adapter they launch (it is what `.mcp.json` points at); it derives the pipe name from its own folder, so a worktree's copy only ever reaches that worktree's app, and it reconnects on its own when the app restarts.
+Agents talk to a running instance over a Windows named pipe, never a TCP port. `bin\SoftwareCrawlerMcp.exe` is the stdio adapter they launch (it is what `.mcp.json` points at); it derives the pipe name from its own folder, so a worktree's copy only ever reaches that worktree's app, and it reconnects on its own when the app restarts.
 
 - Only Debug builds listen (`DebugMcpServer.ListeningEnabled`), on `SoftwareCrawler.Mcp.Debug.<instance id>`. `McpPipeNames` is the single source of that name and is compiled into both the app and the adapter.
 - Register a tool in two places: the handler in `DebugMcpServer`, the schema in `DebugMcpContract`. A tool missing from the contract is invisible to clients.
@@ -40,4 +40,5 @@ Agents talk to a running instance over a Windows named pipe, never a TCP port. `
 - App tools: `control_tree`, `screenshot`, `software_list`, `download_probe`, `page_state`, `storage_info`, `config_monitor`.
 - Object path roots: `App`, `MainForm`, `Settings`, `SettingsStore`, `Browser`, `Software`. `#Name` finds a control by name.
 - `bin/debug-mcp.json` still records which instance is up (pipe name, pid, worktree, config root), but it is for manual troubleshooting only — connecting no longer needs it.
-- An open agent session keeps `bin\ScMcp.exe` locked, so `Build.cmd` / `Run.cmd` treat a failure to rebuild the adapter as a warning. Changing the adapter needs the MCP client restarted anyway.
+- The adapter is published as a single file (`dotnet publish`, not a plain build) so NetBeauty cannot patch its runtimeconfig; a patched adapter would hold `libloader.dll` open and fail the app's next build.
+- An open agent session keeps `bin\SoftwareCrawlerMcp.exe` locked, so `Build.cmd` / `Run.cmd` treat a failure to refresh the adapter as a warning. Changing the adapter needs the MCP client restarted anyway.

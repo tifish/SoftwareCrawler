@@ -4,14 +4,19 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>ScMcp</AssemblyName>
-    <RootNamespace>ScMcp</RootNamespace>
+    <AssemblyName>SoftwareCrawlerMcp</AssemblyName>
+    <RootNamespace>SoftwareCrawlerMcp</RootNamespace>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
     <PlatformTarget>x64</PlatformTarget>
-    <!-- Ships beside the app: the adapter derives the instance id from its own folder. -->
-    <OutDir>..\..\bin</OutDir>
+    <!-- Ships beside the app: the adapter derives the instance id from its own folder.
+         Published as a single file rather than built into bin, because its runtimeconfig
+         then lives inside the exe: NetBeauty patches every runtimeconfig.json it finds in
+         the app's folder, and an adapter carrying the app's libloader startup hook would
+         hold libloader.dll open and fail the next build of the app. -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishDir>..\..\bin</PublishDir>
   </PropertyGroup>
   <ItemGroup>
     <!-- Single source of truth for the pipe name and the tool catalogue, shared with the app. -->

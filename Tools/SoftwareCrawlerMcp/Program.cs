@@ -9,7 +9,7 @@ using SoftwareCrawler.Services;
 // the running Debug app over a named pipe. There is no port, URL, or token in the client
 // config, so the config never goes stale:
 //
-//   { "command": "cmd", "args": ["/c", ".\\bin\\ScMcp.exe"] }
+//   { "command": "cmd", "args": ["/c", ".\\bin\\SoftwareCrawlerMcp.exe"] }
 //
 // The adapter ships beside the app, so it derives the pipe name from its own folder and can
 // only reach the instance it was built with — parallel Debug worktrees stay separate without
