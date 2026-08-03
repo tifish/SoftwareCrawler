@@ -65,9 +65,11 @@ jobs:
             - name: Test
               run: dotnet test Tests\SoftwareCrawler.Tests\SoftwareCrawler.Tests.csproj -c Release --nologo
 
-            - name: Publish
+            - name: Build Release
               # Version major = commit count (e.g. 123.0.0.0).
-              run: dotnet publish SoftwareCrawler\SoftwareCrawler.csproj -c Release -r win-x64 --no-self-contained -p:PublishReadyToRun=true -p:PublishTrimmed=false -p:PublishSingleFile=false /p:Version=${{ steps.ver.outputs.count }}
+              run: |
+                  dotnet build SoftwareCrawler\SoftwareCrawler.csproj -c Release /p:Version=${{ steps.ver.outputs.count }}
+                  dotnet publish Tools\SoftwareCrawlerMcp\SoftwareCrawlerMcp.csproj -c Release
 
             - name: Zip files
               shell: pwsh

@@ -35,5 +35,5 @@ irm https://ghfast.top/https://raw.githubusercontent.com/tifish/SoftwareCrawler/
 git clone --recurse-submodules https://github.com/tifish/SoftwareCrawler
 ```
 
-- `Build.cmd` 编译，`Run.cmd` 编译并启动，`Publish.cmd` 发布优化版本到 `bin`。
+- `Build.cmd` 做 Release 出包到 `bin`，`Run.cmd` 做 Debug 编译并启动。
 - 需要 .NET 10 SDK。

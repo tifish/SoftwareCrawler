@@ -11,14 +11,15 @@
 - `bin/` — build output plus the version-controlled runtime files: `Templates/Software.tab` (the crawl recipes), `7-Zip/`, and the scripts. Everything else under `bin/` is generated or user data.
 - `bin/Config/` — user data only, git-ignored apart from the `.gitkeep` that keeps the folder present (its existence is what selects portable mode). `LocalSettings.tab` holds this machine's enabled flags and download directories and has no version control; a Debug build reads and writes `Templates/Software.tab` directly, a released build works on a copy seeded into `Config/`.
 - `Tests/SoftwareCrawler.Tests/` — xunit tests for the logic that runs without a UI: the `.tab` format and the settings merge.
-- `Build.cmd` / `Run.cmd` / `Publish.cmd` — build, build+launch, optimized publish.
+- `Build.cmd` — Release ship into `bin\` (cleans generated files, strips PDBs). `Run.cmd` — Debug build+launch for development / Debug MCP.
 - `dotnet test Tests/SoftwareCrawler.Tests/SoftwareCrawler.Tests.csproj` — run the tests. Stop this worktree's running instance first; the test build writes the same `bin/SoftwareCrawler.exe`.
 
 ## Rules
 
 - After finishing a feature or fixing a bug
     - Add any interface it need for testing to debug MCP interface.
-    - Automatically build and launch the program.
+    - Automatically build and launch the program **as Debug** (e.g. `Run.cmd` or `dotnet build` without `-c Release`). Debug MCP only listens in Debug builds.
+        - Do **not** use root `Build.cmd` for this loop: it is the **Release** ship script (cleans `bin`, strips PDBs). Use it for packaging/deploy, not agent feature testing.
         - If the program from the current worktree is already running, kill only the process whose executable path matches this worktree, then run it again. Leave Debug instances from other worktrees running.
     - Use the current worktree's Debug MCP (`bin\SoftwareCrawlerMcp.exe`, which forwards stdio to this worktree's named pipe) to test the feature or bug, if anything wrong, try to fix it and test again, until all done.
 - When reading code, logs and the Debug MCP interface are not enough to locate a problem, use a debugger:
@@ -41,4 +42,4 @@ Agents talk to a running instance over a Windows named pipe, never a TCP port. `
 - Object path roots: `App`, `MainForm`, `Settings`, `SettingsStore`, `Browser`, `Software`. `#Name` finds a control by name.
 - `bin/debug-mcp.json` still records which instance is up (pipe name, pid, worktree, config root), but it is for manual troubleshooting only — connecting no longer needs it.
 - The adapter is published as a single file (`dotnet publish`, not a plain build) so NetBeauty cannot patch its runtimeconfig; a patched adapter would hold `libloader.dll` open and fail the app's next build.
-- An open agent session keeps `bin\SoftwareCrawlerMcp.exe` locked, so `Build.cmd` / `Run.cmd` treat a failure to refresh the adapter as a warning. Changing the adapter needs the MCP client restarted anyway.
+- An open agent session keeps `bin\SoftwareCrawlerMcp.exe` locked, so `Run.cmd` treats a failure to refresh the adapter as a warning. Changing the adapter needs the MCP client restarted anyway.

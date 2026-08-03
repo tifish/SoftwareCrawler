@@ -1,11 +1,17 @@
 @echo off
-rem Builds Software Crawler. Usage: Build.cmd [Debug^|Release]
 setlocal
-set "CONFIG=%~1"
-if "%CONFIG%"=="" set "CONFIG=Debug"
+cd /d "%~dp0"
 
-echo Building (%CONFIG%)...
-dotnet build "%~dp0SoftwareCrawler\SoftwareCrawler.csproj" -c %CONFIG%
+rem Release build into bin\. Cleans stale binaries; keeps Templates/ and scripts.
+taskkill /f /im "SoftwareCrawler.exe" >nul 2>nul
+
+del /q "%~dp0bin\*.dll" "%~dp0bin\*.json" "%~dp0bin\*.xml" "%~dp0bin\*.pdb" "%~dp0bin\*.deps.json" "%~dp0bin\*.runtimeconfig.json" >nul 2>nul
+rd /s /q "%~dp0bin\runtimes" >nul 2>nul
+rd /s /q "%~dp0bin\Libs" >nul 2>nul
+rd /s /q "%~dp0bin\Logs" >nul 2>nul
+
+echo Building Release...
+dotnet build "%~dp0SoftwareCrawler\SoftwareCrawler.csproj" -c Release
 if errorlevel 1 (
     echo.
     echo Build FAILED.
@@ -13,12 +19,13 @@ if errorlevel 1 (
     exit /b 1
 )
 
-rem The MCP stdio adapter is published beside the app as a single file. An agent's
-rem session keeps it open, which locks the exe, so a failure here is a warning and
-rem not a failed build.
-dotnet publish "%~dp0Tools\SoftwareCrawlerMcp\SoftwareCrawlerMcp.csproj" -c %CONFIG%
+rem MCP stdio adapter single-file beside the app. Agent sessions may lock it.
+dotnet publish "%~dp0Tools\SoftwareCrawlerMcp\SoftwareCrawlerMcp.csproj" -c Release
 if errorlevel 1 echo WARNING: SoftwareCrawlerMcp was not updated ^(likely in use by an MCP client^).
+
+rd /s /q "%~dp0bin\runtimes" >nul 2>nul
+del /q /s "%~dp0bin\*.pdb" >nul 2>nul
 
 echo.
 echo Build succeeded -^> "%~dp0bin"
-pause
+endlocal
