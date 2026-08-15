@@ -1201,9 +1201,12 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             return false;
 
         var archiveDir = Path.GetDirectoryName(archiveFile)!;
-        var pattern = _item.FilePatternToDeleteBeforeExtractionAndExtractOnly;
+        // Older or hand-edited recipes can deserialize an empty optional column
+        // as null. Treat it as no filter before passing it to Directory.GetFiles
+        // or the 7-Zip command line.
+        var pattern = _item.FilePatternToDeleteBeforeExtractionAndExtractOnly ?? string.Empty;
 
-        if (pattern != "")
+        if (!string.IsNullOrWhiteSpace(pattern))
             await Task.Run(() =>
                 Directory.GetFiles(archiveDir, pattern).ToList().ForEach(File.Delete)
             );
