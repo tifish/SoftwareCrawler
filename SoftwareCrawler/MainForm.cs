@@ -16,6 +16,15 @@ public partial class MainForm : Form
     private List<(int RowIndex, int ColumnIndex)> _searchResults = [];
     private int _currentSearchResultIndex = -1;
     private System.Windows.Forms.Timer? _updateCheckTimer;
+    private GridViewState? _pendingGridViewState;
+
+    private sealed record GridViewState(
+        IReadOnlySet<string> SelectedNames,
+        string? CurrentName,
+        int CurrentColumnIndex,
+        string? FirstDisplayedName,
+        int FirstDisplayedRowIndex
+    );
 
     public MainForm()
     {
@@ -193,10 +202,16 @@ public partial class MainForm : Form
         });
     }
 
-    private Task Reload() =>
+    private Task Reload()
+    {
+        // SoftwareManager.Load replaces the backing list before it raises Reloaded.
+        // Capture the grid while its rows still describe the old list; otherwise a
+        // bound list can already expose the new row at the old numeric selection.
+        _pendingGridViewState = CaptureGridViewState();
         // Binding is left to OnSoftwareListReloaded, which Load raises, so that a
         // reload started anywhere else reaches the grid just the same.
-        SoftwareManager.Load();
+        return SoftwareManager.Load();
+    }
 
     /// <summary>
     /// Rebinds the grid after the list was reloaded from disk. Raised on whichever
@@ -227,6 +242,8 @@ public partial class MainForm : Form
 
     private void BindSoftwareList()
     {
+        var viewState = _pendingGridViewState ?? CaptureGridViewState();
+        _pendingGridViewState = null;
         var bindingList = new BindingList<SoftwareItem>(SoftwareManager.Items);
         softwareListDataGridView.DataSource = new BindingSource(bindingList, "");
         // Use DisplayedCells instead of AllCells: measuring every cell of a large list
@@ -240,6 +257,107 @@ public partial class MainForm : Form
                 column.Width = 400;
         softwareListDataGridView.Columns[0].Width = 3 * softwareListDataGridView.Columns[0].Width;
         softwareListDataGridView.Columns[1].Width = 5 * softwareListDataGridView.Columns[1].Width;
+
+        RestoreGridViewState(viewState);
+        if (IsHandleCreated && !IsDisposed)
+        {
+            try
+            {
+                BeginInvoke(() => RestoreGridViewState(viewState));
+            }
+            catch (ObjectDisposedException)
+            {
+                // The form went away while a reload was being applied.
+            }
+        }
+    }
+
+    private GridViewState CaptureGridViewState()
+    {
+        var selectedNames = softwareListDataGridView
+            .SelectedRows
+            .Cast<DataGridViewRow>()
+            .Select(row => (row.DataBoundItem as SoftwareItem)?.Name)
+            .Where(name => !string.IsNullOrEmpty(name))
+            .Cast<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var currentRow = softwareListDataGridView.CurrentRow;
+        var currentName = (currentRow?.DataBoundItem as SoftwareItem)?.Name;
+        var currentColumnIndex = softwareListDataGridView.CurrentCell?.ColumnIndex ?? 0;
+
+        var firstDisplayedRowIndex = -1;
+        string? firstDisplayedName = null;
+        try
+        {
+            firstDisplayedRowIndex = softwareListDataGridView.FirstDisplayedScrollingRowIndex;
+            if (firstDisplayedRowIndex >= 0 && firstDisplayedRowIndex < softwareListDataGridView.Rows.Count)
+                firstDisplayedName =
+                    (softwareListDataGridView.Rows[firstDisplayedRowIndex].DataBoundItem as SoftwareItem)?.Name;
+        }
+        catch (InvalidOperationException)
+        {
+            // The grid has no displayed rows yet (for example during startup).
+        }
+
+        return new GridViewState(
+            selectedNames,
+            currentName,
+            currentColumnIndex,
+            firstDisplayedName,
+            firstDisplayedRowIndex
+        );
+    }
+
+    private void RestoreGridViewState(GridViewState state)
+    {
+        if (softwareListDataGridView.Rows.Count == 0)
+            return;
+
+        var rowsByName = softwareListDataGridView
+            .Rows
+            .Cast<DataGridViewRow>()
+            .Where(row => row.DataBoundItem is SoftwareItem)
+            .GroupBy(row => ((SoftwareItem)row.DataBoundItem!).Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        if (rowsByName.Count == 0)
+            return;
+
+        softwareListDataGridView.ClearSelection();
+        foreach (var name in state.SelectedNames)
+            if (rowsByName.TryGetValue(name, out var row))
+                row.Selected = true;
+
+        DataGridViewRow? currentRow = null;
+        if (state.CurrentName is not null && state.SelectedNames.Contains(state.CurrentName))
+            rowsByName.TryGetValue(state.CurrentName, out currentRow);
+        currentRow ??= softwareListDataGridView.SelectedRows.Cast<DataGridViewRow>().FirstOrDefault();
+        var fallbackRowIndex = Math.Clamp(
+            state.FirstDisplayedRowIndex,
+            0,
+            softwareListDataGridView.Rows.Count - 1
+        );
+        currentRow ??= rowsByName.Values.MinBy(row => Math.Abs(row.Index - fallbackRowIndex));
+        if (currentRow is null)
+            return;
+
+        var columnIndex = Math.Clamp(state.CurrentColumnIndex, 0, softwareListDataGridView.Columns.Count - 1);
+        softwareListDataGridView.CurrentCell = softwareListDataGridView[columnIndex, currentRow.Index];
+        currentRow.Selected = true;
+
+        var firstDisplayedRow = -1;
+        if (state.FirstDisplayedName is not null && rowsByName.TryGetValue(state.FirstDisplayedName, out var anchorRow))
+            firstDisplayedRow = anchorRow.Index;
+        if (firstDisplayedRow < 0)
+            firstDisplayedRow = Math.Clamp(state.FirstDisplayedRowIndex, 0, softwareListDataGridView.Rows.Count - 1);
+
+        try
+        {
+            softwareListDataGridView.FirstDisplayedScrollingRowIndex = firstDisplayedRow;
+        }
+        catch (InvalidOperationException)
+        {
+            // The grid may not have a scrollable row until its next layout pass.
+        }
     }
 
     /// <summary>

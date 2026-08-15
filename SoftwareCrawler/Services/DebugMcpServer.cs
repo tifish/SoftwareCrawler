@@ -233,6 +233,72 @@ internal static class DebugMcpServer
                 ? grid.RowCount
                 : -1;
 
+        /// <summary>Names selected in the grid, in row order.</summary>
+        public IReadOnlyList<string> GridSelectedNames =>
+            MainForm is { } form
+            && form.Controls.Find("softwareListDataGridView", searchAllChildren: true)
+                .FirstOrDefault()
+                is DataGridView grid
+                ? grid.SelectedRows
+                    .Cast<DataGridViewRow>()
+                    .OrderBy(row => row.Index)
+                    .Select(row => (row.DataBoundItem as SoftwareItem)?.Name)
+                    .Where(name => !string.IsNullOrEmpty(name))
+                    .Cast<string>()
+                    .ToArray()
+                : [];
+
+        /// <summary>The name of the row currently at the top of the grid viewport.</summary>
+        public string? GridFirstDisplayedName
+        {
+            get
+            {
+                if (
+                    MainForm is not { } form
+                    || form.Controls.Find("softwareListDataGridView", searchAllChildren: true)
+                        .FirstOrDefault()
+                        is not DataGridView grid
+                )
+                    return null;
+
+                try
+                {
+                    var rowIndex = grid.FirstDisplayedScrollingRowIndex;
+                    return rowIndex >= 0 && rowIndex < grid.Rows.Count
+                        ? (grid.Rows[rowIndex].DataBoundItem as SoftwareItem)?.Name
+                        : null;
+                }
+                catch (InvalidOperationException)
+                {
+                    return null;
+                }
+            }
+        }
+
+        /// <summary>The row index currently at the top of the grid viewport.</summary>
+        public int GridFirstDisplayedRowIndex
+        {
+            get
+            {
+                if (
+                    MainForm is not { } form
+                    || form.Controls.Find("softwareListDataGridView", searchAllChildren: true)
+                        .FirstOrDefault()
+                        is not DataGridView grid
+                )
+                    return -1;
+
+                try
+                {
+                    return grid.FirstDisplayedScrollingRowIndex;
+                }
+                catch (InvalidOperationException)
+                {
+                    return -1;
+                }
+            }
+        }
+
         /// <summary>Per-machine settings held for names the loaded list does not contain.</summary>
         public IReadOnlyList<string> UnclaimedLocalSettings =>
             SoftwareManager.UnclaimedLocalSettingNames;
