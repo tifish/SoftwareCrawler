@@ -496,6 +496,41 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
 
             targetFilePath = Path.Join(_item.FinalDownloadDirectory, suggestedFileName);
 
+            // Archive metadata is the durable server-side identity. Once it exists,
+            // do not let a retained or hand-modified archive override that identity.
+            if (
+                TryCompareArchiveMetadata(
+                    _item,
+                    targetFilePath,
+                    downloadFileSize,
+                    downloadFileTime,
+                    out var metadataFilePath,
+                    out var metadataMatches
+                )
+            )
+            {
+                if (metadataMatches)
+                {
+                    beginDownloadResult = BeginDownloadResult.Downloaded;
+                    targetFilePath = metadataFilePath;
+                    item.IsCancelled = true;
+                    return;
+                }
+
+                // A metadata mismatch means the server has an update. Comparing the
+                // retained archive as a second opinion would violate that contract.
+                if (testOnly)
+                {
+                    beginDownloadResult = BeginDownloadResult.HasUpdate;
+                    item.IsCancelled = true;
+                    return;
+                }
+
+                beginDownloadResult = BeginDownloadResult.Started;
+                item.DownloadedFilePath = downloadedFilePath;
+                return;
+            }
+
             // Compare file size to determine download or not.
             // Epic Launcher download page may change its file name for each download.
             // Find the old file and check the size.
@@ -520,15 +555,12 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                 // file's modification time. Downloaded files are stamped with that time in
                 // Succeeded(), so a match means the file is unchanged. Without either signal
                 // we cannot tell, so treat it as needing download.
-                bool isSameFile;
-                if (downloadFileSize > 0)
-                    isSameFile = fileInfo.Length == downloadFileSize;
-                else if (downloadFileTime.HasValue)
-                    isSameFile =
-                        Math.Abs((fileInfo.LastWriteTime - downloadFileTime.Value).TotalSeconds)
-                        < 2;
-                else
-                    isSameFile = false;
+                var isSameFile = IsSameDownload(
+                    downloadFileSize,
+                    downloadFileTime,
+                    fileInfo.Length,
+                    fileInfo.LastWriteTime
+                );
 
                 if (isSameFile)
                 {
@@ -578,6 +610,9 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
 
             try
             {
+                var primaryArchiveProcessed = false;
+                var primaryWasCopied = false;
+
                 // Delete other old files in the same directory.
                 await DeleteOtherFilesInSameDirectory(targetFilePath);
 
@@ -587,12 +622,11 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                     if (downloadFileTime.HasValue)
                         File.SetLastWriteTime(downloadedFilePath, downloadFileTime.Value);
 
-                    if (await CopyFileIfChanged(downloadedFilePath, targetFilePath, true))
-                        await CallEventScript(
-                            _item.FinalDownloadDirectory,
-                            "AfterDownload",
-                            targetFilePath
-                        );
+                    primaryWasCopied = await CopyFileIfChanged(
+                        downloadedFilePath,
+                        targetFilePath,
+                        true
+                    );
                 }
 
                 // Extract target file and copy to download directory 2.
@@ -601,36 +635,105 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                     if (downloadFileTime.HasValue)
                         File.SetLastWriteTime(targetFilePath, downloadFileTime.Value);
 
-                    // Extract only if the file is newly downloaded.
-                    if (finalStatus == DownloadingStatus.Downloaded)
+                    await FinalizeArchiveFile(
+                        _item,
+                        targetFilePath,
+                        processingSucceeded: false,
+                        downloadFileSize,
+                        downloadFileTime
+                    );
+
+                    var retryRetainedArchive =
+                        finalStatus == DownloadingStatus.SameFileAlreadyDownloaded
+                        && IsArchiveFile(targetFilePath);
+
+                    string? targetFile2 = null;
+                    var secondaryWasCopied = false;
+                    if (!string.IsNullOrEmpty(_item.DownloadDirectory2))
                     {
-                        await ExtractArchiveFile(targetFilePath);
-                        await CallEventScript(
+                        targetFile2 = Path.Combine(
+                            _item.DownloadDirectory2,
+                            Path.GetFileName(targetFilePath)
+                        );
+                        await DeleteOtherFilesInSameDirectory(targetFile2);
+                        secondaryWasCopied = await CopyFileIfChanged(targetFilePath, targetFile2);
+
+                        if (File.Exists(targetFile2))
+                            await FinalizeArchiveFile(
+                                _item,
+                                targetFile2,
+                                processingSucceeded: false,
+                                downloadFileSize,
+                                downloadFileTime
+                            );
+                    }
+
+                    if (primaryWasCopied || retryRetainedArchive)
+                        primaryArchiveProcessed |= await CallEventScript(
+                            _item.FinalDownloadDirectory,
+                            "AfterDownload",
+                            targetFilePath
+                        );
+
+                    // A retained same-version archive represents processing that has
+                    // not completed yet, so its processors may be retried without a
+                    // second download.
+                    if (finalStatus == DownloadingStatus.Downloaded || retryRetainedArchive)
+                    {
+                        primaryArchiveProcessed |= await ExtractArchiveFile(targetFilePath);
+                        primaryArchiveProcessed |= await CallEventScript(
                             _item.FinalDownloadDirectory,
                             "AfterExtract",
                             targetFilePath
                         );
                     }
 
-                    // Copy file from downloading folder to download directory 2.
-                    if (!string.IsNullOrEmpty(_item.DownloadDirectory2))
+                    if (targetFile2 is not null && File.Exists(targetFile2))
                     {
-                        var targetFile2 = Path.Combine(_item.DownloadDirectory2, suggestedFileName);
-                        // Delete other old files in the same directory.
-                        await DeleteOtherFilesInSameDirectory(targetFile2);
+                        var secondaryArchiveProcessed = false;
+                        var retryRetainedSecondaryArchive =
+                            finalStatus == DownloadingStatus.SameFileAlreadyDownloaded
+                            && IsArchiveFile(targetFile2);
 
-                        // Copy file from download directory 1 to download directory 2.
-                        if (await CopyFileIfChanged(targetFilePath, targetFile2))
-                            await CallEventScript(_item.DownloadDirectory2, "AfterDownload", targetFile2);
+                        if (secondaryWasCopied || retryRetainedSecondaryArchive)
+                            secondaryArchiveProcessed |= await CallEventScript(
+                                _item.DownloadDirectory2,
+                                "AfterDownload",
+                                targetFile2
+                            );
 
-                        // Extract only if the file is newly downloaded.
-                        if (finalStatus == DownloadingStatus.Downloaded)
+                        if (
+                            finalStatus == DownloadingStatus.Downloaded
+                            || retryRetainedSecondaryArchive
+                        )
                         {
-                            await ExtractArchiveFile(targetFile2);
-                            await CallEventScript(_item.DownloadDirectory2, "AfterExtract", targetFile2);
+                            secondaryArchiveProcessed |= await ExtractArchiveFile(targetFile2);
+                            secondaryArchiveProcessed |= await CallEventScript(
+                                _item.DownloadDirectory2,
+                                "AfterExtract",
+                                targetFile2
+                            );
                         }
+
+                        if (secondaryArchiveProcessed)
+                            await FinalizeArchiveFile(
+                                _item,
+                                targetFile2,
+                                processingSucceeded: true,
+                                downloadFileSize,
+                                downloadFileTime
+                            );
                     }
                 }
+
+                if (primaryArchiveProcessed)
+                    await FinalizeArchiveFile(
+                        _item,
+                        targetFilePath,
+                        processingSucceeded: true,
+                        downloadFileSize,
+                        downloadFileTime
+                    );
             }
             catch (PostProcessException ex)
             {
@@ -668,7 +771,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             return downloadOnceResult;
         }
 
-        async Task CallEventScript(string directory, string eventName, string filePath)
+        async Task<bool> CallEventScript(string directory, string eventName, string filePath)
         {
             var script = Path.Join(directory, eventName + ".cmd");
             var isBatch = File.Exists(script);
@@ -676,7 +779,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             {
                 script = Path.Join(directory, eventName + ".ps1");
                 if (!File.Exists(script))
-                    return;
+                    return false;
             }
 
             _item.Status = DownloadingStatus.RunningEventScript;
@@ -704,7 +807,78 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                 throw new PostProcessException(
                     $"{eventName} script exited with code {exitCode}: {script}"
                 );
+
+            return true;
         }
+    }
+
+    internal static async Task FinalizeArchiveFile(
+        SoftwareItem item,
+        string archivePath,
+        bool processingSucceeded,
+        long knownSize = 0,
+        DateTime? lastModified = null
+    )
+    {
+        if (!IsArchiveFile(archivePath) || !File.Exists(archivePath))
+            return;
+
+        var info = new FileInfo(archivePath);
+        DownloadMetadataStore.Write(
+            Path.GetDirectoryName(archivePath)!,
+            new DownloadMetadataStore.Entry
+            {
+                ItemName = item.Name,
+                Source = item.WebPage,
+                FileName = Path.GetFileName(archivePath),
+                Size = knownSize > 0 ? knownSize : info.Length,
+                LastModified = lastModified,
+            }
+        );
+
+        if (processingSucceeded)
+            await Task.Run(() => File.Delete(archivePath));
+    }
+
+    internal static bool IsArchiveFile(string path) =>
+        ArchiveFileTypes.Contains(Path.GetExtension(path).ToLowerInvariant());
+
+    internal static bool TryCompareArchiveMetadata(
+        SoftwareItem item,
+        string targetFilePath,
+        long currentSize,
+        DateTime? currentLastModified,
+        out string metadataFilePath,
+        out bool isSame
+    )
+    {
+        metadataFilePath = string.Empty;
+        isSame = false;
+        if (
+            !IsArchiveFile(targetFilePath)
+            || !DownloadMetadataStore.TryGet(
+                item.FinalDownloadDirectory,
+                item.Name,
+                out var metadata
+            )
+            || string.IsNullOrWhiteSpace(metadata.FileName)
+            || !IsArchiveFile(metadata.FileName)
+            || !string.Equals(
+                Path.GetFileName(metadata.FileName),
+                metadata.FileName,
+                StringComparison.Ordinal
+            )
+        )
+            return false;
+
+        metadataFilePath = Path.Join(item.FinalDownloadDirectory, metadata.FileName);
+        isSame = IsSameDownload(
+            currentSize,
+            currentLastModified,
+            metadata.Size,
+            metadata.LastModified
+        );
+        return true;
     }
 
     /// <summary>How often the page is asked whether it is ready to be acted on.</summary>
@@ -753,6 +927,23 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
     private static readonly List<string> ExecutableFileTypes = [".exe", ".msi", ".vsix", ".msix"];
 
     private static readonly List<string> ArchiveFileTypes = [".zip", ".rar", ".7z"];
+
+    internal static bool IsSameDownload(
+        long currentSize,
+        DateTime? currentLastModified,
+        long storedSize,
+        DateTime? storedLastModified
+    )
+    {
+        if (currentSize > 0)
+            return storedSize == currentSize;
+
+        return currentLastModified.HasValue
+            && storedLastModified.HasValue
+            && Math.Abs(
+                    (currentLastModified.Value - storedLastModified.Value).TotalSeconds
+                ) < 2;
+    }
 
     /// <summary>
     /// A step that runs after the file is in place - extraction, an event script -
@@ -1001,13 +1192,13 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
     internal static Task ExtractOnly(SoftwareItem item, string archiveFile) =>
         new DownloadPipeline(item, testOnly: false).ExtractArchiveFile(archiveFile);
 
-    private async Task ExtractArchiveFile(string archiveFile)
+    private async Task<bool> ExtractArchiveFile(string archiveFile)
     {
         if (!_item.ExtractAfterDownload)
-            return;
+            return false;
 
-        if (!ArchiveFileTypes.Contains(Path.GetExtension(archiveFile).ToLower()))
-            return;
+        if (!IsArchiveFile(archiveFile))
+            return false;
 
         var archiveDir = Path.GetDirectoryName(archiveFile)!;
         var pattern = _item.FilePatternToDeleteBeforeExtractionAndExtractOnly;
@@ -1045,5 +1236,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                         Directory.Delete(subDirectory);
             });
         }
+
+        return true;
     }
 }

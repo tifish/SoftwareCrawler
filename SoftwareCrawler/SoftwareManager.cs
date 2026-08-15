@@ -208,7 +208,11 @@ public static class SoftwareManager
         StringComparer.OrdinalIgnoreCase
     );
 
-    private static void CaptureBaseline() =>
+    private static string[] _baselineDataRows = [];
+    private static string[] _baselineExtraRows = [];
+
+    private static void CaptureBaseline()
+    {
         _baseline = Items
             .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
@@ -219,6 +223,29 @@ public static class SoftwareManager
                 ),
                 StringComparer.OrdinalIgnoreCase
             );
+
+        _baselineDataRows = BuildDataRows().ToArray();
+        _baselineExtraRows = BuildExtraRows().ToArray();
+    }
+
+    private static IEnumerable<string> BuildDataRows() =>
+        Items.Select(item => item.ToDataLine(SoftwareItem.DataProperties));
+
+    private static IEnumerable<string> BuildExtraRows()
+    {
+        var itemNames = Items.Select(item => item.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return Items
+            .Select(item => item.Name + '\t' + item.ToDataLine(SoftwareItem.ExtraProperties))
+            .Concat(
+                _unclaimedLocalSettings
+                    .Where(entry => !itemNames.Contains(entry.Name))
+                    .Select(entry => entry.Line)
+            );
+    }
+
+    private static bool HasLocalChanges() =>
+        !_baselineDataRows.SequenceEqual(BuildDataRows(), StringComparer.Ordinal)
+        || !_baselineExtraRows.SequenceEqual(BuildExtraRows(), StringComparer.Ordinal);
 
     /// <summary>
     /// Folds the app's edits into a list somebody else has written since it was
@@ -414,42 +441,43 @@ public static class SoftwareManager
         var localSettingsPath = LocalSettingsPath;
         Directory.CreateDirectory(Path.GetDirectoryName(softwarePath)!);
 
+        var hasExternalChange =
+            ConfigChangeMonitor.HasExternalChange(softwarePath)
+            || ConfigChangeMonitor.HasExternalChange(localSettingsPath);
+
+        // Closing always flushes. If nothing changed, avoid normalizing compatible
+        // short rows merely because a newer optional column now exists.
+        if (!hasExternalChange && !HasLocalChanges())
+            return true;
+
         // The two files are one document keyed by name, so an outside edit to
         // either makes the in-memory list stale. Writing it back as-is would
         // silently undo that edit; refusing to write would silently undo the
         // user's work in the app. Neither is acceptable, so the two are merged.
-        if (
-            ConfigChangeMonitor.HasExternalChange(softwarePath)
-            || ConfigChangeMonitor.HasExternalChange(localSettingsPath)
-        )
+        if (hasExternalChange)
         {
             if (!await MergeWithDisk().ConfigureAwait(false))
                 return false;
+
+            // MergeWithDisk re-baselines against the file it just loaded. When
+            // there were no local edits to apply, that file is already current.
+            if (!HasLocalChanges())
+                return true;
         }
 
         var dataItems = new List<string>(Items.Count + 1)
         {
             SoftwareItem.GetDataHeaderLine(SoftwareItem.DataProperties),
         };
-        dataItems.AddRange(Items.Select(item => item.ToDataLine(SoftwareItem.DataProperties)));
+        dataItems.AddRange(BuildDataRows());
 
         var extraItems = new List<string>(Items.Count + 1)
         {
             NameColumn + '\t' + SoftwareItem.GetDataHeaderLine(SoftwareItem.ExtraProperties),
         };
-        extraItems.AddRange(
-            Items.Select(item => item.Name + '\t' + item.ToDataLine(SoftwareItem.ExtraProperties))
-        );
-
-        // Carry the unclaimed rows over instead of dropping them. Re-check the
-        // names: an item that came back since the load owns its row again, and
-        // writing both copies would duplicate it.
-        var itemNames = Items.Select(item => item.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        extraItems.AddRange(
-            _unclaimedLocalSettings
-                .Where(entry => !itemNames.Contains(entry.Name))
-                .Select(entry => entry.Line)
-        );
+        // BuildExtraRows also carries unclaimed rows over without duplicating one
+        // whose item has returned since the last load.
+        extraItems.AddRange(BuildExtraRows());
 
         // Keep the state we are about to replace; LocalSettings.tab is not in
         // git and this is the only copy of it there will ever be.

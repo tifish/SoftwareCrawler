@@ -367,6 +367,61 @@ internal static class DebugMcpServer
         }
 
         /// <summary>
+        /// Records an archive download and optionally applies the deletion that
+        /// follows a successfully executed extraction or event script.
+        /// </summary>
+        public void FinalizeArchiveProbe(
+            string name,
+            string archiveFile,
+            bool processingSucceeded
+        )
+        {
+            var item =
+                SoftwareManager.Items.FirstOrDefault(candidate =>
+                    candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
+                ) ?? throw new InvalidOperationException($"No software item named '{name}'.");
+
+            Task.Run(() =>
+                    DownloadPipeline.FinalizeArchiveFile(
+                        item,
+                        archiveFile,
+                        processingSucceeded
+                    )
+                )
+                .GetAwaiter()
+                .GetResult();
+        }
+
+        /// <summary>Reports the archive-metadata decision without starting a download.</summary>
+        public object ArchiveMetadataProbe(string name, string archiveFile, long currentSize)
+        {
+            var item =
+                SoftwareManager.Items.FirstOrDefault(candidate =>
+                    candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
+                ) ?? throw new InvalidOperationException($"No software item named '{name}'.");
+
+            var probeItem = new SoftwareItem
+            {
+                Name = item.Name,
+                DownloadDirectory = Path.GetDirectoryName(archiveFile)!,
+            };
+            var found = DownloadPipeline.TryCompareArchiveMetadata(
+                probeItem,
+                archiveFile,
+                currentSize,
+                currentLastModified: null,
+                out var metadataFilePath,
+                out var isSame
+            );
+            return new
+            {
+                MetadataFound = found,
+                IsSame = isSame,
+                MetadataFilePath = metadataFilePath,
+            };
+        }
+
+        /// <summary>
         /// Runs a helper process the way the pipeline runs 7-Zip and event
         /// scripts, and returns its exit code (-1 when it could not start).
         /// </summary>
