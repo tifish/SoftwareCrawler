@@ -17,6 +17,7 @@ public partial class MainForm : Form
     private int _currentSearchResultIndex = -1;
     private System.Windows.Forms.Timer? _updateCheckTimer;
     private GridViewState? _pendingGridViewState;
+    private bool _reloadAfterBatchPending;
 
     private sealed record GridViewState(
         IReadOnlySet<string> SelectedNames,
@@ -196,6 +197,15 @@ public partial class MainForm : Form
 
             if (listChanged)
             {
+                if (DownloadBatch.IsRunning)
+                {
+                    _reloadAfterBatchPending = true;
+                    Log.ZLogInformation(
+                        $"Deferred the software list reload until the running batch finishes"
+                    );
+                    return;
+                }
+
                 await Reload();
                 Log.ZLogInformation($"Reloaded the software list after an outside edit");
             }
@@ -204,6 +214,12 @@ public partial class MainForm : Form
 
     private Task Reload()
     {
+        if (DownloadBatch.IsRunning)
+        {
+            _reloadAfterBatchPending = true;
+            return Task.CompletedTask;
+        }
+
         // SoftwareManager.Load replaces the backing list before it raises Reloaded.
         // Capture the grid while its rows still describe the old list; otherwise a
         // bound list can already expose the new row at the old numeric selection.
@@ -212,6 +228,8 @@ public partial class MainForm : Form
         // reload started anywhere else reaches the grid just the same.
         return SoftwareManager.Load();
     }
+
+    internal void ReloadSoftwareListFromDebug() => Reload().GetAwaiter().GetResult();
 
     /// <summary>
     /// Rebinds the grid after the list was reloaded from disk. Raised on whichever
@@ -393,8 +411,25 @@ public partial class MainForm : Form
     {
         await _onLoadTaskCompletionSource.Task;
 
-        using (new DownloadUIDisabler(this))
-            return await DownloadBatch.RunAsync(items, testOnly, retryCount, operation);
+        try
+        {
+            using (new DownloadUIDisabler(this))
+                return await DownloadBatch.RunAsync(items, testOnly, retryCount, operation);
+        }
+        finally
+        {
+            await ReloadDeferredAfterBatchAsync();
+        }
+    }
+
+    private async Task ReloadDeferredAfterBatchAsync()
+    {
+        if (!_reloadAfterBatchPending || DownloadBatch.IsRunning || IsDisposed)
+            return;
+
+        _reloadAfterBatchPending = false;
+        await Reload();
+        Log.ZLogInformation($"Reloaded the software list after the batch finished");
     }
 
     private List<SoftwareItem> GetSelectedItems()

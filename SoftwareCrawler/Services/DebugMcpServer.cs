@@ -317,8 +317,16 @@ internal static class DebugMcpServer
         /// the pool rather than inline: tools are invoked on the UI thread, and
         /// Load resumes on the captured context, which blocking here would deadlock.
         /// </summary>
-        public void ReloadSoftwareList() =>
+        public void ReloadSoftwareList()
+        {
+            if (CrawlerForm is { } form)
+            {
+                form.ReloadSoftwareListFromDebug();
+                return;
+            }
+
             Task.Run(() => SoftwareManager.Load()).GetAwaiter().GetResult();
+        }
 
         /// <summary>
         /// Lists the files an item's delete pattern would remove from its download
