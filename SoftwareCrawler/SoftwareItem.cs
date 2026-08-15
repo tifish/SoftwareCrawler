@@ -160,6 +160,12 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     /// </summary>
     public bool DirectDownload { get; set; }
 
+    /// <summary>
+    /// Extract archive entries directly into the download directory instead of
+    /// preserving the directory structure stored in the archive.
+    /// </summary>
+    public bool ExtractToRoot { get; set; }
+
     private string _errorMessage = string.Empty;
 
     [NonSerialized]
@@ -226,6 +232,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             nameof(ExtractAfterDownload),
             nameof(FilePatternToDeleteBeforeExtractionAndExtractOnly),
             nameof(DirectDownload),
+            nameof(ExtractToRoot),
         }
             .Select(name => typeof(SoftwareItem).GetProperty(name)!)
             .ToList(),

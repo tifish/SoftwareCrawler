@@ -1019,10 +1019,10 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
 
         _item.Status = DownloadingStatus.Extracting;
 
-        // extract files to root directory.
+        var extractCommand = _item.ExtractToRoot ? "e" : "x";
         var exitCode = await RunProcessAsync(
             SevenZipPath,
-            $@"e -y -o""{archiveDir}"" ""{archiveFile}"" {pattern} -r",
+            $@"{extractCommand} -y -o""{archiveDir}"" ""{archiveFile}"" {pattern} -r",
             archiveDir,
             $"7-Zip extracting {Path.GetFileName(archiveFile)}"
         );
@@ -1032,15 +1032,18 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         if (exitCode < 0 || exitCode >= 2)
             throw new PostProcessException($"7-Zip exited with code {exitCode}: {archiveFile}");
 
-        // Delete empty sub-directories in archiveDir
-        await Task.Run(() =>
+        if (_item.ExtractToRoot)
         {
-            foreach (var subDirectory in Directory.GetDirectories(archiveDir))
-                if (
-                    Directory.GetFiles(subDirectory).Length == 0
-                    && Directory.GetDirectories(subDirectory).Length == 0
-                )
-                    Directory.Delete(subDirectory);
-        });
+            // Flattening leaves the archive's empty directory entries behind.
+            await Task.Run(() =>
+            {
+                foreach (var subDirectory in Directory.GetDirectories(archiveDir))
+                    if (
+                        Directory.GetFiles(subDirectory).Length == 0
+                        && Directory.GetDirectories(subDirectory).Length == 0
+                    )
+                        Directory.Delete(subDirectory);
+            });
+        }
     }
 }

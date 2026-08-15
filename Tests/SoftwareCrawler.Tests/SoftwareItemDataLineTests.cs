@@ -28,6 +28,7 @@ public class SoftwareItemDataLineTests
             ExtractAfterDownload = true,
             FilePatternToDeleteBeforeExtractionAndExtractOnly = "*.dll",
             DirectDownload = true,
+            ExtractToRoot = true,
         };
 
     /// <summary>
@@ -91,6 +92,7 @@ public class SoftwareItemDataLineTests
         Assert.True(item.ExtractAfterDownload);
         Assert.Equal("", item.FilePatternToDeleteBeforeExtractionAndExtractOnly);
         Assert.False(item.DirectDownload);
+        Assert.False(item.ExtractToRoot);
     }
 
     [Fact]

@@ -66,7 +66,7 @@ SoftwareCrawler.slnx
 一行清单就是一个 `SoftwareItem`。字段分成三组，**这个分组是整个配置体系的基础**：
 
 - **`DataProperties`（配方，全机器共享，进版本库）**
-  `Name` `WebPage` `XPathOrScript1..5` `Frames` `WaitSecondsBeforeClick` `StartDownloadTimeout` `FilePatternToDeleteBeforeDownload` `ExtractAfterDownload` `FilePatternToDeleteBeforeExtractionAndExtractOnly` `DirectDownload`
+  `Name` `WebPage` `XPathOrScript1..5` `Frames` `WaitSecondsBeforeClick` `StartDownloadTimeout` `FilePatternToDeleteBeforeDownload` `ExtractAfterDownload` `FilePatternToDeleteBeforeExtractionAndExtractOnly` `DirectDownload` `ExtractToRoot`
 - **`ExtraProperties`（本机私有，不进版本库）**
   `Enabled` `DownloadDirectory` `DownloadDirectory2`
 - **`[NonSerialized]` 运行时状态**：`Status` `Progress` `ErrorMessage`，通过 `INotifyPropertyChanged` 推给表格。setter 会检查当前 `SynchronizationContext`，必要时 `Post` 回 UI 线程，所以后台线程改状态是安全的。
@@ -114,7 +114,7 @@ flowchart TD
 
 > **不要把在途文件写进目标目录。** 看上去可以省掉一次跨卷复制（3GB 的包写两遍确实肉疼），但**目标目录的性质是不确定的**：可能是 UNC 共享（边下边写等于每个写操作过网络，抖一下整个传输就没了），也可能正被同步工具监视（不完整的文件会被反复同步、中断的残留会传播到每台设备）。程序无法可靠判断这两种情况，而"只有完整文件才出现在目标目录"这一条对三种情况都成立。这个取舍试过一次并撤回了，别再试第二次。
 
-扩展点：目标目录下若存在 `AfterDownload.cmd`/`.ps1` 或 `AfterExtract.cmd`/`.ps1`，会以文件路径为参数同步调用（`.cmd` 优先）。解压用随程序附带的 `bin/7-Zip/7z.exe`，`e -r` 展平到根目录，之后删掉空子目录。
+扩展点：目标目录下若存在 `AfterDownload.cmd`/`.ps1` 或 `AfterExtract.cmd`/`.ps1`，会以文件路径为参数同步调用（`.cmd` 优先）。解压用随程序附带的 `bin/7-Zip/7z.exe`，默认用 `x -r` 保留压缩包中的目录结构；只有配方显式设置 `ExtractToRoot` 时才用 `e -r` 展平到根目录，并清理空子目录。
 
 这两类外部进程都**不显示控制台窗口、检查退出码、失败时把输出记进日志**（`RunProcessAsync`）。失败即视为该项失败且不重试——文件已经在盘上，重下没有意义；状态停在 `Extracting` 或 `RunningEventScript`，错误信息里能看出是哪一步。7-Zip 的退出码 1 是非致命警告，按成功处理，2 及以上才算失败。
 
