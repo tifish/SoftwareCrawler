@@ -81,6 +81,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public string WebPage { get; set; } = string.Empty;
 
     /// <summary>
+    /// Download WebPage directly over HTTP instead of navigating the embedded browser.
+    /// Some sites (e.g. SourceForge) serve Cloudflare challenges to automated browsers
+    /// but allow plain HTTP clients.
+    /// </summary>
+    public bool DirectDownload { get; set; }
+
+    /// <summary>
     /// A row is one line of tab-separated columns, so a value carrying either
     /// character would break the file: a newline splits the row in two, a tab
     /// shifts every column after it. Both travel as backtick escapes, which is
@@ -175,13 +182,6 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public bool ExtractToRoot { get; set; }
 
     /// <summary>
-    /// Download WebPage directly over HTTP instead of navigating the embedded browser.
-    /// Some sites (e.g. SourceForge) serve Cloudflare challenges to automated browsers
-    /// but allow plain HTTP clients.
-    /// </summary>
-    public bool DirectDownload { get; set; }
-
-    /// <summary>
     /// The proxy string this item should use right now: the machine setting when
     /// <see cref="UseProxy"/> is on, otherwise empty (go direct).
     /// </summary>
@@ -247,6 +247,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         {
             nameof(Name),
             nameof(WebPage),
+            nameof(DirectDownload),
             nameof(XPathOrScript1),
             nameof(XPathOrScript2),
             nameof(XPathOrScript3),
@@ -259,7 +260,6 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             nameof(FilePatternToDeleteBeforeExtraction),
             nameof(ExtractAfterDownload),
             nameof(ExtractToRoot),
-            nameof(DirectDownload),
         }
             .Select(name => typeof(SoftwareItem).GetProperty(name)!)
             .ToList(),
@@ -279,120 +279,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             .ToList(),
     ];
 
-    /// <summary>
-    /// The shared-column order while FilePatternToDeleteBeforeExtraction
-    /// (then named FilePatternToDeleteBeforeExtractionAndExtractOnly) still
-    /// sat after ExtractToRoot. Files written then are read with this list;
-    /// the next save rewrites them in the current order.
-    /// </summary>
-    public static readonly List<PropertyInfo> ExtractPatternAfterExtractToRootDataProperties =
-    [
-        .. new[]
-        {
-            nameof(Name),
-            nameof(WebPage),
-            nameof(XPathOrScript1),
-            nameof(XPathOrScript2),
-            nameof(XPathOrScript3),
-            nameof(XPathOrScript4),
-            nameof(XPathOrScript5),
-            nameof(Frames),
-            nameof(WaitSecondsBeforeClick),
-            nameof(StartDownloadTimeout),
-            nameof(FilePatternToDeleteBeforeDownload),
-            nameof(ExtractAfterDownload),
-            nameof(ExtractToRoot),
-            nameof(FilePatternToDeleteBeforeExtraction),
-            nameof(DirectDownload),
-        }
-            .Select(name => typeof(SoftwareItem).GetProperty(name)!)
-            .ToList(),
-    ];
-
-    /// <summary>
-    /// The shared-column order while ExtractToRoot was still the last field.
-    /// Files written then (and files written before that column existed) are
-    /// read with this list; the next save rewrites them in the current order.
-    /// </summary>
-    public static readonly List<PropertyInfo> ExtractToRootLastDataProperties =
-    [
-        .. new[]
-        {
-            nameof(Name),
-            nameof(WebPage),
-            nameof(XPathOrScript1),
-            nameof(XPathOrScript2),
-            nameof(XPathOrScript3),
-            nameof(XPathOrScript4),
-            nameof(XPathOrScript5),
-            nameof(Frames),
-            nameof(WaitSecondsBeforeClick),
-            nameof(StartDownloadTimeout),
-            nameof(FilePatternToDeleteBeforeDownload),
-            nameof(ExtractAfterDownload),
-            nameof(FilePatternToDeleteBeforeExtraction),
-            nameof(DirectDownload),
-            nameof(ExtractToRoot),
-        }
-            .Select(name => typeof(SoftwareItem).GetProperty(name)!)
-            .ToList(),
-    ];
-
-    /// <summary>
-    /// The layout of both files before Enabled moved out of the shared list.
-    /// Kept so existing files still read correctly; the next save rewrites them
-    /// in the current layout, after which these are only of historical interest.
-    /// </summary>
-    public static readonly List<PropertyInfo> LegacyDataProperties =
-    [
-        typeof(SoftwareItem).GetProperty(nameof(Enabled))!,
-        .. ExtractToRootLastDataProperties,
-    ];
-
-    /// <inheritdoc cref="LegacyDataProperties"/>
-    public static readonly List<PropertyInfo> LegacyExtraProperties =
-    [
-        .. new[] { nameof(DownloadDirectory), nameof(DownloadDirectory2) }
-            .Select(name => typeof(SoftwareItem).GetProperty(name)!)
-            .ToList(),
-    ];
-
     public static string GetDataHeaderLine(List<PropertyInfo> properties)
     {
         return string.Join('\t', properties.Select(prop => prop.Name));
-    }
-
-    /// <summary>
-    /// Picks the shared-column layout that matches how this file was written.
-    /// The next save always rewrites the current <see cref="DataProperties"/> order.
-    /// </summary>
-    public static List<PropertyInfo> ResolveDataProperties(string header)
-    {
-        if (string.IsNullOrEmpty(header))
-            return DataProperties;
-
-        var columns = header.TrimStart('\uFEFF').Split('\t');
-        if (columns[0] == nameof(Enabled))
-            return LegacyDataProperties;
-
-        var extractAfter = Array.IndexOf(columns, nameof(ExtractAfterDownload));
-        var extractToRoot = Array.IndexOf(columns, nameof(ExtractToRoot));
-        var extractPattern = Array.IndexOf(columns, nameof(FilePatternToDeleteBeforeExtraction));
-
-        // Current: the delete-before-extraction column sits immediately
-        // before ExtractAfterDownload. Check this first: ExtractToRoot is
-        // still adjacent to ExtractAfterDownload, which is also true of
-        // the previous layout.
-        if (extractPattern >= 0 && extractAfter == extractPattern + 1)
-            return DataProperties;
-
-        // Previous current: ExtractToRoot sits immediately after
-        // ExtractAfterDownload, and the extract-pattern column (under its
-        // old name, or missing) is not in front of ExtractAfterDownload.
-        if (extractAfter >= 0 && extractToRoot == extractAfter + 1)
-            return ExtractPatternAfterExtractToRootDataProperties;
-
-        return ExtractToRootLastDataProperties;
     }
 
     public void FromDataLine(string line, List<PropertyInfo> properties)

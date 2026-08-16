@@ -4,7 +4,7 @@ namespace SoftwareCrawler.Tests;
 
 /// <summary>
 /// The .tab format is the only copy of the crawl recipes and of every machine's
-/// own settings, and it has to keep reading files written by older versions.
+/// own settings. Round-trips follow the current column lists.
 /// </summary>
 public class SoftwareItemDataLineTests
 {
@@ -99,14 +99,15 @@ public class SoftwareItemDataLineTests
     [Fact]
     public void MissingTrailingColumnsKeepTheirDefaults()
     {
-        // Name, WebPage, XPathOrScript1..5, Frames, WaitSecondsBeforeClick,
-        // StartDownloadTimeout, FilePatternToDeleteBeforeDownload,
-        // FilePatternToDeleteBeforeExtraction, ExtractAfterDownload -
-        // and nothing after it.
+        // Name, WebPage, DirectDownload, XPathOrScript1..5, Frames,
+        // WaitSecondsBeforeClick, StartDownloadTimeout,
+        // FilePatternToDeleteBeforeDownload, FilePatternToDeleteBeforeExtraction,
+        // ExtractAfterDownload - and nothing after it.
         var line = string.Join(
             '\t',
             "Example",
             "https://example.com",
+            "",
             "//a",
             "",
             "",
@@ -124,10 +125,10 @@ public class SoftwareItemDataLineTests
         item.FromDataLine(line, SoftwareItem.DataProperties);
 
         Assert.Equal("Example", item.Name);
+        Assert.False(item.DirectDownload);
         Assert.Equal("*.dll", item.FilePatternToDeleteBeforeExtraction);
         Assert.True(item.ExtractAfterDownload);
         Assert.False(item.ExtractToRoot);
-        Assert.False(item.DirectDownload);
     }
 
     [Fact]
@@ -296,217 +297,6 @@ public class SoftwareItemDataLineTests
         Assert.Equal(DownloadingStatus.Idle, clone.Status);
         Assert.Equal("", clone.ErrorMessage);
         Assert.Equal("", clone.Progress);
-    }
-
-    /// <summary>
-    /// Files that still carry Enabled as the first shared column are read with
-    /// the layout they were written in.
-    /// </summary>
-    [Fact]
-    public void TheLayoutThatStillHadEnabledFirstStillLoads()
-    {
-        var line = string.Join('\t', "true", "Example", "https://example.com", "//a");
-
-        var item = new SoftwareItem();
-        item.FromDataLine(line, SoftwareItem.LegacyDataProperties);
-
-        Assert.True(item.Enabled);
-        Assert.Equal("Example", item.Name);
-        Assert.Equal("https://example.com", item.WebPage);
-        Assert.Equal("//a", item.XPathOrScript1);
-    }
-
-    /// <summary>
-    /// Files that still carry ExtractToRoot after DirectDownload are read with
-    /// the layout they were written in.
-    /// </summary>
-    [Fact]
-    public void TheLayoutThatHadExtractToRootLastStillLoads()
-    {
-        var line = string.Join(
-            '\t',
-            "Example",
-            "https://example.com",
-            "//a",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "*.exe",
-            "true",
-            "*.dll",
-            "true",
-            "true"
-        );
-
-        var item = new SoftwareItem();
-        item.FromDataLine(line, SoftwareItem.ExtractToRootLastDataProperties);
-
-        Assert.Equal("Example", item.Name);
-        Assert.True(item.ExtractAfterDownload);
-        Assert.Equal("*.dll", item.FilePatternToDeleteBeforeExtraction);
-        Assert.True(item.DirectDownload);
-        Assert.True(item.ExtractToRoot);
-    }
-
-    /// <summary>
-    /// Files that still carry the extract-pattern column after ExtractToRoot
-    /// (and under its old ExtractOnly name) are read with that layout.
-    /// </summary>
-    [Fact]
-    public void TheLayoutThatHadTheExtractPatternAfterExtractToRootStillLoads()
-    {
-        var line = string.Join(
-            '\t',
-            "Example",
-            "https://example.com",
-            "//a",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "*.exe",
-            "true",
-            "true",
-            "*.dll",
-            "true"
-        );
-
-        var item = new SoftwareItem();
-        item.FromDataLine(line, SoftwareItem.ExtractPatternAfterExtractToRootDataProperties);
-
-        Assert.Equal("Example", item.Name);
-        Assert.True(item.ExtractAfterDownload);
-        Assert.True(item.ExtractToRoot);
-        Assert.Equal("*.dll", item.FilePatternToDeleteBeforeExtraction);
-        Assert.True(item.DirectDownload);
-    }
-
-    [Fact]
-    public void TheCurrentHeaderResolvesToTheCurrentLayout()
-    {
-        var header = SoftwareItem.GetDataHeaderLine(SoftwareItem.DataProperties);
-
-        Assert.Same(SoftwareItem.DataProperties, SoftwareItem.ResolveDataProperties(header));
-        Assert.Same(
-            SoftwareItem.DataProperties,
-            SoftwareItem.ResolveDataProperties('\uFEFF' + header)
-        );
-    }
-
-    [Fact]
-    public void AnExtractToRootLastHeaderResolvesToThatLayout()
-    {
-        var header = SoftwareItem.GetDataHeaderLine(SoftwareItem.ExtractToRootLastDataProperties);
-
-        Assert.Same(
-            SoftwareItem.ExtractToRootLastDataProperties,
-            SoftwareItem.ResolveDataProperties(header)
-        );
-    }
-
-    [Fact]
-    public void AnExtractPatternAfterExtractToRootHeaderResolvesToThatLayout()
-    {
-        var header = SoftwareItem.GetDataHeaderLine(
-            SoftwareItem.ExtractPatternAfterExtractToRootDataProperties
-        );
-
-        Assert.Same(
-            SoftwareItem.ExtractPatternAfterExtractToRootDataProperties,
-            SoftwareItem.ResolveDataProperties(header)
-        );
-    }
-
-    /// <summary>
-    /// Real files from the previous version still use the old column name.
-    /// Detection must not depend on reconstructing the header from the
-    /// current property name.
-    /// </summary>
-    [Fact]
-    public void TheOldExtractOnlyColumnNameAfterExtractToRootStillSelectsThatLayout()
-    {
-        var header = string.Join(
-            '\t',
-            "Name",
-            "WebPage",
-            "XPathOrScript1",
-            "XPathOrScript2",
-            "XPathOrScript3",
-            "XPathOrScript4",
-            "XPathOrScript5",
-            "Frames",
-            "WaitSecondsBeforeClick",
-            "StartDownloadTimeout",
-            "FilePatternToDeleteBeforeDownload",
-            "ExtractAfterDownload",
-            "ExtractToRoot",
-            "FilePatternToDeleteBeforeExtractionAndExtractOnly",
-            "DirectDownload"
-        );
-
-        Assert.Same(
-            SoftwareItem.ExtractPatternAfterExtractToRootDataProperties,
-            SoftwareItem.ResolveDataProperties(header)
-        );
-    }
-
-    [Fact]
-    public void AnEnabledFirstHeaderResolvesToTheLegacyLayout()
-    {
-        var header = SoftwareItem.GetDataHeaderLine(SoftwareItem.LegacyDataProperties);
-
-        Assert.Same(SoftwareItem.LegacyDataProperties, SoftwareItem.ResolveDataProperties(header));
-    }
-
-    [Fact]
-    public void AHeaderWrittenBeforeExtractToRootStillUsesTheOldColumnOrder()
-    {
-        var header = string.Join(
-            '\t',
-            SoftwareItem
-                .ExtractToRootLastDataProperties.Select(property => property.Name)
-                .Where(name => name != nameof(SoftwareItem.ExtractToRoot))
-        );
-
-        Assert.Same(
-            SoftwareItem.ExtractToRootLastDataProperties,
-            SoftwareItem.ResolveDataProperties(header)
-        );
-    }
-
-    [Fact]
-    public void TheOldExtractOnlyColumnNameWithExtractToRootLastStillSelectsThatLayout()
-    {
-        var header = string.Join(
-            '\t',
-            "Name",
-            "WebPage",
-            "XPathOrScript1",
-            "XPathOrScript2",
-            "XPathOrScript3",
-            "XPathOrScript4",
-            "XPathOrScript5",
-            "Frames",
-            "WaitSecondsBeforeClick",
-            "StartDownloadTimeout",
-            "FilePatternToDeleteBeforeDownload",
-            "ExtractAfterDownload",
-            "FilePatternToDeleteBeforeExtractionAndExtractOnly",
-            "DirectDownload",
-            "ExtractToRoot"
-        );
-
-        Assert.Same(
-            SoftwareItem.ExtractToRootLastDataProperties,
-            SoftwareItem.ResolveDataProperties(header)
-        );
     }
 
     [Fact]

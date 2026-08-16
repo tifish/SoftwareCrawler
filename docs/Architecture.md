@@ -24,7 +24,7 @@ SoftwareCrawler.slnx
 └── Tests/SoftwareCrawler.Tests/ xunit 测试，覆盖不依赖 UI 的逻辑
 ```
 
-测试跑 `dotnet test Tests/SoftwareCrawler.Tests/SoftwareCrawler.Tests.csproj`，CI 在发布前会执行。因为测试项目引用主程序，构建会写 `bin/SoftwareCrawler.exe`，**跑之前要先停掉本 worktree 正在运行的实例**。目前覆盖两块最经不起回归的纯逻辑：`.tab` 的读写与历史布局、设置的三方合并。`.tab` 往返测试是按 `DataProperties` 遍历写的，新增字段会自动纳入覆盖。
+测试跑 `dotnet test Tests/SoftwareCrawler.Tests/SoftwareCrawler.Tests.csproj`，CI 在发布前会执行。因为测试项目引用主程序，构建会写 `bin/SoftwareCrawler.exe`，**跑之前要先停掉本 worktree 正在运行的实例**。目前覆盖两块最经不起回归的纯逻辑：`.tab` 的读写与设置的三方合并。`.tab` 往返测试是按 `DataProperties` 遍历写的，新增字段会自动纳入覆盖。
 
 主程序内部分层（依赖方向自上而下）：
 
@@ -66,7 +66,7 @@ SoftwareCrawler.slnx
 一行清单就是一个 `SoftwareItem`。字段分成三组，**这个分组是整个配置体系的基础**：
 
 - **`DataProperties`（配方，全机器共享，进版本库）**
-  `Name` `WebPage` `XPathOrScript1..5` `Frames` `WaitSecondsBeforeClick` `StartDownloadTimeout` `FilePatternToDeleteBeforeDownload` `FilePatternToDeleteBeforeExtraction` `ExtractAfterDownload` `ExtractToRoot` `DirectDownload`
+  `Name` `WebPage` `DirectDownload` `XPathOrScript1..5` `Frames` `WaitSecondsBeforeClick` `StartDownloadTimeout` `FilePatternToDeleteBeforeDownload` `FilePatternToDeleteBeforeExtraction` `ExtractAfterDownload` `ExtractToRoot`
 - **`ExtraProperties`（本机私有，不进版本库）**
   `Enabled` `DownloadDirectory` `DownloadDirectory2` `UseProxy`
 - **`[NonSerialized]` 运行时状态**：`Status` `Progress` `ErrorMessage`，通过 `INotifyPropertyChanged` 推给表格。setter 会检查当前 `SynchronizationContext`，必要时 `Post` 回 UI 线程，所以后台线程改状态是安全的。
@@ -184,17 +184,9 @@ flowchart TD
 - **Debug 构建直接读写模板本身**（`SoftwareManager.cs:37`），所以开发时改配方即可提交；正式版永远不碰模板，升级只刷新模板，用户的 `Config/Software.tab` 不受影响（`SeedFromTemplate` 只在文件缺失时填补）。
 - 两个文件**按 `Name` 关联**，不是按行号。因此增删行、拖动排序都不会让本机设置错位。
 
-### 7.2 历史布局兼容
+### 7.2 列格式
 
-`SoftwareManager` 能读五种历史形态，读进来后按当前布局重写一次即完成迁移：
-
-- `Software.tab` 首列是 `Enabled` 的旧布局（`LegacyDataProperties`）；
-- `Software.tab` 里 `FilePatternToDeleteBeforeExtractionAndExtractOnly` 还在 `ExtractToRoot` 后面的布局（`ExtractPatternAfterExtractToRootDataProperties`）；
-- `Software.tab` 里 `ExtractToRoot` 还在最后一列、或尚不存在该列的布局（`ExtractToRootLastDataProperties`）；
-- `LocalSettings.tab` 有 `Name` 列但还没有 `Enabled` 列；
-- 更早的、没有 `Name` 列、靠行号对齐的版本。
-
-判定依据是表头（`ResolveDataProperties` / `ParseLocalSettings`），都容忍 BOM。当前布局把 `FilePatternToDeleteBeforeExtraction` 紧挨在 `ExtractAfterDownload` 前面；若表头仍是旧列名且 `ExtractAfterDownload` 与 `ExtractToRoot` 相邻，按上一版列序读；这两列也不相邻则按 `ExtractToRoot` 在末尾的列序读。另外 `FromDataLine` 允许列数少于属性数——旧版本写的文件缺少新增的尾列时，这些属性取默认值。
+读写只认当前 `DataProperties` / `ExtraProperties` 列序。首行是表头，随后每行一条。`FromDataLine` 允许列数少于属性数：末尾新增的字段在旧行里取默认值。列序变了就直接改模板和代码，不再为旧列序保留第二套属性列表。
 
 ### 7.3 孤儿设置的保护
 
@@ -284,8 +276,8 @@ Claude Code ──stdio──> bin/SoftwareCrawlerMcp.exe ──命名管道 JSO
 
 | 想做的事 | 要动的地方 |
 | --- | --- |
-| 给配方加一个字段 | `SoftwareItem` 属性 + `DataProperties`；旧文件靠"列数可少于属性数"自动兼容，无需迁移代码。插到中间而不是末尾时，还要加一份历史列序并在 `ResolveDataProperties` 里按表头识别 |
-| 加一个本机私有字段 | `SoftwareItem` 属性 + `ExtraProperties`；同时确认 `LegacyExtraProperties` 的读取路径仍成立 |
+| 给配方加一个字段 | `SoftwareItem` 属性 + `DataProperties`；加在末尾时旧行靠"列数可少于属性数"取默认值。插到中间时同步改 `Templates/Software.tab` 的列序 |
+| 加一个本机私有字段 | `SoftwareItem` 属性 + `ExtraProperties` |
 | 加一个设置项 | `MachineAppSettings` 或 `RoamingAppSettings` 二选一 + `AppSettings` 加一行转发（+ 需要范围限制就写进 `Normalize*`）→ `SettingsForm` 加控件 |
 | 支持一种新的下载方式 | 在 `DownloadPipeline` 里复用 `OnBeginDownloadHandler` / `Succeeded` 这条决策与落盘链路（`DirectDownload` 就是这么接的） |
 | 加一个调试能力 | `DebugMcpServer.CreateHost()` 注册工具 + `DebugMcpContract.BuildToolList()` 声明 schema；简单读写优先挂到 `AppRoot` 上，用 `get_value`/`invoke` 直接触达 |

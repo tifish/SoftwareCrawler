@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text;
 using JeekTools;
 using Microsoft.Extensions.Logging;
@@ -133,31 +132,8 @@ public static class SoftwareManager
         // itself to the UI.
         await Task.WhenAll(dataTask, extraTask).ConfigureAwait(false);
 
-        // Column order has changed more than once. Read the file with the
-        // layout its header names; the next save rewrites the current order.
-        var dataProperties = dataTask.Result.Length > 0
-            ? SoftwareItem.ResolveDataProperties(dataTask.Result[0])
-            : SoftwareItem.DataProperties;
-        if (dataProperties == SoftwareItem.LegacyDataProperties)
-            Log.ZLogInformation(
-                $"Reading {softwarePath} in the layout that still had the Enabled column"
-            );
-        else if (dataProperties == SoftwareItem.ExtractPatternAfterExtractToRootDataProperties)
-            Log.ZLogInformation(
-                $"Reading {softwarePath} in the layout that still had the extract pattern after ExtractToRoot"
-            );
-        else if (dataProperties == SoftwareItem.ExtractToRootLastDataProperties)
-            Log.ZLogInformation(
-                $"Reading {softwarePath} in the layout that still had ExtractToRoot last"
-            );
-
         var dataLines = dataTask.Result.Skip(1).ToArray();
-        var names = dataLines.Select(line => GetNameColumn(line, dataProperties)).ToArray();
-        var localSettings = ParseLocalSettings(
-            extraTask.Result,
-            names,
-            out var extraProperties
-        );
+        var localSettings = ParseLocalSettings(extraTask.Result);
 
         Items.Clear();
         var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -166,23 +142,21 @@ public static class SoftwareManager
             // The parameterless constructor keeps the property defaults, which is
             // what an item with no row in the per-machine file should end up with.
             var item = new SoftwareItem();
-            item.FromDataLine(dataLine, dataProperties);
+            item.FromDataLine(dataLine, SoftwareItem.DataProperties);
             if (localSettings.TryGetValue(item.Name, out var extraLine))
             {
-                item.FromDataLine(extraLine, extraProperties);
+                item.FromDataLine(extraLine, SoftwareItem.ExtraProperties);
                 claimed.Add(item.Name);
             }
             Items.Add(item);
         }
 
-        // Re-serialize the rows nobody claimed: they may have been read in the old
-        // layout, and they are written back under the current header.
         _unclaimedLocalSettings = localSettings
             .Where(entry => !claimed.Contains(entry.Key))
             .Select(entry =>
             {
                 var orphan = new SoftwareItem();
-                orphan.FromDataLine(entry.Value, extraProperties);
+                orphan.FromDataLine(entry.Value, SoftwareItem.ExtraProperties);
                 return (
                     entry.Key,
                     entry.Key + '\t' + orphan.ToDataLine(SoftwareItem.ExtraProperties)
@@ -344,53 +318,18 @@ public static class SoftwareManager
         }
     }
 
-    private static string GetNameColumn(string line, List<PropertyInfo> properties)
-    {
-        var index = properties.FindIndex(property => property.Name == NameColumn);
-        var columns = line.Split('\t');
-        return index >= 0 && index < columns.Length ? columns[index] : string.Empty;
-    }
-
     /// <summary>
-    /// Maps each software name to its per-machine columns, and reports which
-    /// layout they are in. Three shapes exist: the current one, the one before
-    /// Enabled joined it, and files so old they had no Name column and were
-    /// aligned by row index. All three get the current shape on the next save.
+    /// Maps each software name to its per-machine columns. Rows are keyed by
+    /// the leading Name cell; the rest of the line is the ExtraProperties
+    /// payload in the current column order.
     /// </summary>
-    private static Dictionary<string, string> ParseLocalSettings(
-        string[] lines,
-        string[] names,
-        out List<PropertyInfo> properties
-    )
+    private static Dictionary<string, string> ParseLocalSettings(string[] lines)
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        properties = SoftwareItem.ExtraProperties;
         if (lines.Length == 0)
             return result;
 
-        var values = lines.Skip(1).ToArray();
-
-        if (!lines[0].TrimStart('﻿').StartsWith(NameColumn + '\t', StringComparison.Ordinal))
-        {
-            properties = SoftwareItem.LegacyExtraProperties;
-            for (var i = 0; i < values.Length && i < names.Length; i++)
-                if (names[i].Length > 0)
-                    result[names[i]] = values[i];
-
-            Log.ZLogInformation($"Read {result.Count} per-machine rows by row index");
-            return result;
-        }
-
-        // Keyed by name, but Enabled only joined these columns later.
-        if (
-            !lines[0].Contains('\t' + nameof(SoftwareItem.Enabled) + '\t', StringComparison.Ordinal)
-        )
-        {
-            properties = SoftwareItem.LegacyExtraProperties;
-            Log.ZLogInformation($"Reading the per-machine file in its pre-Enabled layout");
-        }
-
-        foreach (var line in values)
+        foreach (var line in lines.Skip(1))
         {
             var separator = line.IndexOf('\t');
             if (separator > 0)
