@@ -26,6 +26,8 @@ namespace SoftwareCrawler
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SettingsForm));
             proxyTextBox = new TextBox();
+            proxyHintLabel = new Label();
+            proxyValuePanel = new TableLayoutPanel();
             label1 = new Label();
             downloadRetryCountNumericUpDown = new NumericUpDown();
             label2 = new Label();
@@ -71,6 +73,7 @@ namespace SoftwareCrawler
             ((System.ComponentModel.ISupportInitialize)tryClickIntervalNumericUpDown).BeginInit();
             ((System.ComponentModel.ISupportInitialize)startDownloadTimeoutNumericUpDown).BeginInit();
             ((System.ComponentModel.ISupportInitialize)downloadTimeoutNumericUpDown).BeginInit();
+            proxyValuePanel.SuspendLayout();
             rootTableLayoutPanel.SuspendLayout();
             flowLayoutPanel2.SuspendLayout();
             storageFlowLayoutPanel.SuspendLayout();
@@ -81,10 +84,41 @@ namespace SoftwareCrawler
             // proxyTextBox
             //
             proxyTextBox.Anchor = AnchorStyles.Left | AnchorStyles.Right;
-            proxyTextBox.Location = new Point(160, 3);
+            proxyTextBox.Location = new Point(0, 0);
+            proxyTextBox.Margin = new Padding(0);
             proxyTextBox.Name = "proxyTextBox";
+            proxyTextBox.PlaceholderText = "http://127.0.0.1:1080";
             proxyTextBox.Size = new Size(337, 23);
             proxyTextBox.TabIndex = 0;
+            //
+            // proxyHintLabel
+            //
+            proxyHintLabel.Anchor = AnchorStyles.Left;
+            proxyHintLabel.AutoSize = true;
+            proxyHintLabel.ForeColor = SystemColors.GrayText;
+            proxyHintLabel.Location = new Point(0, 24);
+            proxyHintLabel.Margin = new Padding(0, 1, 0, 3);
+            proxyHintLabel.Name = "proxyHintLabel";
+            proxyHintLabel.Size = new Size(247, 15);
+            proxyHintLabel.TabIndex = 1;
+            proxyHintLabel.Text = "http://host:port or socks5://host:port";
+            //
+            // proxyValuePanel
+            //
+            proxyValuePanel.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            proxyValuePanel.AutoSize = true;
+            proxyValuePanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            proxyValuePanel.ColumnCount = 1;
+            proxyValuePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            proxyValuePanel.Controls.Add(proxyTextBox, 0, 0);
+            proxyValuePanel.Controls.Add(proxyHintLabel, 0, 1);
+            proxyValuePanel.Location = new Point(160, 3);
+            proxyValuePanel.Name = "proxyValuePanel";
+            proxyValuePanel.RowCount = 2;
+            proxyValuePanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            proxyValuePanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            proxyValuePanel.Size = new Size(337, 42);
+            proxyValuePanel.TabIndex = 0;
             //
             // label1
             //
@@ -433,7 +467,7 @@ namespace SoftwareCrawler
             rootTableLayoutPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             rootTableLayoutPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             rootTableLayoutPanel.Controls.Add(label1, 0, 0);
-            rootTableLayoutPanel.Controls.Add(proxyTextBox, 1, 0);
+            rootTableLayoutPanel.Controls.Add(proxyValuePanel, 1, 0);
             rootTableLayoutPanel.Controls.Add(label2, 0, 1);
             rootTableLayoutPanel.Controls.Add(downloadRetryCountNumericUpDown, 1, 1);
             rootTableLayoutPanel.Controls.Add(label3, 0, 2);
@@ -529,6 +563,8 @@ namespace SoftwareCrawler
             ((System.ComponentModel.ISupportInitialize)tryClickIntervalNumericUpDown).EndInit();
             ((System.ComponentModel.ISupportInitialize)startDownloadTimeoutNumericUpDown).EndInit();
             ((System.ComponentModel.ISupportInitialize)downloadTimeoutNumericUpDown).EndInit();
+            proxyValuePanel.ResumeLayout(false);
+            proxyValuePanel.PerformLayout();
             rootTableLayoutPanel.ResumeLayout(false);
             rootTableLayoutPanel.PerformLayout();
             flowLayoutPanel2.ResumeLayout(false);
@@ -546,6 +582,8 @@ namespace SoftwareCrawler
         #endregion
 
         private TextBox proxyTextBox;
+        private Label proxyHintLabel;
+        private TableLayoutPanel proxyValuePanel;
         private Label label1;
         private NumericUpDown downloadRetryCountNumericUpDown;
         private Label label2;

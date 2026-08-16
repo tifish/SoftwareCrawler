@@ -78,7 +78,7 @@ internal static class DebugMcpServer
         );
 
         host.AddTool("control_tree", ControlTreeAsync);
-        host.AddTool("screenshot", _ => ScreenshotAsync());
+        host.AddTool("screenshot", ScreenshotAsync);
         host.AddTool("software_list", SoftwareListAsync);
         host.AddTool("download_probe", DownloadProbeAsync);
         host.AddTool("download_batch", DownloadBatchAsync);
@@ -458,6 +458,41 @@ internal static class DebugMcpServer
         /// </summary>
         public bool CleanUpLocalSettings() =>
             SoftwareManager.RemoveUnclaimedLocalSettings().GetAwaiter().GetResult();
+
+        /// <summary>
+        /// The open settings window, if any. Debug helpers show it modelessly
+        /// so the object graph stays reachable; the menu still uses ShowDialog.
+        /// </summary>
+        public SettingsForm? SettingsForm =>
+            Application.OpenForms.OfType<SettingsForm>().FirstOrDefault();
+
+        /// <summary>
+        /// Opens Settings as a modeless window so tools can inspect it. If it is
+        /// already open, brings that instance forward instead of creating another.
+        /// </summary>
+        public void OpenSettings()
+        {
+            if (SettingsForm is { } existing)
+            {
+                if (existing.WindowState == FormWindowState.Minimized)
+                    existing.WindowState = FormWindowState.Normal;
+                existing.Activate();
+                return;
+            }
+
+            var form = new SettingsForm();
+            form.Show(MainForm);
+        }
+
+        /// <summary>Closes the settings window if it is open. False when none was.</summary>
+        public bool CloseSettings()
+        {
+            if (SettingsForm is not { } form)
+                return false;
+
+            form.Close();
+            return true;
+        }
     }
 
     private static readonly AppRoot Root = new();
@@ -579,18 +614,21 @@ internal static class DebugMcpServer
         return ToolText(text);
     }
 
-    private static async Task<JsonObject> ScreenshotAsync()
+    private static async Task<JsonObject> ScreenshotAsync(JsonObject args)
     {
-        var (bytes, width, height) = await OnUiAsync(() =>
+        var path = args["path"]?.GetValue<string>() ?? "MainForm";
+
+        var (bytes, width, height, label) = await OnUiAsync(() =>
         {
-            var form =
-                MainForm ?? throw new InvalidOperationException("No form is open yet.");
-            var size = form.ClientSize;
+            if (Graph.Resolve(path) is not Control control)
+                throw new InvalidOperationException($"'{path}' is not a Control.");
+
+            var size = control is Form form ? form.ClientSize : control.Size;
             using var bitmap = new Bitmap(Math.Max(1, size.Width), Math.Max(1, size.Height));
-            form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
+            control.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
             using var stream = new MemoryStream();
             bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
-            return (stream.ToArray(), bitmap.Width, bitmap.Height);
+            return (stream.ToArray(), bitmap.Width, bitmap.Height, path);
         });
 
         return new JsonObject
@@ -599,7 +637,7 @@ internal static class DebugMcpServer
                 new JsonObject
                 {
                     ["type"] = "text",
-                    ["text"] = $"Main form screenshot, {width}x{height}px.",
+                    ["text"] = $"{label} screenshot, {width}x{height}px.",
                 },
                 new JsonObject
                 {

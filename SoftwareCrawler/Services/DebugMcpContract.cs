@@ -110,7 +110,17 @@ public static class DebugMcpContract
                     ["max_depth"] = Prop("integer", "Maximum depth (default 12)."),
                 }
             ),
-            Tool("screenshot", "Render the main form to PNG.", new()),
+            Tool(
+                "screenshot",
+                "Render a form or control to PNG.",
+                new()
+                {
+                    ["path"] = Prop(
+                        "string",
+                        "Control path to render (default MainForm). Example: App.SettingsForm"
+                    ),
+                }
+            ),
             Tool(
                 "software_list",
                 "List the loaded software items with their download status, progress, and error message.",
