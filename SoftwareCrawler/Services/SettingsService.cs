@@ -40,9 +40,6 @@ public class SettingsService
     /// <summary>The folder the executable runs from, where shipped templates live.</summary>
     public static string ProgramRoot => Storage.ProgramDir;
 
-    /// <summary>Where versions before the settings split kept everything.</summary>
-    private static string LegacySettingsPath => Path.Combine(Storage.ProgramDir, "Settings.json");
-
     private string _lastSavedMachineJson;
     private string _lastSavedRoamingJson;
     private string _lastSavedRoamingPath;
@@ -53,30 +50,14 @@ public class SettingsService
     {
         MachineSettingsPath = machineSettingsPath ?? DefaultMachineSettingsPath;
 
-        // Versions before the machine/roaming split kept one Settings.json next
-        // to the executable; adopt it once so upgrades keep their preferences.
-        var legacy = TryLoadLegacySettings();
-
-        var machineFileLoaded = JsonSettingsFile.TryLoad(
-            MachineSettingsPath,
-            out MachineAppSettings machineSettings
-        );
-        // The legacy file is flat, and the flat view forwards into the two halves,
-        // so deserializing it has already sorted its values into the right one.
-        if (!machineFileLoaded && legacy is not null)
-            machineSettings = legacy.Machine;
+        JsonSettingsFile.TryLoad(MachineSettingsPath, out MachineAppSettings machineSettings);
         NormalizeMachineSettings(machineSettings);
 
         RoamingSettingsPath = ResolveSettingsPath(
             Storage.ResolveEffectiveLocation(machineSettings.StorageLocation),
             machineSettings.CustomStoragePath
         );
-        var roamingFileLoaded = JsonSettingsFile.TryLoad(
-            RoamingSettingsPath,
-            out RoamingAppSettings roamingSettings
-        );
-        if (!roamingFileLoaded && legacy is not null)
-            roamingSettings = legacy.Roaming;
+        JsonSettingsFile.TryLoad(RoamingSettingsPath, out RoamingAppSettings roamingSettings);
         NormalizeRoamingSettings(roamingSettings);
 
         Settings = new AppSettings(machineSettings, roamingSettings);
@@ -84,43 +65,12 @@ public class SettingsService
 
         // Baselines are cloned so they never share references with Settings:
         // changes must diff against them, and an aliased baseline would mutate
-        // along and make every change look unchanged. After a migration the
-        // baseline stays at the defaults, so the save below writes the adopted
-        // values out through the normal merge path.
-        var migrated = legacy is not null && (!machineFileLoaded || !roamingFileLoaded);
-        _baseMachineSettings = migrated
-            ? new MachineAppSettings()
-            : JsonSettingsFile.Clone(Settings.Machine);
-        _baseRoamingSettings = migrated
-            ? new RoamingAppSettings()
-            : JsonSettingsFile.Clone(Settings.Roaming);
+        // along and make every change look unchanged.
+        _baseMachineSettings = JsonSettingsFile.Clone(Settings.Machine);
+        _baseRoamingSettings = JsonSettingsFile.Clone(Settings.Roaming);
         _lastSavedMachineJson = JsonSettingsFile.Serialize(_baseMachineSettings);
         _lastSavedRoamingPath = CurrentRoamingSettingsPath();
         _lastSavedRoamingJson = JsonSettingsFile.Serialize(_baseRoamingSettings);
-
-        if (migrated && SaveIfChanged())
-            TryDeleteLegacySettings();
-    }
-
-    /// <summary>
-    /// Reads the single settings file used before the machine/roaming split.
-    /// Returns null when there is nothing to migrate.
-    /// </summary>
-    private static AppSettings? TryLoadLegacySettings() =>
-        JsonSettingsFile.TryLoad(LegacySettingsPath, out AppSettings legacy) ? legacy : null;
-
-    private static void TryDeleteLegacySettings()
-    {
-        try
-        {
-            if (File.Exists(LegacySettingsPath))
-                File.Delete(LegacySettingsPath);
-        }
-        catch
-        {
-            // Leaving it behind is harmless: it is only read when the new files
-            // are missing, and they exist now.
-        }
     }
 
     public string MachineSettingsPath { get; }

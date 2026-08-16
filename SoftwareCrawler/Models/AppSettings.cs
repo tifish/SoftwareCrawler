@@ -50,9 +50,6 @@ public class RoamingAppSettings
 /// nothing to keep in step: adding a setting means adding it to one of the two
 /// classes above and forwarding it here, and forgetting the second half is a
 /// compile error at the call site rather than a value that silently vanishes.
-///
-/// The flat shape is also what the pre-split Settings.json had, so deserializing
-/// one of those into this type still lands every value in the right half.
 /// </summary>
 public class AppSettings
 {

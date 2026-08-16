@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Text.Json;
 using JeekTools;
 using SoftwareCrawler.Models;
 
@@ -70,32 +69,6 @@ public class AppSettingsShapeTests
             Assert.Equal(value, stored.GetValue(owner));
             Assert.Equal(value, forwarded.GetValue(settings));
         }
-    }
-
-    /// <summary>
-    /// Versions before the split kept one flat Settings.json. Reading one has to
-    /// land every value in the half that now owns it.
-    /// </summary>
-    [Fact]
-    public void ALegacyFlatFileLandsInBothHalves()
-    {
-        var json = """
-            {
-              "Proxy": "http://127.0.0.1:1080",
-              "DefaultDownloadDirectory": "D:\\Downloads",
-              "DownloadRetryCount": 9,
-              "DownloadTimeout": 4242,
-              "CheckUpdateOnStartup": false
-            }
-            """;
-
-        var legacy = JsonSerializer.Deserialize<AppSettings>(json, JsonSettingsFile.JsonOptions)!;
-
-        Assert.Equal("http://127.0.0.1:1080", legacy.Machine.Proxy);
-        Assert.Equal(@"D:\Downloads", legacy.Machine.DefaultDownloadDirectory);
-        Assert.Equal(9, legacy.Roaming.DownloadRetryCount);
-        Assert.Equal(4242, legacy.Roaming.DownloadTimeout);
-        Assert.False(legacy.Roaming.CheckUpdateOnStartup);
     }
 
     /// <summary>Neither half may be written into the other's file.</summary>
