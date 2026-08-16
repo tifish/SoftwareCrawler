@@ -69,6 +69,14 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     }
 
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// This machine: whether the item uses the configured proxy. Off by default;
+    /// turn on to send this item through Settings.Proxy.
+    /// </summary>
+    [DisplayName("Use proxy")]
+    public bool UseProxy { get; set; }
+
     public string Name { get; set; } = string.Empty;
     public string WebPage { get; set; } = string.Empty;
 
@@ -167,6 +175,18 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     /// </summary>
     public bool DirectDownload { get; set; }
 
+    /// <summary>
+    /// The proxy string this item should use right now: the machine setting when
+    /// <see cref="UseProxy"/> is on, otherwise empty (go direct).
+    /// </summary>
+    [Browsable(false)]
+    public string EffectiveProxy => ResolveProxy(UseProxy, Settings.Proxy);
+
+    internal static string ResolveProxy(bool useProxy, string? configuredProxy) =>
+        useProxy && !string.IsNullOrWhiteSpace(configuredProxy)
+            ? configuredProxy.Trim()
+            : "";
+
     private string _errorMessage = string.Empty;
 
     [NonSerialized]
@@ -242,7 +262,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     /// <summary>Everything that is this machine's business alone.</summary>
     public static readonly List<PropertyInfo> ExtraProperties =
     [
-        .. new[] { nameof(Enabled), nameof(DownloadDirectory), nameof(DownloadDirectory2) }
+        .. new[]
+        {
+            nameof(Enabled),
+            nameof(DownloadDirectory),
+            nameof(DownloadDirectory2),
+            nameof(UseProxy),
+        }
             .Select(name => typeof(SoftwareItem).GetProperty(name)!)
             .ToList(),
     ];

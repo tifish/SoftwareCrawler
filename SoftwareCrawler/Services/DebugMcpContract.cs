@@ -123,7 +123,7 @@ public static class DebugMcpContract
             ),
             Tool(
                 "software_list",
-                "List the loaded software items with their download status, progress, and error message.",
+                "List the loaded software items with their enabled/UseProxy flags, download status, progress, and error message.",
                 new()
                 {
                     ["filter"] = Prop("string", "Case-insensitive name filter."),

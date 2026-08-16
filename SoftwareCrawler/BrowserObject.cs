@@ -30,24 +30,45 @@ public class BrowserObject
     // Track frames for frame-specific script execution
     private readonly Dictionary<string, CoreWebView2Frame> _frames = new();
 
-    private string? _proxyServer;
+    private string _proxyServer = "";
+    private Control? _hostForm;
+    private CoreWebView2Environment? _environment;
+    private TaskCompletionSource<bool>? _browserProcessExited;
+
+    /// <summary>The <c>--proxy-server</c> argument the current WebView2 was created with.</summary>
+    public string CurrentProxy => _proxyServer;
 
     public async Task Init(Control? parentForm = null, string proxyServer = "")
     {
+        if (parentForm != null)
+            _hostForm = parentForm;
+
         _hasDownloadCancelled = false;
+        _proxyServer = proxyServer.Trim();
+        ResetRuntimeState();
 
-        _navigationCompletedTaskCompletionSource = null;
-        _downloadTaskCompletionSource = null;
+        Exception? lastError = null;
+        for (var attempt = 1; attempt <= 8; attempt++)
+        {
+            try
+            {
+                await CreateWebView2Async(_hostForm);
+                return;
+            }
+            catch (Exception ex) when (attempt < 8)
+            {
+                lastError = ex;
+                Log.ZLogWarning($"WebView2 create failed (attempt {attempt}): {ex.Message}");
+                await ShutdownAsync();
+                await Task.Delay(250 * attempt);
+            }
+        }
 
-        _currentNavigationId = 0;
-        Volatile.Write(ref _navigatedInPlaceTicks, 0);
-        Volatile.Write(ref _networkQuietSinceTicks, 0);
-        Volatile.Write(ref _loadEndedTicks, 0);
-        _mainFrameId = "";
+        throw lastError ?? new InvalidOperationException("WebView2 failed to start.");
+    }
 
-        _lastRespondTime = null;
-        _proxyServer = proxyServer;
-
+    private async Task CreateWebView2Async(Control? parentForm)
+    {
         var webView2 = new WebView2();
 
         if (parentForm != null)
@@ -70,9 +91,9 @@ public class BrowserObject
             // "--allow-running-insecure-content",
             // "--disable-popup-blocking",
         ];
-        if (!string.IsNullOrWhiteSpace(proxyServer))
+        if (!string.IsNullOrWhiteSpace(_proxyServer))
         {
-            args.Add($"--proxy-server={proxyServer}");
+            args.Add($"--proxy-server={_proxyServer}");
         }
 
         // Anchored to the executable, not the working directory: a scheduled task
@@ -80,11 +101,18 @@ public class BrowserObject
         // WebView2 profile - no cookies, no logins - than a manual start.
         UserDataFolder = Path.Combine(AppContext.BaseDirectory, "Cache");
 
+        var options = new CoreWebView2EnvironmentOptions(string.Join(" ", args), "zh-CN");
         var environment = await CoreWebView2Environment.CreateAsync(
             null,
             UserDataFolder,
-            new CoreWebView2EnvironmentOptions(string.Join(" ", args), "zh-CN")
+            options
         );
+        _environment = environment;
+        _browserProcessExited = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        environment.BrowserProcessExited += (_, _) => _browserProcessExited.TrySetResult(true);
+
         await WebView2.EnsureCoreWebView2Async(environment);
 
         // Configure settings
@@ -109,6 +137,68 @@ public class BrowserObject
         // Navigate to blank page
         WebView2.CoreWebView2.Navigate("about:blank");
         await Task.Delay(100); // Give it time to navigate
+    }
+
+    /// <summary>
+    /// Rebuilds WebView2 when the effective proxy changes. <c>--proxy-server</c>
+    /// is fixed at environment creation, so a different string means a new
+    /// environment on the same profile folder. The previous browser process
+    /// has to exit first or the folder stays locked.
+    /// </summary>
+    public async Task EnsureProxy(string proxyServer)
+    {
+        proxyServer = proxyServer.Trim();
+        if (
+            WebView2?.CoreWebView2 != null
+            && string.Equals(_proxyServer, proxyServer, StringComparison.OrdinalIgnoreCase)
+        )
+            return;
+
+        Log.ZLogInformation($"Switching WebView2 proxy from '{_proxyServer}' to '{proxyServer}'");
+        await ShutdownAsync();
+        await Init(_hostForm, proxyServer);
+    }
+
+    private void ResetRuntimeState()
+    {
+        _navigationCompletedTaskCompletionSource = null;
+        _downloadTaskCompletionSource = null;
+        _currentNavigationId = 0;
+        Volatile.Write(ref _navigatedInPlaceTicks, 0);
+        Volatile.Write(ref _networkQuietSinceTicks, 0);
+        Volatile.Write(ref _loadEndedTicks, 0);
+        _mainFrameId = "";
+        _lastRespondTime = null;
+        _currentDownloadOperation = null;
+        _frames.Clear();
+    }
+
+    private async Task ShutdownAsync()
+    {
+        var webView = WebView2;
+        WebView2 = null!;
+        ResetRuntimeState();
+
+        var exited = _browserProcessExited;
+        _browserProcessExited = null;
+        _environment = null;
+
+        webView?.Dispose();
+
+        if (exited != null)
+        {
+            try
+            {
+                await exited.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch (TimeoutException)
+            {
+                Log.ZLogWarning($"Timed out waiting for the WebView2 browser process to exit");
+            }
+        }
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
     }
 
     #region Load events

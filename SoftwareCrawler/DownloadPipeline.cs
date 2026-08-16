@@ -93,6 +93,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             if (_item.DirectDownload)
                 return await DirectDownloadOverHttp();
 
+            await Browser.EnsureProxy(_item.EffectiveProxy);
             await Browser.ResetToBlankPage();
 
             // Access download page.
@@ -161,8 +162,8 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             _item.Status = DownloadingStatus.WaitingForDownload;
 
             using var handler = new HttpClientHandler();
-            if (!string.IsNullOrWhiteSpace(Settings.Proxy))
-                handler.Proxy = new WebProxy(Settings.Proxy);
+            if (!string.IsNullOrWhiteSpace(_item.EffectiveProxy))
+                handler.Proxy = new WebProxy(_item.EffectiveProxy);
 
             using var client = new HttpClient(handler);
             client.Timeout = Timeout.InfiniteTimeSpan;

@@ -115,7 +115,7 @@ public partial class MainForm : Form
             using (new DownloadUIDisabler(this))
             {
                 var parentForm = new Form();
-                await Browser.Init(parentForm, Settings.Proxy);
+                await Browser.Init(parentForm);
                 parentForm.Size = new Size(1280, 720);
 
                 BringToFront();

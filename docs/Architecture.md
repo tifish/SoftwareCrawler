@@ -68,7 +68,7 @@ SoftwareCrawler.slnx
 - **`DataProperties`（配方，全机器共享，进版本库）**
   `Name` `WebPage` `XPathOrScript1..5` `Frames` `WaitSecondsBeforeClick` `StartDownloadTimeout` `FilePatternToDeleteBeforeDownload` `ExtractAfterDownload` `ExtractToRoot` `FilePatternToDeleteBeforeExtractionAndExtractOnly` `DirectDownload`
 - **`ExtraProperties`（本机私有，不进版本库）**
-  `Enabled` `DownloadDirectory` `DownloadDirectory2`
+  `Enabled` `DownloadDirectory` `DownloadDirectory2` `UseProxy`
 - **`[NonSerialized]` 运行时状态**：`Status` `Progress` `ErrorMessage`，通过 `INotifyPropertyChanged` 推给表格。setter 会检查当前 `SynchronizationContext`，必要时 `Post` 回 UI 线程，所以后台线程改状态是安全的。
 
 关键语义：
@@ -129,7 +129,7 @@ flowchart TD
 - **等待模型**：导航完成和下载完成各用一个 `TaskCompletionSource`，`PrepareLoadEvents()` 在每次动作前重建它们，`WithTimeout` 提供超时。所以"等待"永远不会跨动作串味。
 - **"加载完"由四个信号合成**，见下节"页面就绪判定"：`DOMContentLoaded`（文档可脚本化，最早）、`NavigationCompleted`（load 事件，成功失败都算）、DevTools `Page.lifecycleEvent` 的 `networkAlmostIdle`（网络静默）、`SourceChanged` 且非新文档（原地替换）。
 - **事件按导航编号过滤**：`NavigationStarting` 记下 `NavigationId`，`PrepareLoadEvents()` 把它清零；只有编号对得上的 `DOMContentLoaded` / `NavigationCompleted` 才算数。点击导航走时旧导航会以 `ConnectionAborted` 结束，不过滤的话那个中止会被当成"要等的页面加载好了"，下一步就跑在旧页面上。
-- **启动参数**：关闭 SafeBrowsing 下载保护与下载气泡等 UI（`--safebrowsing-disable-download-protection` 等），否则自动下载会被拦。用户数据目录固定为**可执行文件目录**下的 `Cache`（不是当前工作目录——计划任务的 cwd 是 system32，那样会得到另一份 profile），代理来自设置。
+- **启动参数**：关闭 SafeBrowsing 下载保护与下载气泡等 UI（`--safebrowsing-disable-download-protection` 等），否则自动下载会被拦。用户数据目录固定为**可执行文件目录**下的 `Cache`（不是当前工作目录——计划任务的 cwd 是 system32，那样会得到另一份 profile）。`--proxy-server` 来自本机 `Settings.Proxy`，但只在该条目的 `UseProxy`（`ExtraProperties`，默认关）为真时套上。这条参数在环境创建时定死，所以换条目导致有效代理变化时会拆掉 WebView2、等浏览器进程退出后再在同一 `Cache` 上重建环境；`DirectDownload` 不重建浏览器，只决定 `HttpClient` 要不要 `WebProxy`。
 - **弹窗**：`NewWindowRequested` 一律拦下，在当前窗口导航过去——爬取流程里不能出现第二个窗口。
 - **取文件时间**：走 DevTools Protocol 订阅 `Network.responseReceived`，解析 `Last-Modified` 存进 `_lastRespondTime`，`DownloadStarting` 时作为 `DownloadItem.EndTime`。JSON 解析放到线程池，否则繁忙页面会把 UI 卡住。
 - **下载拦截**：`DownloadStarting` 里设 `e.Handled = true` 抑制默认 UI，并把 `ResultFilePath` 改成流水线指定的路径；进度事件按 200ms 节流；文件名里的 ` (1)` 后缀会被去掉。
@@ -179,7 +179,7 @@ flowchart TD
 | --- | --- | --- |
 | `Templates/Software.tab` | 爬取配方（`DataProperties`） | 入库，随发布包分发 |
 | `Config/Software.tab` | 正式版实际读写的清单 | 不入库（首次运行从模板复制） |
-| `Config/LocalSettings.tab` | 本机的 `Enabled` 与下载目录（`ExtraProperties`） | 不入库，**世上只有这一份** |
+| `Config/LocalSettings.tab` | 本机的 `Enabled`、下载目录与 `UseProxy`（`ExtraProperties`） | 不入库，**世上只有这一份** |
 
 - **Debug 构建直接读写模板本身**（`SoftwareManager.cs:37`），所以开发时改配方即可提交；正式版永远不碰模板，升级只刷新模板，用户的 `Config/Software.tab` 不受影响（`SeedFromTemplate` 只在文件缺失时填补）。
 - 两个文件**按 `Name` 关联**，不是按行号。因此增删行、拖动排序都不会让本机设置错位。

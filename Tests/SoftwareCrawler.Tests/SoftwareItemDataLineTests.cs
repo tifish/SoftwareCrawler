@@ -29,6 +29,7 @@ public class SoftwareItemDataLineTests
             ExtractToRoot = true,
             FilePatternToDeleteBeforeExtractionAndExtractOnly = "*.dll",
             DirectDownload = true,
+            UseProxy = true,
         };
 
     /// <summary>
@@ -60,6 +61,38 @@ public class SoftwareItemDataLineTests
 
         foreach (var property in SoftwareItem.ExtraProperties)
             Assert.Equal(property.GetValue(item), property.GetValue(restored));
+    }
+
+    /// <summary>
+    /// UseProxy was appended to ExtraProperties. Files written before it
+    /// existed have one fewer column and must stay opted out.
+    /// </summary>
+    [Fact]
+    public void AMissingUseProxyColumnKeepsTheDefaultOff()
+    {
+        var item = new SoftwareItem();
+        item.FromDataLine("true\tD:\\a\tD:\\b", SoftwareItem.ExtraProperties);
+
+        Assert.True(item.Enabled);
+        Assert.Equal(@"D:\a", item.DownloadDirectory);
+        Assert.Equal(@"D:\b", item.DownloadDirectory2);
+        Assert.False(item.UseProxy);
+    }
+
+    [Theory]
+    [InlineData(true, "http://127.0.0.1:1080", "http://127.0.0.1:1080")]
+    [InlineData(true, "  http://127.0.0.1:1080  ", "http://127.0.0.1:1080")]
+    [InlineData(true, "", "")]
+    [InlineData(true, "   ", "")]
+    [InlineData(false, "http://127.0.0.1:1080", "")]
+    [InlineData(false, "", "")]
+    public void ResolveProxyUsesTheSettingOnlyWhenTheItemOptsIn(
+        bool useProxy,
+        string configured,
+        string expected
+    )
+    {
+        Assert.Equal(expected, SoftwareItem.ResolveProxy(useProxy, configured));
     }
 
     /// <summary>A file written before a column existed must still load.</summary>
