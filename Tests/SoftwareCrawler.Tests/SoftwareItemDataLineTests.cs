@@ -25,9 +25,9 @@ public class SoftwareItemDataLineTests
             DownloadDirectory = @"D:\Downloads\Example",
             DownloadDirectory2 = @"\\server\share\Example",
             FilePatternToDeleteBeforeDownload = "*.exe",
+            FilePatternToDeleteBeforeExtraction = "*.dll",
             ExtractAfterDownload = true,
             ExtractToRoot = true,
-            FilePatternToDeleteBeforeExtractionAndExtractOnly = "*.dll",
             DirectDownload = true,
             UseProxy = true,
         };
@@ -101,7 +101,8 @@ public class SoftwareItemDataLineTests
     {
         // Name, WebPage, XPathOrScript1..5, Frames, WaitSecondsBeforeClick,
         // StartDownloadTimeout, FilePatternToDeleteBeforeDownload,
-        // ExtractAfterDownload - and nothing after it.
+        // FilePatternToDeleteBeforeExtraction, ExtractAfterDownload -
+        // and nothing after it.
         var line = string.Join(
             '\t',
             "Example",
@@ -115,6 +116,7 @@ public class SoftwareItemDataLineTests
             "",
             "",
             "*.exe",
+            "*.dll",
             "true"
         );
 
@@ -122,9 +124,9 @@ public class SoftwareItemDataLineTests
         item.FromDataLine(line, SoftwareItem.DataProperties);
 
         Assert.Equal("Example", item.Name);
+        Assert.Equal("*.dll", item.FilePatternToDeleteBeforeExtraction);
         Assert.True(item.ExtractAfterDownload);
         Assert.False(item.ExtractToRoot);
-        Assert.Equal("", item.FilePatternToDeleteBeforeExtractionAndExtractOnly);
         Assert.False(item.DirectDownload);
     }
 
@@ -345,9 +347,45 @@ public class SoftwareItemDataLineTests
 
         Assert.Equal("Example", item.Name);
         Assert.True(item.ExtractAfterDownload);
-        Assert.Equal("*.dll", item.FilePatternToDeleteBeforeExtractionAndExtractOnly);
+        Assert.Equal("*.dll", item.FilePatternToDeleteBeforeExtraction);
         Assert.True(item.DirectDownload);
         Assert.True(item.ExtractToRoot);
+    }
+
+    /// <summary>
+    /// Files that still carry the extract-pattern column after ExtractToRoot
+    /// (and under its old ExtractOnly name) are read with that layout.
+    /// </summary>
+    [Fact]
+    public void TheLayoutThatHadTheExtractPatternAfterExtractToRootStillLoads()
+    {
+        var line = string.Join(
+            '\t',
+            "Example",
+            "https://example.com",
+            "//a",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "*.exe",
+            "true",
+            "true",
+            "*.dll",
+            "true"
+        );
+
+        var item = new SoftwareItem();
+        item.FromDataLine(line, SoftwareItem.ExtractPatternAfterExtractToRootDataProperties);
+
+        Assert.Equal("Example", item.Name);
+        Assert.True(item.ExtractAfterDownload);
+        Assert.True(item.ExtractToRoot);
+        Assert.Equal("*.dll", item.FilePatternToDeleteBeforeExtraction);
+        Assert.True(item.DirectDownload);
     }
 
     [Fact]
@@ -374,6 +412,52 @@ public class SoftwareItemDataLineTests
     }
 
     [Fact]
+    public void AnExtractPatternAfterExtractToRootHeaderResolvesToThatLayout()
+    {
+        var header = SoftwareItem.GetDataHeaderLine(
+            SoftwareItem.ExtractPatternAfterExtractToRootDataProperties
+        );
+
+        Assert.Same(
+            SoftwareItem.ExtractPatternAfterExtractToRootDataProperties,
+            SoftwareItem.ResolveDataProperties(header)
+        );
+    }
+
+    /// <summary>
+    /// Real files from the previous version still use the old column name.
+    /// Detection must not depend on reconstructing the header from the
+    /// current property name.
+    /// </summary>
+    [Fact]
+    public void TheOldExtractOnlyColumnNameAfterExtractToRootStillSelectsThatLayout()
+    {
+        var header = string.Join(
+            '\t',
+            "Name",
+            "WebPage",
+            "XPathOrScript1",
+            "XPathOrScript2",
+            "XPathOrScript3",
+            "XPathOrScript4",
+            "XPathOrScript5",
+            "Frames",
+            "WaitSecondsBeforeClick",
+            "StartDownloadTimeout",
+            "FilePatternToDeleteBeforeDownload",
+            "ExtractAfterDownload",
+            "ExtractToRoot",
+            "FilePatternToDeleteBeforeExtractionAndExtractOnly",
+            "DirectDownload"
+        );
+
+        Assert.Same(
+            SoftwareItem.ExtractPatternAfterExtractToRootDataProperties,
+            SoftwareItem.ResolveDataProperties(header)
+        );
+    }
+
+    [Fact]
     public void AnEnabledFirstHeaderResolvesToTheLegacyLayout()
     {
         var header = SoftwareItem.GetDataHeaderLine(SoftwareItem.LegacyDataProperties);
@@ -389,6 +473,34 @@ public class SoftwareItemDataLineTests
             SoftwareItem
                 .ExtractToRootLastDataProperties.Select(property => property.Name)
                 .Where(name => name != nameof(SoftwareItem.ExtractToRoot))
+        );
+
+        Assert.Same(
+            SoftwareItem.ExtractToRootLastDataProperties,
+            SoftwareItem.ResolveDataProperties(header)
+        );
+    }
+
+    [Fact]
+    public void TheOldExtractOnlyColumnNameWithExtractToRootLastStillSelectsThatLayout()
+    {
+        var header = string.Join(
+            '\t',
+            "Name",
+            "WebPage",
+            "XPathOrScript1",
+            "XPathOrScript2",
+            "XPathOrScript3",
+            "XPathOrScript4",
+            "XPathOrScript5",
+            "Frames",
+            "WaitSecondsBeforeClick",
+            "StartDownloadTimeout",
+            "FilePatternToDeleteBeforeDownload",
+            "ExtractAfterDownload",
+            "FilePatternToDeleteBeforeExtractionAndExtractOnly",
+            "DirectDownload",
+            "ExtractToRoot"
         );
 
         Assert.Same(

@@ -66,7 +66,7 @@ SoftwareCrawler.slnx
 一行清单就是一个 `SoftwareItem`。字段分成三组，**这个分组是整个配置体系的基础**：
 
 - **`DataProperties`（配方，全机器共享，进版本库）**
-  `Name` `WebPage` `XPathOrScript1..5` `Frames` `WaitSecondsBeforeClick` `StartDownloadTimeout` `FilePatternToDeleteBeforeDownload` `ExtractAfterDownload` `ExtractToRoot` `FilePatternToDeleteBeforeExtractionAndExtractOnly` `DirectDownload`
+  `Name` `WebPage` `XPathOrScript1..5` `Frames` `WaitSecondsBeforeClick` `StartDownloadTimeout` `FilePatternToDeleteBeforeDownload` `FilePatternToDeleteBeforeExtraction` `ExtractAfterDownload` `ExtractToRoot` `DirectDownload`
 - **`ExtraProperties`（本机私有，不进版本库）**
   `Enabled` `DownloadDirectory` `DownloadDirectory2` `UseProxy`
 - **`[NonSerialized]` 运行时状态**：`Status` `Progress` `ErrorMessage`，通过 `INotifyPropertyChanged` 推给表格。setter 会检查当前 `SynchronizationContext`，必要时 `Post` 回 UI 线程，所以后台线程改状态是安全的。
@@ -114,7 +114,7 @@ flowchart TD
 
 > **不要把在途文件写进目标目录。** 看上去可以省掉一次跨卷复制（3GB 的包写两遍确实肉疼），但**目标目录的性质是不确定的**：可能是 UNC 共享（边下边写等于每个写操作过网络，抖一下整个传输就没了），也可能正被同步工具监视（不完整的文件会被反复同步、中断的残留会传播到每台设备）。程序无法可靠判断这两种情况，而"只有完整文件才出现在目标目录"这一条对三种情况都成立。这个取舍试过一次并撤回了，别再试第二次。
 
-扩展点：目标目录下若存在 `AfterDownload.cmd`/`.ps1` 或 `AfterExtract.cmd`/`.ps1`，会以文件路径为参数同步调用（`.cmd` 优先）。解压用随程序附带的 `bin/7-Zip/7z.exe`，默认用 `x -r` 保留压缩包中的目录结构；只有配方显式设置 `ExtractToRoot` 时才用 `e -r` 展平到根目录，并清理空子目录。每个下载完成的归档都会写入 `.softwarecrawler-download-metadata.json`（按软件名保存源 URL、文件名、大小和 `Last-Modified`）；一旦该项元数据存在，后续更新判断只比较元数据，不再比较保留在目录中的归档。归档只有在本次实际执行并成功完成了解压或上述任一脚本后才删除，脚本文件仅仅存在不构成删除条件；没有成功执行任何处理时保留归档本体。
+扩展点：目标目录下若存在 `AfterDownload.cmd`/`.ps1` 或 `AfterExtract.cmd`/`.ps1`，会以文件路径为参数同步调用（`.cmd` 优先）。解压用随程序附带的 `bin/7-Zip/7z.exe`，默认用 `x -r` 保留压缩包中的目录结构；只有配方显式设置 `ExtractToRoot` 时才用 `e -r` 展平到根目录，并清理空子目录。若配置了 `FilePatternToDeleteBeforeExtraction`，解压前先按该模式删除目标目录顶层的旧文件——抽出的安装包文件名常带版本号，否则新旧会并存。每个下载完成的归档都会写入 `.softwarecrawler-download-metadata.json`（按软件名保存源 URL、文件名、大小和 `Last-Modified`）；一旦该项元数据存在，后续更新判断只比较元数据，不再比较保留在目录中的归档。归档只有在本次实际执行并成功完成了解压或上述任一脚本后才删除，脚本文件仅仅存在不构成删除条件；没有成功执行任何处理时保留归档本体。
 
 这两类外部进程都**不显示控制台窗口、检查退出码、失败时把输出记进日志**（`RunProcessAsync`）。失败即视为该项失败且不重试——文件已经在盘上，重下没有意义；状态停在 `Extracting` 或 `RunningEventScript`，错误信息里能看出是哪一步。7-Zip 的退出码 1 是非致命警告，按成功处理，2 及以上才算失败。
 
@@ -186,14 +186,15 @@ flowchart TD
 
 ### 7.2 历史布局兼容
 
-`SoftwareManager` 能读四种历史形态，读进来后按当前布局重写一次即完成迁移：
+`SoftwareManager` 能读五种历史形态，读进来后按当前布局重写一次即完成迁移：
 
 - `Software.tab` 首列是 `Enabled` 的旧布局（`LegacyDataProperties`）；
+- `Software.tab` 里 `FilePatternToDeleteBeforeExtractionAndExtractOnly` 还在 `ExtractToRoot` 后面的布局（`ExtractPatternAfterExtractToRootDataProperties`）；
 - `Software.tab` 里 `ExtractToRoot` 还在最后一列、或尚不存在该列的布局（`ExtractToRootLastDataProperties`）；
 - `LocalSettings.tab` 有 `Name` 列但还没有 `Enabled` 列；
 - 更早的、没有 `Name` 列、靠行号对齐的版本。
 
-判定依据是表头（`ResolveDataProperties` / `ParseLocalSettings`），都容忍 BOM。当前布局把 `ExtractToRoot` 紧挨在 `ExtractAfterDownload` 后面；表头里这两列不相邻就按旧列序读。另外 `FromDataLine` 允许列数少于属性数——旧版本写的文件缺少新增的尾列时，这些属性取默认值。
+判定依据是表头（`ResolveDataProperties` / `ParseLocalSettings`），都容忍 BOM。当前布局把 `FilePatternToDeleteBeforeExtraction` 紧挨在 `ExtractAfterDownload` 前面；若表头仍是旧列名且 `ExtractAfterDownload` 与 `ExtractToRoot` 相邻，按上一版列序读；这两列也不相邻则按 `ExtractToRoot` 在末尾的列序读。另外 `FromDataLine` 允许列数少于属性数——旧版本写的文件缺少新增的尾列时，这些属性取默认值。
 
 ### 7.3 孤儿设置的保护
 

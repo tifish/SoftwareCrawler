@@ -1203,9 +1203,8 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
 
         var archiveDir = Path.GetDirectoryName(archiveFile)!;
         // Older or hand-edited recipes can deserialize an empty optional column
-        // as null. Treat it as no filter before passing it to Directory.GetFiles
-        // or the 7-Zip command line.
-        var pattern = _item.FilePatternToDeleteBeforeExtractionAndExtractOnly ?? string.Empty;
+        // as null. Treat it as no filter before passing it to Directory.GetFiles.
+        var pattern = _item.FilePatternToDeleteBeforeExtraction ?? string.Empty;
 
         if (!string.IsNullOrWhiteSpace(pattern))
             await Task.Run(() =>
@@ -1217,7 +1216,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         var extractCommand = _item.ExtractToRoot ? "e" : "x";
         var exitCode = await RunProcessAsync(
             SevenZipPath,
-            $@"{extractCommand} -y -o""{archiveDir}"" ""{archiveFile}"" {pattern} -r",
+            $@"{extractCommand} -y -o""{archiveDir}"" ""{archiveFile}"" -r",
             archiveDir,
             $"7-Zip extracting {Path.GetFileName(archiveFile)}"
         );

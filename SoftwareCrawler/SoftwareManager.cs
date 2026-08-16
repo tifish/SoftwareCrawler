@@ -142,6 +142,10 @@ public static class SoftwareManager
             Log.ZLogInformation(
                 $"Reading {softwarePath} in the layout that still had the Enabled column"
             );
+        else if (dataProperties == SoftwareItem.ExtractPatternAfterExtractToRootDataProperties)
+            Log.ZLogInformation(
+                $"Reading {softwarePath} in the layout that still had the extract pattern after ExtractToRoot"
+            );
         else if (dataProperties == SoftwareItem.ExtractToRootLastDataProperties)
             Log.ZLogInformation(
                 $"Reading {softwarePath} in the layout that still had ExtractToRoot last"

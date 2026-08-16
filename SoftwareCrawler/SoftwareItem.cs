@@ -158,6 +158,14 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     }
     public string DownloadDirectory2 { get; set; } = string.Empty;
     public string FilePatternToDeleteBeforeDownload { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Glob of files to delete from the download directory immediately before
+    /// extraction, so a versioned payload from last time does not sit beside
+    /// the new one.
+    /// </summary>
+    public string FilePatternToDeleteBeforeExtraction { get; set; } = string.Empty;
+
     public bool ExtractAfterDownload { get; set; }
 
     /// <summary>
@@ -165,8 +173,6 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     /// preserving the directory structure stored in the archive.
     /// </summary>
     public bool ExtractToRoot { get; set; }
-
-    public string FilePatternToDeleteBeforeExtractionAndExtractOnly { get; set; } = string.Empty;
 
     /// <summary>
     /// Download WebPage directly over HTTP instead of navigating the embedded browser.
@@ -250,9 +256,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             nameof(WaitSecondsBeforeClick),
             nameof(StartDownloadTimeout),
             nameof(FilePatternToDeleteBeforeDownload),
+            nameof(FilePatternToDeleteBeforeExtraction),
             nameof(ExtractAfterDownload),
             nameof(ExtractToRoot),
-            nameof(FilePatternToDeleteBeforeExtractionAndExtractOnly),
             nameof(DirectDownload),
         }
             .Select(name => typeof(SoftwareItem).GetProperty(name)!)
@@ -268,6 +274,36 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             nameof(DownloadDirectory),
             nameof(DownloadDirectory2),
             nameof(UseProxy),
+        }
+            .Select(name => typeof(SoftwareItem).GetProperty(name)!)
+            .ToList(),
+    ];
+
+    /// <summary>
+    /// The shared-column order while FilePatternToDeleteBeforeExtraction
+    /// (then named FilePatternToDeleteBeforeExtractionAndExtractOnly) still
+    /// sat after ExtractToRoot. Files written then are read with this list;
+    /// the next save rewrites them in the current order.
+    /// </summary>
+    public static readonly List<PropertyInfo> ExtractPatternAfterExtractToRootDataProperties =
+    [
+        .. new[]
+        {
+            nameof(Name),
+            nameof(WebPage),
+            nameof(XPathOrScript1),
+            nameof(XPathOrScript2),
+            nameof(XPathOrScript3),
+            nameof(XPathOrScript4),
+            nameof(XPathOrScript5),
+            nameof(Frames),
+            nameof(WaitSecondsBeforeClick),
+            nameof(StartDownloadTimeout),
+            nameof(FilePatternToDeleteBeforeDownload),
+            nameof(ExtractAfterDownload),
+            nameof(ExtractToRoot),
+            nameof(FilePatternToDeleteBeforeExtraction),
+            nameof(DirectDownload),
         }
             .Select(name => typeof(SoftwareItem).GetProperty(name)!)
             .ToList(),
@@ -294,7 +330,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             nameof(StartDownloadTimeout),
             nameof(FilePatternToDeleteBeforeDownload),
             nameof(ExtractAfterDownload),
-            nameof(FilePatternToDeleteBeforeExtractionAndExtractOnly),
+            nameof(FilePatternToDeleteBeforeExtraction),
             nameof(DirectDownload),
             nameof(ExtractToRoot),
         }
@@ -341,8 +377,20 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
         var extractAfter = Array.IndexOf(columns, nameof(ExtractAfterDownload));
         var extractToRoot = Array.IndexOf(columns, nameof(ExtractToRoot));
-        if (extractAfter >= 0 && extractToRoot == extractAfter + 1)
+        var extractPattern = Array.IndexOf(columns, nameof(FilePatternToDeleteBeforeExtraction));
+
+        // Current: the delete-before-extraction column sits immediately
+        // before ExtractAfterDownload. Check this first: ExtractToRoot is
+        // still adjacent to ExtractAfterDownload, which is also true of
+        // the previous layout.
+        if (extractPattern >= 0 && extractAfter == extractPattern + 1)
             return DataProperties;
+
+        // Previous current: ExtractToRoot sits immediately after
+        // ExtractAfterDownload, and the extract-pattern column (under its
+        // old name, or missing) is not in front of ExtractAfterDownload.
+        if (extractAfter >= 0 && extractToRoot == extractAfter + 1)
+            return ExtractPatternAfterExtractToRootDataProperties;
 
         return ExtractToRootLastDataProperties;
     }
