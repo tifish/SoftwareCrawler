@@ -66,7 +66,7 @@ SoftwareCrawler.slnx
 一行清单就是一个 `SoftwareItem`。字段分成三组，**这个分组是整个配置体系的基础**：
 
 - **`DataProperties`（配方，全机器共享，进版本库）**
-  `Name` `WebPage` `XPathOrScript1..5` `Frames` `WaitSecondsBeforeClick` `StartDownloadTimeout` `FilePatternToDeleteBeforeDownload` `ExtractAfterDownload` `FilePatternToDeleteBeforeExtractionAndExtractOnly` `DirectDownload` `ExtractToRoot`
+  `Name` `WebPage` `XPathOrScript1..5` `Frames` `WaitSecondsBeforeClick` `StartDownloadTimeout` `FilePatternToDeleteBeforeDownload` `ExtractAfterDownload` `ExtractToRoot` `FilePatternToDeleteBeforeExtractionAndExtractOnly` `DirectDownload`
 - **`ExtraProperties`（本机私有，不进版本库）**
   `Enabled` `DownloadDirectory` `DownloadDirectory2`
 - **`[NonSerialized]` 运行时状态**：`Status` `Progress` `ErrorMessage`，通过 `INotifyPropertyChanged` 推给表格。setter 会检查当前 `SynchronizationContext`，必要时 `Post` 回 UI 线程，所以后台线程改状态是安全的。
@@ -186,13 +186,14 @@ flowchart TD
 
 ### 7.2 历史布局兼容
 
-`SoftwareManager` 能读三种历史形态，读进来后按当前布局重写一次即完成迁移：
+`SoftwareManager` 能读四种历史形态，读进来后按当前布局重写一次即完成迁移：
 
 - `Software.tab` 首列是 `Enabled` 的旧布局（`LegacyDataProperties`）；
+- `Software.tab` 里 `ExtractToRoot` 还在最后一列、或尚不存在该列的布局（`ExtractToRootLastDataProperties`）；
 - `LocalSettings.tab` 有 `Name` 列但还没有 `Enabled` 列；
 - 更早的、没有 `Name` 列、靠行号对齐的版本。
 
-判定依据是表头首列（`IsLegacyDataHeader` / `ParseLocalSettings`），都容忍 BOM。另外 `FromDataLine` 允许列数少于属性数——旧版本写的文件缺少新增的尾列时，这些属性取默认值。
+判定依据是表头（`ResolveDataProperties` / `ParseLocalSettings`），都容忍 BOM。当前布局把 `ExtractToRoot` 紧挨在 `ExtractAfterDownload` 后面；表头里这两列不相邻就按旧列序读。另外 `FromDataLine` 允许列数少于属性数——旧版本写的文件缺少新增的尾列时，这些属性取默认值。
 
 ### 7.3 孤儿设置的保护
 
@@ -282,7 +283,7 @@ Claude Code ──stdio──> bin/SoftwareCrawlerMcp.exe ──命名管道 JSO
 
 | 想做的事 | 要动的地方 |
 | --- | --- |
-| 给配方加一个字段 | `SoftwareItem` 属性 + `DataProperties`；旧文件靠"列数可少于属性数"自动兼容，无需迁移代码 |
+| 给配方加一个字段 | `SoftwareItem` 属性 + `DataProperties`；旧文件靠"列数可少于属性数"自动兼容，无需迁移代码。插到中间而不是末尾时，还要加一份历史列序并在 `ResolveDataProperties` 里按表头识别 |
 | 加一个本机私有字段 | `SoftwareItem` 属性 + `ExtraProperties`；同时确认 `LegacyExtraProperties` 的读取路径仍成立 |
 | 加一个设置项 | `MachineAppSettings` 或 `RoamingAppSettings` 二选一 + `AppSettings` 加一行转发（+ 需要范围限制就写进 `Normalize*`）→ `SettingsForm` 加控件 |
 | 支持一种新的下载方式 | 在 `DownloadPipeline` 里复用 `OnBeginDownloadHandler` / `Succeeded` 这条决策与落盘链路（`DirectDownload` 就是这么接的） |

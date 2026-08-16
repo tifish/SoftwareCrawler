@@ -151,6 +151,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public string DownloadDirectory2 { get; set; } = string.Empty;
     public string FilePatternToDeleteBeforeDownload { get; set; } = string.Empty;
     public bool ExtractAfterDownload { get; set; }
+
+    /// <summary>
+    /// Extract archive entries directly into the download directory instead of
+    /// preserving the directory structure stored in the archive.
+    /// </summary>
+    public bool ExtractToRoot { get; set; }
+
     public string FilePatternToDeleteBeforeExtractionAndExtractOnly { get; set; } = string.Empty;
 
     /// <summary>
@@ -159,12 +166,6 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     /// but allow plain HTTP clients.
     /// </summary>
     public bool DirectDownload { get; set; }
-
-    /// <summary>
-    /// Extract archive entries directly into the download directory instead of
-    /// preserving the directory structure stored in the archive.
-    /// </summary>
-    public bool ExtractToRoot { get; set; }
 
     private string _errorMessage = string.Empty;
 
@@ -230,9 +231,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             nameof(StartDownloadTimeout),
             nameof(FilePatternToDeleteBeforeDownload),
             nameof(ExtractAfterDownload),
+            nameof(ExtractToRoot),
             nameof(FilePatternToDeleteBeforeExtractionAndExtractOnly),
             nameof(DirectDownload),
-            nameof(ExtractToRoot),
         }
             .Select(name => typeof(SoftwareItem).GetProperty(name)!)
             .ToList(),
@@ -247,6 +248,35 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     ];
 
     /// <summary>
+    /// The shared-column order while ExtractToRoot was still the last field.
+    /// Files written then (and files written before that column existed) are
+    /// read with this list; the next save rewrites them in the current order.
+    /// </summary>
+    public static readonly List<PropertyInfo> ExtractToRootLastDataProperties =
+    [
+        .. new[]
+        {
+            nameof(Name),
+            nameof(WebPage),
+            nameof(XPathOrScript1),
+            nameof(XPathOrScript2),
+            nameof(XPathOrScript3),
+            nameof(XPathOrScript4),
+            nameof(XPathOrScript5),
+            nameof(Frames),
+            nameof(WaitSecondsBeforeClick),
+            nameof(StartDownloadTimeout),
+            nameof(FilePatternToDeleteBeforeDownload),
+            nameof(ExtractAfterDownload),
+            nameof(FilePatternToDeleteBeforeExtractionAndExtractOnly),
+            nameof(DirectDownload),
+            nameof(ExtractToRoot),
+        }
+            .Select(name => typeof(SoftwareItem).GetProperty(name)!)
+            .ToList(),
+    ];
+
+    /// <summary>
     /// The layout of both files before Enabled moved out of the shared list.
     /// Kept so existing files still read correctly; the next save rewrites them
     /// in the current layout, after which these are only of historical interest.
@@ -254,7 +284,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public static readonly List<PropertyInfo> LegacyDataProperties =
     [
         typeof(SoftwareItem).GetProperty(nameof(Enabled))!,
-        .. DataProperties,
+        .. ExtractToRootLastDataProperties,
     ];
 
     /// <inheritdoc cref="LegacyDataProperties"/>
@@ -268,6 +298,27 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public static string GetDataHeaderLine(List<PropertyInfo> properties)
     {
         return string.Join('\t', properties.Select(prop => prop.Name));
+    }
+
+    /// <summary>
+    /// Picks the shared-column layout that matches how this file was written.
+    /// The next save always rewrites the current <see cref="DataProperties"/> order.
+    /// </summary>
+    public static List<PropertyInfo> ResolveDataProperties(string header)
+    {
+        if (string.IsNullOrEmpty(header))
+            return DataProperties;
+
+        var columns = header.TrimStart('\uFEFF').Split('\t');
+        if (columns[0] == nameof(Enabled))
+            return LegacyDataProperties;
+
+        var extractAfter = Array.IndexOf(columns, nameof(ExtractAfterDownload));
+        var extractToRoot = Array.IndexOf(columns, nameof(ExtractToRoot));
+        if (extractAfter >= 0 && extractToRoot == extractAfter + 1)
+            return DataProperties;
+
+        return ExtractToRootLastDataProperties;
     }
 
     public void FromDataLine(string line, List<PropertyInfo> properties)

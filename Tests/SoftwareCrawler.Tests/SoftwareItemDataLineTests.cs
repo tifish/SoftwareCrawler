@@ -26,9 +26,9 @@ public class SoftwareItemDataLineTests
             DownloadDirectory2 = @"\\server\share\Example",
             FilePatternToDeleteBeforeDownload = "*.exe",
             ExtractAfterDownload = true,
+            ExtractToRoot = true,
             FilePatternToDeleteBeforeExtractionAndExtractOnly = "*.dll",
             DirectDownload = true,
-            ExtractToRoot = true,
         };
 
     /// <summary>
@@ -90,9 +90,9 @@ public class SoftwareItemDataLineTests
 
         Assert.Equal("Example", item.Name);
         Assert.True(item.ExtractAfterDownload);
+        Assert.False(item.ExtractToRoot);
         Assert.Equal("", item.FilePatternToDeleteBeforeExtractionAndExtractOnly);
         Assert.False(item.DirectDownload);
-        Assert.False(item.ExtractToRoot);
     }
 
     [Fact]
@@ -279,6 +279,89 @@ public class SoftwareItemDataLineTests
         Assert.Equal("Example", item.Name);
         Assert.Equal("https://example.com", item.WebPage);
         Assert.Equal("//a", item.XPathOrScript1);
+    }
+
+    /// <summary>
+    /// Files that still carry ExtractToRoot after DirectDownload are read with
+    /// the layout they were written in.
+    /// </summary>
+    [Fact]
+    public void TheLayoutThatHadExtractToRootLastStillLoads()
+    {
+        var line = string.Join(
+            '\t',
+            "Example",
+            "https://example.com",
+            "//a",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "*.exe",
+            "true",
+            "*.dll",
+            "true",
+            "true"
+        );
+
+        var item = new SoftwareItem();
+        item.FromDataLine(line, SoftwareItem.ExtractToRootLastDataProperties);
+
+        Assert.Equal("Example", item.Name);
+        Assert.True(item.ExtractAfterDownload);
+        Assert.Equal("*.dll", item.FilePatternToDeleteBeforeExtractionAndExtractOnly);
+        Assert.True(item.DirectDownload);
+        Assert.True(item.ExtractToRoot);
+    }
+
+    [Fact]
+    public void TheCurrentHeaderResolvesToTheCurrentLayout()
+    {
+        var header = SoftwareItem.GetDataHeaderLine(SoftwareItem.DataProperties);
+
+        Assert.Same(SoftwareItem.DataProperties, SoftwareItem.ResolveDataProperties(header));
+        Assert.Same(
+            SoftwareItem.DataProperties,
+            SoftwareItem.ResolveDataProperties('\uFEFF' + header)
+        );
+    }
+
+    [Fact]
+    public void AnExtractToRootLastHeaderResolvesToThatLayout()
+    {
+        var header = SoftwareItem.GetDataHeaderLine(SoftwareItem.ExtractToRootLastDataProperties);
+
+        Assert.Same(
+            SoftwareItem.ExtractToRootLastDataProperties,
+            SoftwareItem.ResolveDataProperties(header)
+        );
+    }
+
+    [Fact]
+    public void AnEnabledFirstHeaderResolvesToTheLegacyLayout()
+    {
+        var header = SoftwareItem.GetDataHeaderLine(SoftwareItem.LegacyDataProperties);
+
+        Assert.Same(SoftwareItem.LegacyDataProperties, SoftwareItem.ResolveDataProperties(header));
+    }
+
+    [Fact]
+    public void AHeaderWrittenBeforeExtractToRootStillUsesTheOldColumnOrder()
+    {
+        var header = string.Join(
+            '\t',
+            SoftwareItem
+                .ExtractToRootLastDataProperties.Select(property => property.Name)
+                .Where(name => name != nameof(SoftwareItem.ExtractToRoot))
+        );
+
+        Assert.Same(
+            SoftwareItem.ExtractToRootLastDataProperties,
+            SoftwareItem.ResolveDataProperties(header)
+        );
     }
 
     [Fact]

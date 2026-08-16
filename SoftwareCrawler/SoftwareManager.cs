@@ -133,15 +133,18 @@ public static class SoftwareManager
         // itself to the UI.
         await Task.WhenAll(dataTask, extraTask).ConfigureAwait(false);
 
-        // Enabled used to be the first column of the shared list. Read such a
-        // file with the layout it was written in; the next save moves the flags
-        // over to the per-machine file for good.
-        var dataProperties = dataTask.Result.Length > 0 && IsLegacyDataHeader(dataTask.Result[0])
-            ? SoftwareItem.LegacyDataProperties
+        // Column order has changed more than once. Read the file with the
+        // layout its header names; the next save rewrites the current order.
+        var dataProperties = dataTask.Result.Length > 0
+            ? SoftwareItem.ResolveDataProperties(dataTask.Result[0])
             : SoftwareItem.DataProperties;
         if (dataProperties == SoftwareItem.LegacyDataProperties)
             Log.ZLogInformation(
                 $"Reading {softwarePath} in the layout that still had the Enabled column"
+            );
+        else if (dataProperties == SoftwareItem.ExtractToRootLastDataProperties)
+            Log.ZLogInformation(
+                $"Reading {softwarePath} in the layout that still had ExtractToRoot last"
             );
 
         var dataLines = dataTask.Result.Skip(1).ToArray();
@@ -336,13 +339,6 @@ public static class SoftwareManager
             Log.ZLogWarning($"Could not seed the software list from the template: {ex.Message}");
         }
     }
-
-    /// <summary>
-    /// True for a shared list still carrying the Enabled column, which the header
-    /// names first. Everything written since starts with Name.
-    /// </summary>
-    private static bool IsLegacyDataHeader(string header) =>
-        header.TrimStart('﻿').StartsWith(nameof(SoftwareItem.Enabled) + '\t', StringComparison.Ordinal);
 
     private static string GetNameColumn(string line, List<PropertyInfo> properties)
     {
