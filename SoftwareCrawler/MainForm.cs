@@ -48,6 +48,7 @@ public partial class MainForm : Form
         softwareListDataGridView.DragDrop += softwareListDataGridView_DragDrop;
         softwareListDataGridView.DragOver += softwareListDataGridView_DragOver;
         softwareListDataGridView.MouseMove += softwareListDataGridView_MouseMove;
+        softwareListDataGridView.CellFormatting += softwareListDataGridView_CellFormatting;
 
         // Enable key events
         KeyPreview = true;
@@ -502,6 +503,32 @@ public partial class MainForm : Form
 
         if (await session.ApplyAsync())
             await SoftwareManager.Save();
+    }
+
+    // Failed downloads are shown in red so they stand out while scanning the list.
+    private void softwareListDataGridView_CellFormatting(
+        object? sender,
+        DataGridViewCellFormattingEventArgs e
+    )
+    {
+        if (e.RowIndex < 0 || e.RowIndex >= softwareListDataGridView.Rows.Count)
+            return;
+        if (
+            softwareListDataGridView.Columns[e.ColumnIndex].DataPropertyName
+            != nameof(SoftwareItem.Status)
+        )
+            return;
+        if (softwareListDataGridView.Rows[e.RowIndex].DataBoundItem is not SoftwareItem item)
+            return;
+        if (item.Status != DownloadingStatus.Failed)
+            return;
+
+        var failedColor = Application.IsDarkModeEnabled
+            ? Color.FromArgb(255, 110, 110)
+            : Color.FromArgb(200, 0, 0);
+        e.CellStyle.ForeColor = failedColor;
+        // The selection background is dark in both themes, so keep the lighter red there.
+        e.CellStyle.SelectionForeColor = Color.FromArgb(255, 160, 160);
     }
 
     private async void softwareListDataGridView_CellEndEdit(
