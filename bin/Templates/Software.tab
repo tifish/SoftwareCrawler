@@ -1,4 +1,4 @@
-﻿Name	WebPage	DirectDownload	XPathOrScript1	XPathOrScript2	XPathOrScript3	XPathOrScript4	XPathOrScript5	Frames	WaitSecondsBeforeClick	StartDownloadTimeout	FilePatternToDeleteBeforeDownload	FilePatternToDeleteBeforeExtraction	ExtractAfterDownload	ExtractToRoot
+Name	WebPage	DirectDownload	XPathOrScript1	XPathOrScript2	XPathOrScript3	XPathOrScript4	XPathOrScript5	Frames	WaitSecondsBeforeClick	StartDownloadTimeout	FilePatternToDeleteBeforeDownload	FilePatternToDeleteBeforeExtraction	ExtractAfterDownload	ExtractToRoot
 搜狗输入法	https://pinyin.sogou.com/		//a[contains(@href, '.exe')]								*.exe			
 百度输入法	https://shurufa.baidu.com/		a = document.evaluate(`n    "//a[text()='立即下载']",`n    document,`n    null,`n    XPathResult.FIRST_ORDERED_NODE_TYPE,`n    null`n).singleNodeValue;`nsetTimeout(function () {`n    a.click();`n}, 2000);								*.exe			
 TortoiseSVN	https://sourceforge.net/projects/tortoisesvn/files/latest/download	true									TortoiseSVN*.msi			
@@ -105,3 +105,4 @@ CrystalDiskMark	https://sourceforge.net/projects/crystaldiskmark/files/latest/do
 CrystalDiskInfo	https://sourceforge.net/projects/crystaldiskinfo/files/latest/download										*.zip			
 WinDirStat	https://windirstat.net/download.html		//a[contains(@href, '.zip')]								*.zip			
 Sysinternals Suite	https://download.sysinternals.com/files/SysinternalsSuite.zip										*.zip			
+T3 Code	https://github.com/pingdotgg/t3code/releases/latest		async function executeSteps() {`n  // GitHub loads the assets list lazily (include-fragment loading="lazy");`n  // it never fetches until scrolled into view, so scroll it every round.`n  for (let i = 0; i < 30; i++) {`n    const link = document.querySelector(`n      "a[href*='/releases/download/'][href$='-x64.exe']"`n    );`n    if (link) {`n      link.scrollIntoView();`n      link.click();`n      return;`n    }`n`n    const fragment = document.querySelector(`n      "include-fragment[src*='expanded_assets']"`n    );`n    if (fragment) {`n      fragment.scrollIntoView();`n    }`n`n    await new Promise((r) => setTimeout(r, 1000));`n  }`n`n  throw new Error("x64.exe asset link not found");`n}`n`nexecuteSteps();								T3-Code-*.exe			
