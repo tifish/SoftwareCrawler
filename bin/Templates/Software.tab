@@ -105,4 +105,3 @@ CrystalDiskMark	https://sourceforge.net/projects/crystaldiskmark/files/latest/do
 CrystalDiskInfo	https://sourceforge.net/projects/crystaldiskinfo/files/latest/download										*.zip			
 WinDirStat	https://windirstat.net/download.html		//a[contains(@href, '.zip')]								*.zip			
 Sysinternals Suite	https://download.sysinternals.com/files/SysinternalsSuite.zip										*.zip			
-														
