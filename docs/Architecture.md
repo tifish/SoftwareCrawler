@@ -53,9 +53,12 @@ SoftwareCrawler.slnx
 
 1. 解析命令行：`--download-all` / `--auto-close` / `--force-close`。
 2. 初始化日志（Debug 构建降到 `Debug` 级别）。
-3. `ConfigChangeMonitor.Watch(活动 Config 目录, Debug 时额外监视 Templates 目录)`。
-4. `DebugMcpServer.Start()` —— Release 构建里是空操作。
-5. `Application.Run(new MainForm())`。
+3. `SingleInstanceGuard.Acquire()` —— 同一可执行目录只允许一个实例，抢不到就记一行日志退出。
+4. `ConfigChangeMonitor.Watch(活动 Config 目录, Debug 时额外监视 Templates 目录)`。
+5. `DebugMcpServer.Start()` —— Release 构建里是空操作。
+6. `Application.Run(new MainForm())`。
+
+**单实例**：同目录的两个实例共用 `Cache` 这一份 WebView2 profile，而 profile 认启动参数——别的进程用不同 `--proxy-server` 占着时，需要代理的条目连浏览器都建不起来（`0x8007139F`），夜里那批走代理的条目会全军覆没，不走代理的却毫发无损。占位用的是 `Cache\instance.lock`（`FileOptions.DeleteOnClose` 独占打开，内容是 pid）而不是互斥体：文件锁跨得过桌面会话与计划任务会话的边界，不需要 `Global\` 内核对象那份权限，进程一死锁就没了。交互式启动被挡下时会把已在跑的那个窗口提到前台，`--download-all` 则安静退出——4 点钟弹个对话框会把计划任务永远挂在那儿。不同 worktree 各有各的 `bin`，互不影响。
 
 `MainForm.OnLoad`（`MainForm.cs:100`）里：创建一个**独立的宿主窗体**承载 WebView2（爬取时可见的浏览器窗口不是主窗口的一部分），`Browser.Init` 完成后 `Reload()` 读清单绑定表格，然后启动更新检查定时器。
 
@@ -129,7 +132,7 @@ flowchart TD
 - **等待模型**：导航完成和下载完成各用一个 `TaskCompletionSource`，`PrepareLoadEvents()` 在每次动作前重建它们，`WithTimeout` 提供超时。所以"等待"永远不会跨动作串味。
 - **"加载完"由四个信号合成**，见下节"页面就绪判定"：`DOMContentLoaded`（文档可脚本化，最早）、`NavigationCompleted`（load 事件，成功失败都算）、DevTools `Page.lifecycleEvent` 的 `networkAlmostIdle`（网络静默）、`SourceChanged` 且非新文档（原地替换）。
 - **事件按导航编号过滤**：`NavigationStarting` 记下 `NavigationId`，`PrepareLoadEvents()` 把它清零；只有编号对得上的 `DOMContentLoaded` / `NavigationCompleted` 才算数。点击导航走时旧导航会以 `ConnectionAborted` 结束，不过滤的话那个中止会被当成"要等的页面加载好了"，下一步就跑在旧页面上。
-- **启动参数**：关闭 SafeBrowsing 下载保护与下载气泡等 UI（`--safebrowsing-disable-download-protection` 等），否则自动下载会被拦。用户数据目录固定为**可执行文件目录**下的 `Cache`（不是当前工作目录——计划任务的 cwd 是 system32，那样会得到另一份 profile）。`--proxy-server` 来自本机 `Settings.Proxy`，但只在该条目的 `UseProxy`（`ExtraProperties`，默认关）为真时套上。这条参数在环境创建时定死，所以换条目导致有效代理变化时会拆掉 WebView2、等浏览器进程退出后再在同一 `Cache` 上重建环境；`DirectDownload` 不重建浏览器，只决定 `HttpClient` 要不要 `WebProxy`。
+- **启动参数**：关闭 SafeBrowsing 下载保护与下载气泡等 UI（`--safebrowsing-disable-download-protection` 等），否则自动下载会被拦。用户数据目录固定为**可执行文件目录**下的 `Cache`（不是当前工作目录——计划任务的 cwd 是 system32，那样会得到另一份 profile）。`--proxy-server` 来自本机 `Settings.Proxy`，但只在该条目的 `UseProxy`（`ExtraProperties`，默认关）为真时套上。这条参数在环境创建时定死，所以换条目导致有效代理变化时会拆掉 WebView2、等浏览器进程退出后再在同一 `Cache` 上重建环境——等的是建环境时记下的 `CoreWebView2.BrowserProcessId`，环境上的 `BrowserProcessExited` 对自己关掉的浏览器根本不触发，改之前每次切代理都白等满 10 秒超时。同一份 `Cache` 只容得下一组启动参数，别的进程用不同参数占着时新环境直接 `0x8007139F`，所以启动时用 `SingleInstanceGuard` 把同目录限成一个实例（见"单实例"）。`DirectDownload` 不重建浏览器，只决定 `HttpClient` 要不要 `WebProxy`。
 - **弹窗**：`NewWindowRequested` 一律拦下，在当前窗口导航过去——爬取流程里不能出现第二个窗口。
 - **取文件时间**：走 DevTools Protocol 订阅 `Network.responseReceived`，解析 `Last-Modified` 存进 `_lastRespondTime`，`DownloadStarting` 时作为 `DownloadItem.EndTime`。JSON 解析放到线程池，否则繁忙页面会把 UI 卡住。
 - **下载拦截**：`DownloadStarting` 里设 `e.Handled = true` 抑制默认 UI，并把 `ResultFilePath` 改成流水线指定的路径；进度事件按 200ms 节流；文件名里的 ` (1)` 后缀会被去掉。
@@ -271,6 +274,7 @@ Claude Code ──stdio──> bin/SoftwareCrawlerMcp.exe ──命名管道 JSO
 6. **运行时文件直接在 `bin/` 下版本控制**，不要从源码目录复制过去（`bin/Templates`、`bin/7-Zip`、各 `.cmd`/`.ps1`）。
 7. **下载判重依赖落盘时回写的文件时间戳**，改动落盘逻辑时别把 `SetLastWriteTime` 去掉。
 8. **调试通道只应在 Debug 下监听**，且只连当前 worktree 的实例。
+9. **同一个 `bin` 目录同时只跑一个实例**：`Cache` 这份 WebView2 profile 不允许两组不同的启动参数，第二个实例一开就会让需要代理的条目整批失败。
 
 ## 13. 常见改动的落点
 

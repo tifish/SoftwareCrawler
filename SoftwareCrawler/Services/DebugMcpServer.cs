@@ -918,6 +918,11 @@ internal static class DebugMcpServer
         sb.AppendLine($"Machine config root: {SettingsService.MachineConfigRoot}");
         sb.AppendLine($"Program config root: {SettingsService.ProgramConfigRoot}");
         sb.AppendLine($"Watching: {ConfigChangeMonitor.Root}");
+        sb.AppendLine($"WebView2 profile: {Browser.UserDataFolder}");
+        sb.AppendLine(
+            $"Instance lock: {SingleInstanceGuard.LockPath} "
+                + $"(held by pid {SingleInstanceGuard.Current?.OwnerProcessId ?? 0})"
+        );
         return ToolText(sb.ToString());
     }
 

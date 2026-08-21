@@ -1,4 +1,5 @@
 ﻿global using static SoftwareCrawler.BrowserObject;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using JeekTools;
@@ -33,7 +34,9 @@ public class BrowserObject
     private string _proxyServer = "";
     private Control? _hostForm;
     private CoreWebView2Environment? _environment;
-    private TaskCompletionSource<bool>? _browserProcessExited;
+
+    /// <summary>The browser process the current WebView2 runs on; 0 when there is none.</summary>
+    private int _browserProcessId;
 
     /// <summary>The <c>--proxy-server</c> argument the current WebView2 was created with.</summary>
     public string CurrentProxy => _proxyServer;
@@ -108,12 +111,12 @@ public class BrowserObject
             options
         );
         _environment = environment;
-        _browserProcessExited = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously
-        );
-        environment.BrowserProcessExited += (_, _) => _browserProcessExited.TrySetResult(true);
 
         await WebView2.EnsureCoreWebView2Async(environment);
+
+        // Remembered for the next restart: the profile stays claimed until this browser is
+        // gone, and a proxy change cannot open the profile again before then.
+        _browserProcessId = (int)WebView2.CoreWebView2.BrowserProcessId;
 
         // Configure settings
         WebView2.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
@@ -179,26 +182,51 @@ public class BrowserObject
         WebView2 = null!;
         ResetRuntimeState();
 
-        var exited = _browserProcessExited;
-        _browserProcessExited = null;
+        var browserProcessId = _browserProcessId;
+        _browserProcessId = 0;
         _environment = null;
 
         webView?.Dispose();
 
-        if (exited != null)
-        {
-            try
-            {
-                await exited.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            }
-            catch (TimeoutException)
-            {
-                Log.ZLogWarning($"Timed out waiting for the WebView2 browser process to exit");
-            }
-        }
-
+        // The browser holds the profile until the last COM reference to it is gone, and a
+        // disposed control leaves those to their finalizers. Collecting has to come before
+        // the wait: after it, the wait is what the finalizers were waiting out.
         GC.Collect();
         GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        await WaitForBrowserProcessExit(browserProcessId);
+    }
+
+    /// <summary>
+    /// Waits out the browser the old WebView2 ran on, so the next one can open the profile
+    /// with different options. Watching the process is what works: the environment's
+    /// <c>BrowserProcessExited</c> never arrives for a browser we closed ourselves, and
+    /// waiting on it spent the whole timeout on a browser that was already gone.
+    /// </summary>
+    private static async Task WaitForBrowserProcessExit(int browserProcessId)
+    {
+        if (browserProcessId == 0)
+            return;
+
+        var waitedSince = Stopwatch.StartNew();
+        try
+        {
+            using var browserProcess = Process.GetProcessById(browserProcessId);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await browserProcess.WaitForExitAsync(timeout.Token);
+            Log.ZLogDebug(
+                $"WebView2 browser process exited after {waitedSince.Elapsed.TotalSeconds:F1}s"
+            );
+        }
+        catch (ArgumentException)
+        {
+            // Already gone by the time we looked for it.
+        }
+        catch (OperationCanceledException)
+        {
+            Log.ZLogWarning($"Timed out waiting for the WebView2 browser process to exit");
+        }
     }
 
     #region Load events

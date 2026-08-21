@@ -55,6 +55,20 @@ static class Program
             $"Program starts (build {AutoUpdateService.GetDisplayVersion()}, instance {DebugInstanceContext.InstanceLabel})"
         );
 
+        // A second instance from the same folder would fight this one over the WebView2
+        // profile and break every download that needs the proxy.
+        using var instanceGuard = SingleInstanceGuard.Acquire();
+        if (!instanceGuard.IsOnlyInstance)
+        {
+            Log.ZLogWarning(
+                $"Another instance already runs from {AppContext.BaseDirectory} (pid {instanceGuard.OwnerProcessId}); this one exits so the two do not share the WebView2 profile"
+            );
+            if (!downloadAll)
+                instanceGuard.TryActivateOwnerWindow();
+            LogManager.Shutdown();
+            return;
+        }
+
         // Pick up settings and list edits made outside the app.
         ConfigChangeMonitor.Watch(
             SettingsStore.ResolveConfigRoot(),
