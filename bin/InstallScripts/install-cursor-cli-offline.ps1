@@ -1,9 +1,12 @@
 # Offline installer for Cursor CLI (cursor-agent).
 #
-# The official installer (https://cursor.com/install) is a bash script that only knows
-# linux and darwin, and cursor.com hands browsers a marketing page instead of it anyway.
-# The Windows install is the same package unpacked by hand, which is what this does,
-# from the agent-cli-package.zip SoftwareCrawler already downloaded next to it.
+# The official installer (https://cursor.com/install?win32=true) downloads that same
+# package and unpacks it; this does the unpacking locally, from the
+# agent-cli-package.zip SoftwareCrawler already downloaded next to it.
+#
+# One deliberate difference: the official script wipes the whole cursor-agent directory
+# before installing. Old version directories are left alone here - the launcher picks the
+# highest version anyway, and the wipe fails outright while an agent is running.
 #
 # Layout an existing install has, and what this reproduces:
 #   %LOCALAPPDATA%\cursor-agent\versions\<version>\              the unpacked package
@@ -68,11 +71,19 @@ try {
         Move-Item -LiteralPath $package -Destination $target
     }
 
-    # Both names launch the same thing, which is how an existing install looks.
-    foreach ($binName in @('cursor-agent', 'agent')) {
-        foreach ($ext in @('cmd', 'ps1')) {
-            Copy-Item -LiteralPath (Join-Path $target "cursor-agent.$ext") -Destination (Join-Path $root "$binName.$ext") -Force
-        }
+    # Everything named cursor-agent.* is a launcher, matched by pattern the way the
+    # official script does it - the package has .cmd and .ps1 today and the official
+    # script also looks for a .exe.
+    $launchers = @(Get-ChildItem -LiteralPath $target -Filter 'cursor-agent*' -File)
+    if (-not $launchers) {
+        throw "No cursor-agent launcher was found in $target."
+    }
+
+    foreach ($launcher in $launchers) {
+        Copy-Item -LiteralPath $launcher.FullName -Destination (Join-Path $root $launcher.Name) -Force
+        # agent is the primary command; it is the same file under a second name.
+        $alias = $launcher.Name -replace '^cursor-agent', 'agent'
+        Copy-Item -LiteralPath $launcher.FullName -Destination (Join-Path $root $alias) -Force
     }
 } finally {
     if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue }
@@ -85,7 +96,8 @@ Write-Host "  Installed to $root." -ForegroundColor DarkGray
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $pathEntries = if ($userPath) { $userPath -split ';' | Where-Object { $_ -ne '' } } else { @() }
 if ($pathEntries -notcontains $root) {
-    [Environment]::SetEnvironmentVariable('Path', ((@($root) + $pathEntries) -join ';'), 'User')
+    # Appended, not prepended: that is where the official script puts it.
+    [Environment]::SetEnvironmentVariable('Path', (($pathEntries + @($root)) -join ';'), 'User')
     Write-Host "  Added $root to your PATH (takes effect in new shells)." -ForegroundColor DarkGray
 }
 
