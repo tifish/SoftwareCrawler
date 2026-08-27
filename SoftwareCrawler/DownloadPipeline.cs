@@ -927,7 +927,13 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
 
     private static readonly List<string> ExecutableFileTypes = [".exe", ".msi", ".vsix", ".msix"];
 
-    private static readonly List<string> ArchiveFileTypes = [".zip", ".rar", ".7z"];
+    private static readonly List<string> ArchiveFileTypes = [".zip", ".rar", ".7z", ".gz", ".tgz"];
+
+    /// <summary>
+    /// Archives that are a tar wrapped in a compressor: 7-Zip peels one layer per
+    /// run, so unpacking them takes a second pass over the tar that falls out.
+    /// </summary>
+    private static readonly List<string> CompressedTarFileTypes = [".gz", ".tgz"];
 
     internal static bool IsSameDownload(
         long currentSize,
@@ -1213,18 +1219,22 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
 
         _item.Status = DownloadingStatus.Extracting;
 
-        var extractCommand = _item.ExtractToRoot ? "e" : "x";
-        var exitCode = await RunProcessAsync(
-            SevenZipPath,
-            $@"{extractCommand} -y -o""{archiveDir}"" ""{archiveFile}"" -r",
-            archiveDir,
-            $"7-Zip extracting {Path.GetFileName(archiveFile)}"
-        );
+        await RunSevenZip(archiveFile, archiveDir);
 
-        // 7-Zip reports 1 for non-fatal warnings, such as a file it could not read;
-        // 2 and up are real failures, and -1 means it never started.
-        if (exitCode < 0 || exitCode >= 2)
-            throw new PostProcessException($"7-Zip exited with code {exitCode}: {archiveFile}");
+        // A .tar.gz only gives up its tar on the first pass. Unpack that tar too and
+        // delete it, so the download directory does not end up holding an archive the
+        // recipe never asked to keep.
+        if (CompressedTarFileTypes.Contains(Path.GetExtension(archiveFile).ToLowerInvariant()))
+        {
+            var tarFile =
+                FindUnwrappedTarFile(archiveDir, archiveFile)
+                ?? throw new PostProcessException(
+                    $"No tar file appeared after unpacking {archiveFile}"
+                );
+
+            await RunSevenZip(tarFile, archiveDir);
+            await Task.Run(() => File.Delete(tarFile));
+        }
 
         if (_item.ExtractToRoot)
         {
@@ -1241,5 +1251,37 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         }
 
         return true;
+    }
+
+    private async Task RunSevenZip(string archiveFile, string archiveDir)
+    {
+        var extractCommand = _item.ExtractToRoot ? "e" : "x";
+        var exitCode = await RunProcessAsync(
+            SevenZipPath,
+            $@"{extractCommand} -y -o""{archiveDir}"" ""{archiveFile}"" -r",
+            archiveDir,
+            $"7-Zip extracting {Path.GetFileName(archiveFile)}"
+        );
+
+        // 7-Zip reports 1 for non-fatal warnings, such as a file it could not read;
+        // 2 and up are real failures, and -1 means it never started.
+        if (exitCode < 0 || exitCode >= 2)
+            throw new PostProcessException($"7-Zip exited with code {exitCode}: {archiveFile}");
+    }
+
+    /// <summary>
+    /// Locates the tar 7-Zip just wrote next to its compressed original. The name comes
+    /// from the compressed member, which is <c>foo.tar</c> for both <c>foo.tar.gz</c> and
+    /// <c>foo.tgz</c> - but the .tgz spelling can also arrive as a bare <c>foo</c>.
+    /// </summary>
+    private static string? FindUnwrappedTarFile(string archiveDir, string archiveFile)
+    {
+        var stem = Path.Combine(archiveDir, Path.GetFileNameWithoutExtension(archiveFile));
+
+        foreach (var candidate in new[] { stem, stem + ".tar" })
+            if (File.Exists(candidate))
+                return candidate;
+
+        return null;
     }
 }

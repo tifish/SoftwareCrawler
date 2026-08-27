@@ -107,7 +107,7 @@ flowchart TD
 
 几个必须知道的决策规则（都在 `DownloadPipeline.OnBeginDownloadHandler`）：
 
-- **文件类型白名单**：可执行 `.exe .msi .vsix .msix`、压缩包 `.zip .rar .7z`。其它一律判失败——这是"点错了链接、下到 HTML"的兜底。
+- **文件类型白名单**：可执行 `.exe .msi .vsix .msix`、压缩包 `.zip .rar .7z .gz .tgz`。其它一律判失败——这是"点错了链接、下到 HTML"的兜底。
 - **"是不是同一个文件"**：优先比服务器给的大小；没有 `Content-Length` 时比服务器 `Last-Modified` 与本地文件修改时间（±2 秒）；两者都没有就当作需要下载。为让第二条成立，落盘后会用服务器时间戳回写文件的 `LastWriteTime`。
 - **文件名会变的站点**（如 Epic Launcher）：靠 `FilePatternToDeleteBeforeDownload` 找到目录里的旧文件再比对。
 - **旧版本清理的边界**：多个软件项共用一个下载目录是常规用法（7 个 JetBrains IDE 一个目录、每个 CUDA 版本一个目录），**靠模式本身区分彼此**——`FilePatternToDeleteBeforeDownload` 就是这个约定，程序不去猜别的项想要什么，各项之间也不产生关联。唯一的兜底是数量上限：单次匹配超过 10 个就整体放弃并记警告（`SelectOldVersions`），挡住把模式指向通用下载目录这类事故。在途的 `.partial` 永远不参与。
@@ -117,7 +117,7 @@ flowchart TD
 
 > **不要把在途文件写进目标目录。** 看上去可以省掉一次跨卷复制（3GB 的包写两遍确实肉疼），但**目标目录的性质是不确定的**：可能是 UNC 共享（边下边写等于每个写操作过网络，抖一下整个传输就没了），也可能正被同步工具监视（不完整的文件会被反复同步、中断的残留会传播到每台设备）。程序无法可靠判断这两种情况，而"只有完整文件才出现在目标目录"这一条对三种情况都成立。这个取舍试过一次并撤回了，别再试第二次。
 
-扩展点：目标目录下若存在 `AfterDownload.cmd`/`.ps1` 或 `AfterExtract.cmd`/`.ps1`，会以文件路径为参数同步调用（`.cmd` 优先）。解压用随程序附带的 `bin/7-Zip/7z.exe`，默认用 `x -r` 保留压缩包中的目录结构；只有配方显式设置 `ExtractToRoot` 时才用 `e -r` 展平到根目录，并清理空子目录。若配置了 `FilePatternToDeleteBeforeExtraction`，解压前先按该模式删除目标目录顶层的旧文件——抽出的安装包文件名常带版本号，否则新旧会并存。每个下载完成的归档都会写入 `.softwarecrawler-download-metadata.json`（按软件名保存源 URL、文件名、大小和 `Last-Modified`）；一旦该项元数据存在，后续更新判断只比较元数据，不再比较保留在目录中的归档。归档只有在本次实际执行并成功完成了解压或上述任一脚本后才删除，脚本文件仅仅存在不构成删除条件；没有成功执行任何处理时保留归档本体。
+扩展点：目标目录下若存在 `AfterDownload.cmd`/`.ps1` 或 `AfterExtract.cmd`/`.ps1`，会以文件路径为参数同步调用（`.cmd` 优先）。解压用随程序附带的 `bin/7-Zip/7z.exe`，默认用 `x -r` 保留压缩包中的目录结构；只有配方显式设置 `ExtractToRoot` 时才用 `e -r` 展平到根目录，并清理空子目录。`.tar.gz`/`.tgz` 里套着一层 tar，7-Zip 一次只剥一层，所以要跑第二遍再删掉中间的 `.tar`——否则下载目录里会多出一个配方没要求保留的归档。若配置了 `FilePatternToDeleteBeforeExtraction`，解压前先按该模式删除目标目录顶层的旧文件——抽出的安装包文件名常带版本号，否则新旧会并存。每个下载完成的归档都会写入 `.softwarecrawler-download-metadata.json`（按软件名保存源 URL、文件名、大小和 `Last-Modified`）；一旦该项元数据存在，后续更新判断只比较元数据，不再比较保留在目录中的归档。归档只有在本次实际执行并成功完成了解压或上述任一脚本后才删除，脚本文件仅仅存在不构成删除条件；没有成功执行任何处理时保留归档本体。
 
 这两类外部进程都**不显示控制台窗口、检查退出码、失败时把输出记进日志**（`RunProcessAsync`）。失败即视为该项失败且不重试——文件已经在盘上，重下没有意义；状态停在 `Extracting` 或 `RunningEventScript`，错误信息里能看出是哪一步。7-Zip 的退出码 1 是非致命警告，按成功处理，2 及以上才算失败。
 
