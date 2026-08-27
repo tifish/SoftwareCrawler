@@ -41,3 +41,8 @@ bin/Config/*
 !bin/Config/.gitkeep
 !bin/Templates/
 !bin/Templates/**
+
+# Offline installers for the CLI tools, kept here so a lost download directory can
+# be restocked. Copies of these live next to the downloads they install.
+!bin/InstallScripts/
+!bin/InstallScripts/**
