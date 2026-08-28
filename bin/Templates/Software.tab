@@ -41,7 +41,7 @@ VC Runtime 2015-2022 x86	https://aka.ms/vs/17/release/vc_redist.x86.exe									
 VC Runtime 2015-2022 x64	https://aka.ms/vs/17/release/vc_redist.x64.exe										*x64.exe			
 VC Runtime 2013 x86	https://aka.ms/highdpimfc2013x86enu										*x86.exe			
 VC Runtime 2013 x64	https://aka.ms/highdpimfc2013x64enu										*x64.exe			
-Subversion	https://sliksvn.com/download/		//a[contains(@href, 'x64.zip')]								*.zip	*.msi	true	
+Subversion	https://sliksvn.com/download/		//a[contains(@href, '-x64')]								*.zip	*.msi	true	
 Plastic SCM Server	https://www.plasticscm.com/download		//a[contains(@href, 'windows/full')]								*.exe			
 Plastic SCM Client	https://www.plasticscm.com/download		//small[text()='More installers and other Operating Systems']	//strong[text()='Client installer']/parent::div/following-sibling::div[2]/a[normalize-space()='Download']							*.exe			
 .NET 10 Runtime x64	https://dotnet.microsoft.com/en-us/download/dotnet/10.0		//a[contains(@href, 'runtime-desktop') and contains(@href, 'x64')]								*-10.*-x64.exe			
