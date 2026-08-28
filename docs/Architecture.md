@@ -1,6 +1,7 @@
 # SoftwareCrawler 设计与机制
 
 面向后续维护者（含 AI agent）的工程说明。只讲**设计意图与运行机制**，不逐行解释实现；具体代码以文中给出的文件为准。
+**要做什么、为什么**见 [Requirements.md](Requirements.md)（需求与行为契约），本文只回答**怎么做到的**。
 仓库约定、构建与调试流程见 [AGENTS.md](../AGENTS.md)，面向用户的安装说明见 [README.md](../README.md)。
 
 ## 1. 这个程序做什么
@@ -10,7 +11,7 @@
 两种使用形态：
 
 - **交互式**：主窗口是一张可编辑的表格，一行一个软件，右键菜单可测试/下载/打开页面/编辑脚本。
-- **无人值守**：`SoftwareCrawler.exe --download-all --auto-close`，`bin/AddDownloadEveryNight.cmd` 把它注册成每天 04:00 的计划任务。
+- **无人值守**：`SoftwareCrawler.exe --download-all --auto-close`，`bin/AddDownloadEveryNight.cmd` 把它注册成每天 07:00 的计划任务。
 
 技术栈：.NET 10 / WinForms / WebView2（Chromium），Windows 专用，非自包含发布（依赖桌面运行时）。
 
@@ -58,7 +59,7 @@ SoftwareCrawler.slnx
 5. `DebugMcpServer.Start()` —— Release 构建里是空操作。
 6. `Application.Run(new MainForm())`。
 
-**单实例**：同目录的两个实例共用 `Cache` 这一份 WebView2 profile，而 profile 认启动参数——别的进程用不同 `--proxy-server` 占着时，需要代理的条目连浏览器都建不起来（`0x8007139F`），夜里那批走代理的条目会全军覆没，不走代理的却毫发无损。占位用的是 `Cache\instance.lock`（`FileOptions.DeleteOnClose` 独占打开，内容是 pid）而不是互斥体：文件锁跨得过桌面会话与计划任务会话的边界，不需要 `Global\` 内核对象那份权限，进程一死锁就没了。交互式启动被挡下时会把已在跑的那个窗口提到前台，`--download-all` 则安静退出——4 点钟弹个对话框会把计划任务永远挂在那儿。不同 worktree 各有各的 `bin`，互不影响。
+**单实例**：同目录的两个实例共用 `Cache` 这一份 WebView2 profile，而 profile 认启动参数——别的进程用不同 `--proxy-server` 占着时，需要代理的条目连浏览器都建不起来（`0x8007139F`），夜里那批走代理的条目会全军覆没，不走代理的却毫发无损。占位用的是 `Cache\instance.lock`（`FileOptions.DeleteOnClose` 独占打开，内容是 pid）而不是互斥体：文件锁跨得过桌面会话与计划任务会话的边界，不需要 `Global\` 内核对象那份权限，进程一死锁就没了。交互式启动被挡下时会把已在跑的那个窗口提到前台，`--download-all` 则安静退出——无人值守时段弹个对话框会把计划任务永远挂在那儿。不同 worktree 各有各的 `bin`，互不影响。
 
 `MainForm.OnLoad`（`MainForm.cs:100`）里：创建一个**独立的宿主窗体**承载 WebView2（爬取时可见的浏览器窗口不是主窗口的一部分），`Browser.Init` 完成后 `Reload()` 读清单绑定表格，然后启动更新检查定时器。
 

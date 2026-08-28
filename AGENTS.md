@@ -1,6 +1,7 @@
 # SoftwareCrawler
 
 - 这是一个自动爬取网页下载软件的应用。
+- Requirements and behavior contracts: [docs/Requirements.md](docs/Requirements.md) — what the app must do and why. Read it before changing recipe fields, update detection, or config storage.
 - Design and mechanisms: [docs/Architecture.md](docs/Architecture.md) — read it before changing config storage, the download pipeline, or the debug channel.
 
 ## Layout
