@@ -1,3 +1,3 @@
 @echo off
-schtasks /create /f /tn "My\Software Crawler" /sc daily /st 07:00 /tr "'%~dp0SoftwareCrawler.exe' --download-all --auto-close"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dpn0.ps1"
 pause
