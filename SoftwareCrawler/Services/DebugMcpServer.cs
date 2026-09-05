@@ -709,12 +709,15 @@ internal static class DebugMcpServer
 
             var lines = items
                 .Select(item =>
-                    $"{(item.Enabled ? "x" : " ")} {(item.UseProxy ? "p" : " ")} {item.Name}\t{item.Status}\t{item.Progress}\t{item.ErrorMessage}"
+                    $"{(item.Enabled ? "x" : " ")} {(item.UseProxy ? "p" : " ")} "
+                        + $"{(item.FrequentCheck ? "f" : " ")} {item.Name}"
+                        + $"\t{item.Status}\t{item.Progress}\t{item.ErrorMessage}"
                 )
                 .ToList();
             return lines.Count == 0
                 ? "(no matching software items)"
-                : "Enabled UseProxy Name\tStatus\tProgress\tError\n" + string.Join('\n', lines);
+                : "Enabled UseProxy Frequent Name\tStatus\tProgress\tError\n"
+                    + string.Join('\n', lines);
         });
 
         return ToolText(text);

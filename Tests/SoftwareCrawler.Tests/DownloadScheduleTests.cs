@@ -151,6 +151,41 @@ public class DownloadScheduleTests
         );
     }
 
+    /// <summary>
+    /// The two schedules are judged independently. Deciding them together once let
+    /// a full run that was due but blocked swallow the tick, so the frequent sweep
+    /// went hours without running while the user had the main window open.
+    /// </summary>
+    [Fact]
+    public void BothSchedulesCanBeDueOnTheSameTick()
+    {
+        var due = DownloadSchedulePlanner.GetDueRuns(
+            At("2026-09-05 13:00"),
+            At("2026-09-05 08:00"),
+            Times("08:00", "13:00"),
+            At("2026-09-05 12:45"),
+            10
+        );
+
+        Assert.True(due.Full);
+        Assert.True(due.Frequent);
+    }
+
+    [Fact]
+    public void ADueFullRunDoesNotMakeTheFrequentSweepLookDue()
+    {
+        var due = DownloadSchedulePlanner.GetDueRuns(
+            At("2026-09-05 13:00"),
+            At("2026-09-05 08:00"),
+            Times("08:00", "13:00"),
+            At("2026-09-05 12:59"),
+            10
+        );
+
+        Assert.True(due.Full);
+        Assert.False(due.Frequent);
+    }
+
     [Fact]
     public void AZeroIntervalTurnsTheFrequentSweepOff()
     {

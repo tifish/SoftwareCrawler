@@ -149,29 +149,33 @@ public sealed class DownloadScheduler
         {
             var now = DateTime.Now;
 
-            if (DownloadSchedulePlanner.IsFullRunDue(now, _lastFullRun, ScheduledTimes()))
+            var (fullDue, frequentDue) = DownloadSchedulePlanner.GetDueRuns(
+                now,
+                _lastFullRun,
+                ScheduledTimes(),
+                _lastFrequentRun,
+                Settings.FrequentCheckIntervalMinutes
+            );
+
+            if (fullDue)
             {
-                if (!CanRunNow(out var reason))
+                if (CanRunNow(ScheduledRunKind.Full, out var reason))
                 {
-                    // Deferred, not dropped: leave _lastFullRun alone so the next
-                    // tick asks again.
-                    NoteSkip($"Full run deferred: {reason}");
+                    _lastFullRun = now;
+                    SaveLastFullRun();
+                    await RunAsync(ScheduledRunKind.Full, now);
                     return;
                 }
 
-                _lastFullRun = now;
-                SaveLastFullRun();
-                await RunAsync(ScheduledRunKind.Full, now);
-                return;
+                // Deferred, not dropped: leave _lastFullRun alone so the next tick
+                // asks again. Then fall through rather than returning — a full run
+                // waiting for the user to step away must not take the frequent
+                // sweep down with it. It waited hours once, and the sweep, which
+                // has its own laxer conditions, did not run once in all that time.
+                NoteSkip($"Full run deferred: {reason}");
             }
 
-            if (
-                !DownloadSchedulePlanner.IsFrequentRunDue(
-                    now,
-                    _lastFrequentRun,
-                    Settings.FrequentCheckIntervalMinutes
-                )
-            )
+            if (!frequentDue)
                 return;
 
             // Advance first: a sweep that cannot run is skipped outright, never
@@ -181,7 +185,7 @@ public sealed class DownloadScheduler
             if (FrequentItems().Count == 0)
                 return;
 
-            if (!CanRunNow(out var skipReason))
+            if (!CanRunNow(ScheduledRunKind.Frequent, out var skipReason))
             {
                 NoteSkip($"Frequent check skipped: {skipReason}");
                 return;
@@ -225,10 +229,16 @@ public sealed class DownloadScheduler
 
     /// <summary>
     /// The whole "do not disturb" contract in one place: never run on top of
-    /// another batch, never run while the window is open (that means someone is
-    /// working in it), and never run while Windows says the user is busy.
+    /// another batch, and never run while Windows says the user is busy.
+    ///
+    /// An open main window only holds back the <em>full</em> run, which occupies the
+    /// browser for something like ten minutes and would take the grid over while
+    /// someone is working in it. The frequent sweep visits a handful of named items
+    /// for a few seconds, and putting fresh status in that grid is the entire point
+    /// of it — holding it back whenever the window is open meant it never ran while
+    /// anyone could see it, which is how this was first noticed.
     /// </summary>
-    private bool CanRunNow(out string reason)
+    private bool CanRunNow(ScheduledRunKind kind, out string reason)
     {
         if (_isBatchRunning())
         {
@@ -236,7 +246,7 @@ public sealed class DownloadScheduler
             return false;
         }
 
-        if (_isWindowVisible())
+        if (kind == ScheduledRunKind.Full && _isWindowVisible())
         {
             reason = "the main window is open";
             return false;

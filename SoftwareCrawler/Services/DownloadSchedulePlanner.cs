@@ -102,6 +102,26 @@ public static class DownloadSchedulePlanner
         return lastFullRun is null || lastFullRun < due;
     }
 
+    /// <summary>
+    /// Which schedules are due this tick, judged independently.
+    ///
+    /// Both can come back true, and the caller must treat them separately: a full
+    /// run that is due but cannot start yet has to leave the frequent sweep alone.
+    /// Bundling them once meant a full run waiting for the user to close the main
+    /// window silently held the sweep back for hours.
+    /// </summary>
+    public static (bool Full, bool Frequent) GetDueRuns(
+        DateTime now,
+        DateTime? lastFullRun,
+        IReadOnlyList<TimeOnly> times,
+        DateTime? lastFrequentRun,
+        int frequentIntervalMinutes
+    ) =>
+        (
+            IsFullRunDue(now, lastFullRun, times),
+            IsFrequentRunDue(now, lastFrequentRun, frequentIntervalMinutes)
+        );
+
     /// <summary>True once <paramref name="intervalMinutes"/> has elapsed since the last sweep.</summary>
     public static bool IsFrequentRunDue(
         DateTime now,
