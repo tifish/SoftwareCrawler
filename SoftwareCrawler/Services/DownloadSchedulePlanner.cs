@@ -18,6 +18,52 @@ public enum ScheduledRunKind
 public static class DownloadSchedulePlanner
 {
     /// <summary>
+    /// Separators accepted between times when the user types a list. Writing out a
+    /// list of times invites all of these, so take all of them rather than making
+    /// the user care which one is right.
+    /// </summary>
+    private static readonly char[] TimeSeparators = [',', ';', ' ', '\t'];
+
+    /// <summary>
+    /// Reads a typed list of times. Accepts a missing leading zero ("9:00") and
+    /// normalizes it, but rejects anything else through <paramref name="badPart"/>
+    /// rather than dropping it — a typo silently becoming "no run at that time" is
+    /// exactly the failure the user would not notice.
+    /// </summary>
+    public static bool TryParseTimeList(string text, out List<string> times, out string badPart)
+    {
+        times = [];
+        badPart = "";
+
+        foreach (
+            var part in text.Split(
+                TimeSeparators,
+                StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries
+            )
+        )
+        {
+            if (!TimeOnly.TryParseExact(part, ["HH:mm", "H:mm"], out var time))
+            {
+                badPart = part;
+                return false;
+            }
+
+            var normalized = time.ToString("HH:mm");
+            if (!times.Contains(normalized))
+                times.Add(normalized);
+        }
+
+        times.Sort(StringComparer.Ordinal);
+        return true;
+    }
+
+    /// <summary>
+    /// The one shape a time list is ever displayed in, whatever separators were
+    /// typed to produce it.
+    /// </summary>
+    public static string FormatTimeList(IEnumerable<string> times) => string.Join(' ', times);
+
+    /// <summary>
     /// Parses the stored "HH:mm" strings, dropping anything unparseable. Settings
     /// normalization already does this; parsing again here keeps the planner usable
     /// on raw input.

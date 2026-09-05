@@ -76,7 +76,7 @@ public partial class SettingsForm : Form
         externalJavascriptEditorTextBox.Text = _settings.ExternalJavascriptEditor;
         defaultDownloadDirectoryTextBox.Text = _settings.DefaultDownloadDirectory;
         customStoragePathTextBox.Text = _settings.CustomStoragePath ?? "";
-        scheduledTimesTextBox.Text = string.Join(", ", _settings.ScheduledDownloadTimes);
+        scheduledTimesTextBox.Text = DownloadSchedulePlanner.FormatTimeList(_settings.ScheduledDownloadTimes);
         frequentCheckIntervalNumericUpDown.Value = _settings.FrequentCheckIntervalMinutes;
         // The registry is the truth, not the setting: Task Manager's Startup tab
         // and any cleanup tool can turn the entry off behind the app's back.
@@ -111,42 +111,6 @@ public partial class SettingsForm : Form
             customStoragePathTextBox.Text = dialog.SelectedPath;
     }
 
-    /// <summary>
-    /// Reads the comma-separated schedule box. Accepts a missing leading zero
-    /// ("9:00") and normalizes it, but rejects anything else rather than dropping
-    /// it, so a typo cannot quietly turn into "no run at that time".
-    /// </summary>
-    private static bool TryParseScheduledTimes(
-        string text,
-        out List<string> times,
-        out string badTime
-    )
-    {
-        times = [];
-        badTime = "";
-
-        foreach (
-            var part in text.Split(
-                [',', ';'],
-                StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries
-            )
-        )
-        {
-            if (!TimeOnly.TryParseExact(part, ["HH:mm", "H:mm"], out var time))
-            {
-                badTime = part;
-                return false;
-            }
-
-            var normalized = time.ToString("HH:mm");
-            if (!times.Contains(normalized))
-                times.Add(normalized);
-        }
-
-        times.Sort(StringComparer.Ordinal);
-        return true;
-    }
-
     private async void okButton_Click(object sender, EventArgs e)
     {
         // Save control values to settings
@@ -162,13 +126,14 @@ public partial class SettingsForm : Form
         _settings.DefaultDownloadDirectory = defaultDownloadDirectoryTextBox.Text;
         _settings.UpdateCheckFrequency = (UpdateCheckFrequency)updateCheckComboBox.SelectedValue!;
 
-        if (!TryParseScheduledTimes(scheduledTimesTextBox.Text, out var scheduledTimes, out var badTime))
+        if (!DownloadSchedulePlanner.TryParseTimeList(scheduledTimesTextBox.Text, out var scheduledTimes, out var badTime))
         {
             // Refusing beats silently dropping it: a time nobody can parse is a run
             // that never happens, and the dialog would close looking like it worked.
             MessageBox.Show(
                 this,
-                $"'{badTime}' is not a time of day. Use 24-hour HH:mm, separated by commas.",
+                $"'{badTime}' is not a time of day. Use 24-hour HH:mm, "
+                    + "separated by spaces, commas or semicolons.",
                 "Download all at",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning
@@ -177,6 +142,9 @@ public partial class SettingsForm : Form
             return;
         }
 
+        // Show the normalized form back, so the one shape the app keeps is visible
+        // if anything below sends the user back to the dialog.
+        scheduledTimesTextBox.Text = DownloadSchedulePlanner.FormatTimeList(scheduledTimes);
         _settings.ScheduledDownloadTimes = scheduledTimes;
         _settings.FrequentCheckIntervalMinutes = (int)frequentCheckIntervalNumericUpDown.Value;
 

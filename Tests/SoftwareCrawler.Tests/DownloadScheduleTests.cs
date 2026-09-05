@@ -14,6 +14,69 @@ public class DownloadScheduleTests
 
     private static DateTime At(string moment) => DateTime.Parse(moment);
 
+    /// <summary>
+    /// Writing out a list of times invites spaces, commas and semicolons in equal
+    /// measure, so all of them are accepted and none of them survives into what the
+    /// app keeps.
+    /// </summary>
+    [Theory]
+    [InlineData("00:00 08:00 13:00 18:30")]
+    [InlineData("00:00,08:00,13:00,18:30")]
+    [InlineData("00:00, 08:00, 13:00, 18:30")]
+    [InlineData("00:00;08:00;13:00;18:30")]
+    [InlineData("00:00; 08:00 , 13:00;18:30")]
+    [InlineData("  00:00   08:00\t13:00,,18:30  ")]
+    public void AnySeparatorMixReadsAsTheSameSchedule(string text)
+    {
+        Assert.True(DownloadSchedulePlanner.TryParseTimeList(text, out var times, out _));
+
+        Assert.Equal(["00:00", "08:00", "13:00", "18:30"], times);
+        Assert.Equal("00:00 08:00 13:00 18:30", DownloadSchedulePlanner.FormatTimeList(times));
+    }
+
+    [Fact]
+    public void ATypedListIsSortedAndDeduplicated()
+    {
+        Assert.True(
+            DownloadSchedulePlanner.TryParseTimeList("18:30 08:00 18:30", out var times, out _)
+        );
+
+        Assert.Equal(["08:00", "18:30"], times);
+    }
+
+    /// <summary>A missing leading zero is a typo worth accepting, not worth rejecting.</summary>
+    [Fact]
+    public void ASingleDigitHourIsAcceptedAndPaddedOut()
+    {
+        Assert.True(DownloadSchedulePlanner.TryParseTimeList("9:00 8:05", out var times, out _));
+
+        Assert.Equal(["08:05", "09:00"], times);
+    }
+
+    /// <summary>
+    /// Anything unreadable is reported rather than dropped: a typo that silently
+    /// becomes "no run at that time" is the failure nobody would notice.
+    /// </summary>
+    [Theory]
+    [InlineData("08:00 25:00", "25:00")]
+    [InlineData("08:00 tea time", "tea")]
+    [InlineData("08:00 8pm", "8pm")]
+    public void AnUnreadableEntryIsReportedNotDropped(string text, string expectedBadPart)
+    {
+        Assert.False(DownloadSchedulePlanner.TryParseTimeList(text, out _, out var badPart));
+
+        Assert.Equal(expectedBadPart, badPart);
+    }
+
+    [Fact]
+    public void AnEmptyBoxMeansNoScheduledRun()
+    {
+        Assert.True(DownloadSchedulePlanner.TryParseTimeList("   ", out var times, out _));
+
+        Assert.Empty(times);
+        Assert.Equal("", DownloadSchedulePlanner.FormatTimeList(times));
+    }
+
     [Fact]
     public void ParseTimesDropsWhatItCannotRead()
     {

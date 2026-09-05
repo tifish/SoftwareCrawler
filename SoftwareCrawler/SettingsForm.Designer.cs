@@ -422,7 +422,7 @@ namespace SoftwareCrawler
             //
             scheduledTimesTextBox.Anchor = AnchorStyles.Left | AnchorStyles.Right;
             scheduledTimesTextBox.Name = "scheduledTimesTextBox";
-            scheduledTimesTextBox.PlaceholderText = "00:00, 08:00, 13:00, 18:30 — empty for no scheduled run";
+            scheduledTimesTextBox.PlaceholderText = "00:00 08:00 13:00 18:30 — empty for no scheduled run";
             scheduledTimesTextBox.Size = new Size(336, 23);
             scheduledTimesTextBox.TabIndex = 41;
             //
