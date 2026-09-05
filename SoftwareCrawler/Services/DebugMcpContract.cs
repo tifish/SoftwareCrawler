@@ -206,6 +206,34 @@ public static class DebugMcpContract
                 new()
             ),
             Tool(
+                "schedule",
+                "Inspect and drive the resident scheduler: the configured full-run times, the frequent-check "
+                    + "interval and which items it covers, when each last ran and is next due, and — when a run "
+                    + "was held back — why (a batch already running, the main window open, or Windows reporting "
+                    + "the user as busy). run_frequent and run_full start a run immediately, ignoring those "
+                    + "conditions. show_window and hide_window toggle the main window, which is itself one of "
+                    + "the conditions, so a scheduled run can be exercised both ways. enable_startup and "
+                    + "disable_startup write or remove the Startup-folder shortcut that launches the app "
+                    + "into the tray at logon.",
+                new()
+                {
+                    ["action"] = Prop(
+                        "string",
+                        "status, run_frequent, run_full, show_window, hide_window, enable_startup "
+                            + "or disable_startup (default status).",
+                        [
+                            "status",
+                            "run_frequent",
+                            "run_full",
+                            "show_window",
+                            "hide_window",
+                            "enable_startup",
+                            "disable_startup",
+                        ]
+                    ),
+                }
+            ),
+            Tool(
                 "config_monitor",
                 "Report the config watcher state: whether it is live, which events are waiting for the quiet period, "
                     + "and for every tracked config file the content baseline the app holds and whether the file on disk "

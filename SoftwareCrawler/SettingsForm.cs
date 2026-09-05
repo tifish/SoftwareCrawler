@@ -76,6 +76,11 @@ public partial class SettingsForm : Form
         externalJavascriptEditorTextBox.Text = _settings.ExternalJavascriptEditor;
         defaultDownloadDirectoryTextBox.Text = _settings.DefaultDownloadDirectory;
         customStoragePathTextBox.Text = _settings.CustomStoragePath ?? "";
+        scheduledTimesTextBox.Text = string.Join(", ", _settings.ScheduledDownloadTimes);
+        frequentCheckIntervalNumericUpDown.Value = _settings.FrequentCheckIntervalMinutes;
+        // The Startup folder is the truth, not the setting: the shortcut can be
+        // removed behind the app's back by any startup manager.
+        runAtStartupCheckBox.Checked = StartupShortcutService.IsEnabled;
 
         UpdateStorageControls();
     }
@@ -106,6 +111,42 @@ public partial class SettingsForm : Form
             customStoragePathTextBox.Text = dialog.SelectedPath;
     }
 
+    /// <summary>
+    /// Reads the comma-separated schedule box. Accepts a missing leading zero
+    /// ("9:00") and normalizes it, but rejects anything else rather than dropping
+    /// it, so a typo cannot quietly turn into "no run at that time".
+    /// </summary>
+    private static bool TryParseScheduledTimes(
+        string text,
+        out List<string> times,
+        out string badTime
+    )
+    {
+        times = [];
+        badTime = "";
+
+        foreach (
+            var part in text.Split(
+                [',', ';'],
+                StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries
+            )
+        )
+        {
+            if (!TimeOnly.TryParseExact(part, ["HH:mm", "H:mm"], out var time))
+            {
+                badTime = part;
+                return false;
+            }
+
+            var normalized = time.ToString("HH:mm");
+            if (!times.Contains(normalized))
+                times.Add(normalized);
+        }
+
+        times.Sort(StringComparer.Ordinal);
+        return true;
+    }
+
     private async void okButton_Click(object sender, EventArgs e)
     {
         // Save control values to settings
@@ -120,6 +161,41 @@ public partial class SettingsForm : Form
         _settings.ExternalJavascriptEditor = externalJavascriptEditorTextBox.Text;
         _settings.DefaultDownloadDirectory = defaultDownloadDirectoryTextBox.Text;
         _settings.UpdateCheckFrequency = (UpdateCheckFrequency)updateCheckComboBox.SelectedValue!;
+
+        if (!TryParseScheduledTimes(scheduledTimesTextBox.Text, out var scheduledTimes, out var badTime))
+        {
+            // Refusing beats silently dropping it: a time nobody can parse is a run
+            // that never happens, and the dialog would close looking like it worked.
+            MessageBox.Show(
+                this,
+                $"'{badTime}' is not a time of day. Use 24-hour HH:mm, separated by commas.",
+                "Download all at",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning
+            );
+            scheduledTimesTextBox.Focus();
+            return;
+        }
+
+        _settings.ScheduledDownloadTimes = scheduledTimes;
+        _settings.FrequentCheckIntervalMinutes = (int)frequentCheckIntervalNumericUpDown.Value;
+
+        if (
+            runAtStartupCheckBox.Checked != StartupShortcutService.IsEnabled
+            && !StartupShortcutService.Apply(runAtStartupCheckBox.Checked, out var startupError)
+        )
+        {
+            MessageBox.Show(
+                this,
+                $"Could not update the startup shortcut: {startupError}",
+                "Start with Windows",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning
+            );
+            return;
+        }
+
+        _settings.RunAtStartup = StartupShortcutService.IsEnabled;
 
         if (!ApplyStorageLocation())
             return;

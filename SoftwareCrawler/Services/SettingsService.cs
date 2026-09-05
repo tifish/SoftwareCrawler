@@ -126,6 +126,31 @@ public class SettingsService
             settings.ColorMode = SystemColorMode.System;
         if (!Enum.IsDefined(settings.UpdateCheckFrequency))
             settings.UpdateCheckFrequency = UpdateCheckFrequency.Daily;
+        settings.FrequentCheckIntervalMinutes = Math.Clamp(
+            settings.FrequentCheckIntervalMinutes,
+            1,
+            1440
+        );
+        settings.ScheduledDownloadTimes = NormalizeScheduledTimes(settings.ScheduledDownloadTimes);
+    }
+
+    /// <summary>
+    /// Keeps the schedule in the one shape the scheduler reads: valid "HH:mm" only,
+    /// de-duplicated, in ascending order. Anything unparseable is dropped rather
+    /// than guessed at — a time nobody can read is a run that never happens, and
+    /// silently rounding it would hide that.
+    /// </summary>
+    internal static List<string> NormalizeScheduledTimes(IEnumerable<string>? times)
+    {
+        if (times is null)
+            return [];
+
+        return times
+            .Where(time => TimeOnly.TryParseExact(time?.Trim(), "HH:mm", out _))
+            .Select(time => time.Trim())
+            .Distinct()
+            .Order(StringComparer.Ordinal)
+            .ToList();
     }
 
     private string CurrentRoamingSettingsPath() =>

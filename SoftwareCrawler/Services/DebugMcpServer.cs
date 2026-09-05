@@ -86,6 +86,7 @@ internal static class DebugMcpServer
         host.AddTool("page_state", PageStateAsync);
         host.AddTool("storage_info", _ => Task.FromResult(StorageInfo()));
         host.AddTool("config_monitor", _ => Task.FromResult(ConfigMonitorInfo()));
+        host.AddTool("schedule", ScheduleAsync);
         return host;
     }
 
@@ -96,13 +97,14 @@ internal static class DebugMcpServer
 
     #region UI thread
 
+    // MainForm.Current rather than Application.OpenForms: a resident instance sits
+    // in the tray with its window hidden, and WinForms leaves hidden forms out of
+    // OpenForms, so looking there would find the browser host window instead.
     private static Form? MainForm =>
-        Application.OpenForms.OfType<MainForm>().FirstOrDefault()
-        ?? Application.OpenForms.Cast<Form>().FirstOrDefault();
+        SoftwareCrawler.MainForm.Current ?? Application.OpenForms.Cast<Form>().FirstOrDefault();
 
     /// <summary>The main window as itself, for the tools that need more than <see cref="Form"/>.</summary>
-    private static MainForm? CrawlerForm =>
-        Application.OpenForms.OfType<MainForm>().FirstOrDefault();
+    private static MainForm? CrawlerForm => SoftwareCrawler.MainForm.Current;
 
     /// <summary>
     /// Marshals onto the UI thread through the main form, with a timeout so a
@@ -210,7 +212,21 @@ internal static class DebugMcpServer
     /// <summary>The object the "App" root resolves to: everything worth reaching from one place.</summary>
     private sealed class AppRoot
     {
-        public IReadOnlyList<Form> Forms => Application.OpenForms.Cast<Form>().ToList();
+        /// <summary>
+        /// Open forms, with the main window first even when it is hidden in the
+        /// tray and therefore missing from Application.OpenForms.
+        /// </summary>
+        public IReadOnlyList<Form> Forms
+        {
+            get
+            {
+                var forms = Application.OpenForms.Cast<Form>().ToList();
+                if (DebugMcpServer.MainForm is { } main && !forms.Contains(main))
+                    forms.Insert(0, main);
+                return forms;
+            }
+        }
+
         public Form? MainForm => DebugMcpServer.MainForm;
         public BrowserObject Browser => BrowserObject.Browser;
         public AppSettings Settings => SettingsSingletonContainer.Settings;
@@ -220,6 +236,16 @@ internal static class DebugMcpServer
 
         /// <summary>True while a download holds the gate that keeps them one at a time.</summary>
         public bool IsDownloading => SoftwareItem.IsDownloading;
+
+        /// <summary>The resident scheduler, or null when this instance is one-shot.</summary>
+        public DownloadScheduler? Scheduler => CrawlerForm?.Scheduler;
+
+        public bool StartupShortcutEnabled => StartupShortcutService.IsEnabled;
+        public string StartupShortcutPath => StartupShortcutService.ShortcutPath;
+
+        /// <summary>Same as the schedule tool's enable_startup/disable_startup.</summary>
+        public bool SetStartupShortcut(bool enabled) =>
+            StartupShortcutService.Apply(enabled, out _);
 
         /// <summary>The queue behind the download and test menu items.</summary>
         public DownloadBatch? DownloadBatch => CrawlerForm?.DownloadBatch;
@@ -930,6 +956,144 @@ internal static class DebugMcpServer
     /// What the config watcher currently believes about the files it protects:
     /// whether the app would refuse to overwrite them, and what it last saw.
     /// </summary>
+    /// <summary>
+    /// Inspects and drives the resident scheduler. Window visibility is part of the
+    /// tool because "the main window is open" is one of the conditions that hold a
+    /// run back, and it cannot otherwise be exercised from an agent session.
+    /// </summary>
+    private static async Task<JsonObject> ScheduleAsync(JsonObject args)
+    {
+        var action = args["action"]?.GetValue<string>() ?? "status";
+
+        var form = CrawlerForm;
+        if (form is null)
+            return ToolText("The main window is not open yet.", isError: true);
+
+        switch (action)
+        {
+            case "status":
+                break;
+
+            case "show_window":
+                await OnUiAsync<object?>(() =>
+                {
+                    form.ShowMainWindow();
+                    return null;
+                });
+                break;
+
+            case "hide_window":
+                await OnUiAsync<object?>(() =>
+                {
+                    form.HideToTray();
+                    return null;
+                });
+                break;
+
+            case "enable_startup":
+            case "disable_startup":
+            {
+                var enable = action == "enable_startup";
+                if (!StartupShortcutService.Apply(enable, out var startupError))
+                    return ToolText(
+                        $"Could not {(enable ? "create" : "remove")} the startup shortcut: {startupError}",
+                        isError: true
+                    );
+
+                break;
+            }
+
+            case "run_frequent":
+            case "run_full":
+            {
+                if (form.Scheduler is null)
+                    return ToolText(
+                        "The scheduler is not running (this instance is not resident).",
+                        isError: true
+                    );
+
+                var kind =
+                    action == "run_full" ? ScheduledRunKind.Full : ScheduledRunKind.Frequent;
+                // Start on the UI thread the browser lives on, then await the
+                // returned task off it so the request is not blocking that thread.
+                var run = await OnUiAsync(() => form.Scheduler.RunNowAsync(kind));
+                if (!await run)
+                    return ToolText("A run is already in flight.", isError: true);
+
+                break;
+            }
+
+            default:
+                return ToolText(
+                    $"Unknown action '{action}'. Use status, run_frequent, run_full, show_window, "
+                        + "hide_window, enable_startup or disable_startup.",
+                    isError: true
+                );
+        }
+
+        return ToolText(await OnUiAsync(() => ScheduleStatusText(form)));
+    }
+
+    private static string ScheduleStatusText(MainForm form)
+    {
+        var sb = new StringBuilder();
+
+        if (form.Scheduler is null)
+        {
+            sb.AppendLine("Scheduler: not running (this instance is not resident)");
+        }
+        else
+        {
+            var status = form.Scheduler.GetStatus();
+            sb.AppendLine(
+                $"Full run times: "
+                    + (
+                        status.ScheduledDownloadTimes.Count == 0
+                            ? "(none)"
+                            : string.Join(", ", status.ScheduledDownloadTimes)
+                    )
+            );
+            sb.AppendLine(
+                $"Frequent check: every {status.FrequentCheckIntervalMinutes} min "
+                    + $"over {status.FrequentItemCount} item(s)"
+            );
+            sb.AppendLine($"Last full run: {Describe(status.LastFullRun)}");
+            sb.AppendLine($"Next full run: {Describe(status.NextFullDue)}");
+            sb.AppendLine($"Last frequent check: {Describe(status.LastFrequentRun)}");
+            sb.AppendLine($"Next frequent check: {Describe(status.NextFrequentDue)}");
+            sb.AppendLine($"Running now: {status.IsRunning}");
+            sb.AppendLine(
+                $"Last skip reason: {(status.LastSkipReason.Length == 0 ? "(none)" : status.LastSkipReason)}"
+            );
+        }
+
+        sb.AppendLine();
+        sb.AppendLine($"Window visible: {form.Visible}");
+        sb.AppendLine($"Batch running: {form.DownloadBatch.IsRunning}");
+        sb.AppendLine(
+            $"User busy: {UserPresence.IsBusy(out var busyReason)}"
+                + (busyReason.Length == 0 ? "" : $" ({busyReason})")
+        );
+        sb.AppendLine($"Run at startup: {StartupShortcutService.IsEnabled}");
+        sb.AppendLine($"Startup shortcut: {StartupShortcutService.ShortcutPath}");
+        sb.AppendLine();
+
+        sb.AppendLine("Frequent items:");
+        var frequent = SoftwareManager
+            .Items.Where(item => item is { Enabled: true, FrequentCheck: true })
+            .ToList();
+        if (frequent.Count == 0)
+            sb.AppendLine("  (none)");
+        else
+            foreach (var item in frequent)
+                sb.AppendLine($"  {item.Name}\t{item.Status}\t{item.ErrorMessage}");
+
+        return sb.ToString();
+
+        static string Describe(DateTime? moment) =>
+            moment?.ToString("yyyy-MM-dd HH:mm:ss") ?? "never";
+    }
+
     private static JsonObject ConfigMonitorInfo()
     {
         var sb = new StringBuilder();

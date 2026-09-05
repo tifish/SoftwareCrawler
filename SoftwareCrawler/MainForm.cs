@@ -31,6 +31,7 @@ public partial class MainForm : Form
     {
         InitializeComponent();
 
+        Current = this;
         Text = DebugInstanceContext.DecorateTitle(Text);
         ConfigChangeMonitor.ConfigChanged += OnConfigChanged;
         SoftwareManager.Reloaded += OnSoftwareListReloaded;
@@ -92,9 +93,28 @@ public partial class MainForm : Form
     {
         base.OnFormClosing(e);
 
+        // In resident mode the X button means "get out of my way", not "quit":
+        // closing the window would stop the scheduler the user just set up.
+        // Only a deliberate close counts — a programmatic Close() (the --auto-close
+        // path) and a Windows shutdown both go through untouched.
+        if (_residentMode && !_allowClose && e.CloseReason == CloseReason.UserClosing)
+        {
+            e.Cancel = true;
+            HideToTray();
+            return;
+        }
+
         ConfigChangeMonitor.ConfigChanged -= OnConfigChanged;
         SoftwareManager.Reloaded -= OnSoftwareListReloaded;
         _updateCheckTimer?.Stop();
+        _scheduler?.Stop();
+
+        if (_trayIcon is not null)
+        {
+            _trayIcon.Visible = false;
+            _trayIcon.Dispose();
+            _trayIcon = null;
+        }
 
         // Ensure any pending debounced save is flushed before the process exits.
         try
@@ -107,19 +127,47 @@ public partial class MainForm : Form
         }
     }
 
-    protected override async void OnLoad(EventArgs args)
+    protected override void OnLoad(EventArgs args)
+    {
+        base.OnLoad(args);
+        _ = EnsureInitializedAsync();
+    }
+
+    private bool _initializationStarted;
+
+    /// <summary>
+    /// Sets up the browser and loads the list, once, whether or not the window is
+    /// ever shown. Started from <see cref="OnLoad"/> normally and from
+    /// <see cref="Program"/> when the app starts hidden in the tray — a form that
+    /// is never shown raises no Load event, and everything downstream waits on this.
+    /// </summary>
+    internal Task<bool> EnsureInitializedAsync()
+    {
+        if (!_initializationStarted)
+        {
+            _initializationStarted = true;
+            _ = InitializeAsync();
+        }
+
+        return _onLoadTaskCompletionSource.Task;
+    }
+
+    private async Task InitializeAsync()
     {
         try
         {
-            base.OnLoad(args);
-
             using (new DownloadUIDisabler(this))
             {
-                var parentForm = new Form();
-                await Browser.Init(parentForm);
-                parentForm.Size = new Size(1280, 720);
+                // Placement first: Browser.Init shows this window, and a resident
+                // start must not flash a browser window across the screen.
+                _browserHostForm = new BrowserHostForm { Size = new Size(1280, 720) };
+                ApplyBrowserHostPlacement();
 
-                BringToFront();
+                await Browser.Init(_browserHostForm);
+
+                // Starting in the tray must never steal focus.
+                if (Visible)
+                    BringToFront();
 
                 await Reload();
             }
@@ -127,11 +175,12 @@ public partial class MainForm : Form
             _onLoadTaskCompletionSource.TrySetResult(true);
 
             StartUpdateChecks();
+            StartScheduler();
         }
         catch (Exception e)
         {
-            Log.ZLogError(e, $"An error occurred in OnLoad");
-            MessageBox.Show(e.Message, "", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            Log.ZLogError(e, $"An error occurred while initializing");
+            ReportError(e.Message);
             _onLoadTaskCompletionSource.TrySetResult(false);
         }
     }

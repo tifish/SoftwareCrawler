@@ -77,6 +77,15 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     [DisplayName("Use proxy")]
     public bool UseProxy { get; set; }
 
+    /// <summary>
+    /// This machine: include the item in the frequent check the resident scheduler
+    /// runs every <see cref="RoamingAppSettings.FrequentCheckIntervalMinutes"/>
+    /// minutes, on top of the scheduled full runs. Off by default — a page polled
+    /// every ten minutes is a lot of traffic for one site, so this is opt-in per item.
+    /// </summary>
+    [DisplayName("Frequent check")]
+    public bool FrequentCheck { get; set; }
+
     public string Name { get; set; } = string.Empty;
     public string WebPage { get; set; } = string.Empty;
 
@@ -274,6 +283,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             nameof(DownloadDirectory),
             nameof(DownloadDirectory2),
             nameof(UseProxy),
+            nameof(FrequentCheck),
         }
             .Select(name => typeof(SoftwareItem).GetProperty(name)!)
             .ToList(),

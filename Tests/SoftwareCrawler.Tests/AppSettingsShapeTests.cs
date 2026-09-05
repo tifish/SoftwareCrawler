@@ -96,6 +96,8 @@ public class AppSettingsShapeTests
             return !(bool)(current ?? false);
         if (type == typeof(int))
             return (int)(current ?? 0) + 17;
+        if (type == typeof(List<string>))
+            return new List<string> { "a distinct value" };
         if (type.IsEnum)
             return Enum.GetValues(type)
                 .Cast<object>()

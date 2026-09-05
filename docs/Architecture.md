@@ -11,7 +11,8 @@
 两种使用形态：
 
 - **交互式**：主窗口是一张可编辑的表格，一行一个软件，右键菜单可测试/下载/打开页面/编辑脚本。
-- **无人值守**：`SoftwareCrawler.exe --download-all --auto-close`，`bin/AddDownloadEveryNight.cmd` 把它注册成一个每天 00:00、08:00、13:00、18:30 触发的计划任务。
+- **常驻**：默认形态。窗口可以收进通知区域，程序自己按两套时间表跑（`DownloadScheduler`）；`--tray` 直接以隐藏窗口启动，开机启动的快捷方式用的就是它。
+- **无人值守（一次性）**：`SoftwareCrawler.exe --download-all --auto-close`，跑完就退。
 
 技术栈：.NET 10 / WinForms / WebView2（Chromium），Windows 专用，非自包含发布（依赖桌面运行时）。
 
@@ -52,18 +53,26 @@ SoftwareCrawler.slnx
 
 `Program.Main`（`Program.cs:18`）顺序固定，后面的步骤依赖前面的结果：
 
-1. 解析命令行：`--download-all` / `--auto-close` / `--force-close`。
+1. 解析命令行：`--download-all` / `--auto-close` / `--force-close` / `--tray`。
 2. 初始化日志（Debug 构建降到 `Debug` 级别）。
 3. `SingleInstanceGuard.Acquire()` —— 同一可执行目录只允许一个实例，抢不到就记一行日志退出。
 4. `ConfigChangeMonitor.Watch(活动 Config 目录, Debug 时额外监视 Templates 目录)`。
 5. `DebugMcpServer.Start()` —— Release 构建里是空操作。
-6. `Application.Run(new MainForm())`。
+6. `mainForm.ConfigureResidentMode(resident: !downloadAll, startHidden: tray)` —— 普通启动都是常驻的，只有 `--download-all` 那趟是一次性的。
+7. `Application.Run(mainForm)`。
 
 **单实例**：同目录的两个实例共用 `Cache` 这一份 WebView2 profile，而 profile 认启动参数——别的进程用不同 `--proxy-server` 占着时，需要代理的条目连浏览器都建不起来（`0x8007139F`），夜里那批走代理的条目会全军覆没，不走代理的却毫发无损。占位用的是 `Cache\instance.lock`（`FileOptions.DeleteOnClose` 独占打开，内容是 pid）而不是互斥体：文件锁跨得过桌面会话与计划任务会话的边界，不需要 `Global\` 内核对象那份权限，进程一死锁就没了。交互式启动被挡下时会把已在跑的那个窗口提到前台，`--download-all` 则安静退出——无人值守时段弹个对话框会把计划任务永远挂在那儿。不同 worktree 各有各的 `bin`，互不影响。
 
-`MainForm.OnLoad`（`MainForm.cs:100`）里：创建一个**独立的宿主窗体**承载 WebView2（爬取时可见的浏览器窗口不是主窗口的一部分），`Browser.Init` 完成后 `Reload()` 读清单绑定表格，然后启动更新检查定时器。
+初始化在 `MainForm.InitializeAsync`：创建一个**独立的宿主窗体**（`BrowserHostForm`）承载 WebView2（爬取时可见的浏览器窗口不是主窗口的一部分），`Browser.Init` 完成后 `Reload()` 读清单绑定表格，然后启动更新检查定时器与调度器。
+
+它**不能只挂在 `OnLoad` 上**：托盘启动的窗体从不显示，也就从不触发 Load，浏览器和调度器都建不起来。所以入口是幂等的 `EnsureInitializedAsync()`，`OnLoad` 和 `Application.Idle` 各调一次，谁先到算谁的。
 
 `--download-all` 的执行时机在 `Application.Idle` 第一次触发时，且 `DownloadAll()` 内部会 `await _onLoadTaskCompletionSource.Task` 等浏览器就绪，因此不会与初始化竞态。
+
+**隐藏启动的两个坑**（都在 `MainForm.Resident.cs`）：
+
+- `Application.Run` 无条件把主窗体设为可见，所以 `SetVisibleCore` 要吃掉第一次 Show。但吃掉之后必须**手动 `CreateHandle()`**——否则窗体没有句柄，而 WinForms 只把可见窗体放进 `Application.OpenForms`，调试通道按老办法查找就会摸到 `BrowserHostForm` 或者什么都找不到。查找主窗口一律走 `MainForm.Current`。
+- 浏览器宿主窗口在后台是**移到屏幕外**，不是 `Hide()`。Chromium 会节流它认为不可见的窗口的定时器和渲染，而页面就绪判定恰恰依赖脚本按正常速度跑完。`BrowserHostForm` 同时关掉了任务栏条目并重写 `ShowWithoutActivation`，后台跑的时候不会把焦点从用户手里抢走。
 
 ## 4. 爬取配方：SoftwareItem
 
@@ -123,6 +132,39 @@ flowchart TD
 这两类外部进程都**不显示控制台窗口、检查退出码、失败时把输出记进日志**（`RunProcessAsync`）。失败即视为该项失败且不重试——文件已经在盘上，重下没有意义；状态停在 `Extracting` 或 `RunningEventScript`，错误信息里能看出是哪一步。7-Zip 的退出码 1 是非致命警告，按成功处理，2 及以上才算失败。
 
 取消：`DownloadBatch.Cancel()` 停下这一批并把请求转给当前项，`CancelDownload()` 置 `_hasCancelled` 并调 `Browser.Cancel()`；流水线中的等待循环都会检查这个标志。`Browser.Cancel()` 在 `Init` 之前也可能被调到（启动途中点取消），所以它对未建好的 WebView2 是空操作。
+
+### 5.1 定时：DownloadScheduler
+
+`Services/DownloadScheduler.cs` 是系统计划任务的替代品。以前 `bin/AddDownloadEveryNight.cmd` 把 `--download-all --auto-close` 注册成每天四次的任务，现在时间表在程序里，脚本已删除。
+
+**为什么必须搬进来**：常驻实例常年持有 `Cache\instance.lock`，外部计划任务起的第二个副本一定被 `SingleInstanceGuard` 挡下并安静退出。常驻和外部定时任务只能二选一。
+
+两套时间表共用一个 `System.Windows.Forms.Timer`（30 秒 tick）和同一个 `MainForm.DownloadBatch`：
+
+| | 触发 | 覆盖范围 | 重试 |
+| --- | --- | --- | --- |
+| 全量 | `Settings.ScheduledDownloadTimes` 里的时刻 | 所有条目 | `Settings.DownloadRetryCount` |
+| 高频 | 每 `Settings.FrequentCheckIntervalMinutes` 分钟 | `Enabled && FrequentCheck` 的条目 | 0 |
+
+高频轮次**不重试**：下一轮几分钟后就来，对着已经挂掉的站点反复敲正是短间隔最不该干的事。
+
+判定逻辑全在 `DownloadSchedulePlanner` 里，是纯日期运算、没有定时器也没有 UI，由 `Tests/SoftwareCrawler.Tests/DownloadScheduleTests.cs` 覆盖。要点：
+
+- `MostRecentDue` 同时看今天和**昨天**的时刻。凌晨 00:30 时身后最近的时刻是昨天的 18:30，只看今天的话每天头几个小时永远轮不上。
+- 判定是"最近一个已过的时刻 vs 上次跑完的时刻"，所以关机一个周末再开机只补跑**一趟**，不会把错过的每个时刻都重放一遍。
+- `LastFullRun` 落在 `Config/ScheduleState.json`，跨重启保留——丢了就会每次重启重爬一遍。高频那个只在内存里，重启最多损失一轮。
+- 首次启动把 `LastFullRun` 锚定到"最近一个已过的时刻"再落盘，所以装好程序不会立刻触发一趟全量。
+
+**门禁**（`CanRunNow`）是"不打扰"的落点，三个条件：已有批次在跑、主窗口可见（有人在用）、`UserPresence.IsBusy()`（`SHQueryUserNotificationState` 报告全屏 / 投影 / 勿扰）。注意锁屏（`QUNS_NOT_PRESENT`）**不算忙**——那恰恰是最好的时机。
+
+两套时间表对坏时机的反应不同，这是有意的：
+
+- **高频轮次被挡下就丢掉**，`_lastFrequentRun` 照常推进。迟到的一轮比不跑更糟，而下一轮几分钟后就来。
+- **全量只是延后**，`_lastFullRun` 不动，于是每个 tick 都会重新问一次，直到能跑为止。一天就那么几趟，跳过的代价太大。
+
+`NoteSkip` 只在原因**变化**时记日志：一天 100 多轮，同一条"主窗口开着"重复几十遍会把日志淹掉。
+
+后台运行时进程优先级压到 `BelowNormal`，窗口打开时恢复 `Normal`。注意这只管得住本进程，WebView2 是独立进程树，不继承。
 
 ## 6. 浏览器层（BrowserObject）
 
@@ -276,6 +318,9 @@ Claude Code ──stdio──> bin/SoftwareCrawlerMcp.exe ──命名管道 JSO
 7. **下载判重依赖落盘时回写的文件时间戳**，改动落盘逻辑时别把 `SetLastWriteTime` 去掉。
 8. **调试通道只应在 Debug 下监听**，且只连当前 worktree 的实例。
 9. **同一个 `bin` 目录同时只跑一个实例**：`Cache` 这份 WebView2 profile 不允许两组不同的启动参数，第二个实例一开就会让需要代理的条目整批失败。
+10. **定时归程序自己管**。常驻实例持着单实例锁，外部计划任务只会被挡下，别再往回搬。
+11. **后台轮次不弹窗、不抢焦点**。常驻实例全天在用户机器上跑，一个对话框会挂住整条时间表（`ReportError` 就是为此存在的）。
+12. **查主窗口用 `MainForm.Current`**，不要用 `Application.OpenForms`——窗体收进托盘后就不在那个集合里了。
 
 ## 13. 常见改动的落点
 
@@ -287,3 +332,5 @@ Claude Code ──stdio──> bin/SoftwareCrawlerMcp.exe ──命名管道 JSO
 | 支持一种新的下载方式 | 在 `DownloadPipeline` 里复用 `OnBeginDownloadHandler` / `Succeeded` 这条决策与落盘链路（`DirectDownload` 就是这么接的） |
 | 加一个调试能力 | `DebugMcpServer.CreateHost()` 注册工具 + `DebugMcpContract.BuildToolList()` 声明 schema；简单读写优先挂到 `AppRoot` 上，用 `get_value`/`invoke` 直接触达 |
 | 排查"配置被覆盖/没保存" | MCP `config_monitor`：watcher 是否存活、pending 事件、每个文件的基线哈希与 `externallyChanged`、备份清单 |
+| 改定时规则 | 判定逻辑在 `DownloadSchedulePlanner`（纯函数，先加测试）；触发与门禁在 `DownloadScheduler`；跑哪一批在 `MainForm.RunScheduledAsync` |
+| 排查"定时没跑/跑了不该跑" | MCP `schedule`：两套时间表的上次与下次、高频覆盖哪些项、当前门禁判定，以及最后一次被挡下的原因 |

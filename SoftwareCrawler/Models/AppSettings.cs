@@ -24,6 +24,13 @@ public class MachineAppSettings
     public string Proxy { get; set; } = "";
     public string ExternalJavascriptEditor { get; set; } = "";
     public string DefaultDownloadDirectory { get; set; } = "";
+
+    /// <summary>
+    /// Whether a shortcut in this user's Startup folder launches the app minimized
+    /// to the tray at logon. A shortcut rather than a Run key: the app promises it
+    /// never writes the registry, and uninstalling stays "delete the folder".
+    /// </summary>
+    public bool RunAtStartup { get; set; }
 }
 
 /// <summary>
@@ -42,6 +49,21 @@ public class RoamingAppSettings
     public SystemColorMode ColorMode { get; set; } = SystemColorMode.System;
     public bool CheckUpdateOnStartup { get; set; } = true;
     public UpdateCheckFrequency UpdateCheckFrequency { get; set; } = UpdateCheckFrequency.Daily;
+
+    /// <summary>
+    /// Times of day, "HH:mm", at which the resident scheduler downloads every
+    /// enabled item. Empty means no scheduled full run. These replace the Windows
+    /// scheduled task the app used to register: a resident instance holds the
+    /// single-instance lock, so an external task would only ever be turned away.
+    /// </summary>
+    public List<string> ScheduledDownloadTimes { get; set; } =
+        ["00:00", "08:00", "13:00", "18:30"];
+
+    /// <summary>
+    /// How often items marked <see cref="SoftwareItem.FrequentCheck"/> are checked,
+    /// in minutes.
+    /// </summary>
+    public int FrequentCheckIntervalMinutes { get; set; } = 10;
 }
 
 /// <summary>
@@ -94,6 +116,11 @@ public class AppSettings
         get => Machine.DefaultDownloadDirectory;
         set => Machine.DefaultDownloadDirectory = value;
     }
+    public bool RunAtStartup
+    {
+        get => Machine.RunAtStartup;
+        set => Machine.RunAtStartup = value;
+    }
 
     // Roaming
     public int DownloadRetryCount
@@ -145,5 +172,15 @@ public class AppSettings
     {
         get => Roaming.UpdateCheckFrequency;
         set => Roaming.UpdateCheckFrequency = value;
+    }
+    public List<string> ScheduledDownloadTimes
+    {
+        get => Roaming.ScheduledDownloadTimes;
+        set => Roaming.ScheduledDownloadTimes = value;
+    }
+    public int FrequentCheckIntervalMinutes
+    {
+        get => Roaming.FrequentCheckIntervalMinutes;
+        set => Roaming.FrequentCheckIntervalMinutes = value;
     }
 }

@@ -57,6 +57,11 @@ namespace SoftwareCrawler
             customStoragePathTextBox = new TextBox();
             browseStoragePathButton = new Button();
             storageFlowLayoutPanel = new FlowLayoutPanel();
+            scheduledTimesLabel = new Label();
+            scheduledTimesTextBox = new TextBox();
+            frequentCheckIntervalLabel = new Label();
+            frequentCheckIntervalNumericUpDown = new NumericUpDown();
+            runAtStartupCheckBox = new CheckBox();
             updateCheckLabel = new Label();
             updateCheckComboBox = new ComboBox();
             versionLabel = new Label();
@@ -73,6 +78,7 @@ namespace SoftwareCrawler
             ((System.ComponentModel.ISupportInitialize)tryClickIntervalNumericUpDown).BeginInit();
             ((System.ComponentModel.ISupportInitialize)startDownloadTimeoutNumericUpDown).BeginInit();
             ((System.ComponentModel.ISupportInitialize)downloadTimeoutNumericUpDown).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)frequentCheckIntervalNumericUpDown).BeginInit();
             proxyValuePanel.SuspendLayout();
             rootTableLayoutPanel.SuspendLayout();
             flowLayoutPanel2.SuspendLayout();
@@ -404,6 +410,48 @@ namespace SoftwareCrawler
             storageFlowLayoutPanel.Name = "storageFlowLayoutPanel";
             storageFlowLayoutPanel.TabIndex = 29;
             //
+            // scheduledTimesLabel
+            //
+            scheduledTimesLabel.Anchor = AnchorStyles.Left;
+            scheduledTimesLabel.AutoSize = true;
+            scheduledTimesLabel.Name = "scheduledTimesLabel";
+            scheduledTimesLabel.TabIndex = 40;
+            scheduledTimesLabel.Text = "Download all at";
+            //
+            // scheduledTimesTextBox
+            //
+            scheduledTimesTextBox.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            scheduledTimesTextBox.Name = "scheduledTimesTextBox";
+            scheduledTimesTextBox.PlaceholderText = "00:00, 08:00, 13:00, 18:30 — empty for no scheduled run";
+            scheduledTimesTextBox.Size = new Size(336, 23);
+            scheduledTimesTextBox.TabIndex = 41;
+            //
+            // frequentCheckIntervalLabel
+            //
+            frequentCheckIntervalLabel.Anchor = AnchorStyles.Left;
+            frequentCheckIntervalLabel.AutoSize = true;
+            frequentCheckIntervalLabel.Name = "frequentCheckIntervalLabel";
+            frequentCheckIntervalLabel.TabIndex = 42;
+            frequentCheckIntervalLabel.Text = "Frequent check every (minutes)";
+            //
+            // frequentCheckIntervalNumericUpDown
+            //
+            frequentCheckIntervalNumericUpDown.Anchor = AnchorStyles.Left;
+            frequentCheckIntervalNumericUpDown.Maximum = new decimal(new int[] { 1440, 0, 0, 0 });
+            frequentCheckIntervalNumericUpDown.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
+            frequentCheckIntervalNumericUpDown.Name = "frequentCheckIntervalNumericUpDown";
+            frequentCheckIntervalNumericUpDown.Size = new Size(72, 23);
+            frequentCheckIntervalNumericUpDown.TabIndex = 43;
+            //
+            // runAtStartupCheckBox
+            //
+            runAtStartupCheckBox.Anchor = AnchorStyles.Left;
+            runAtStartupCheckBox.AutoSize = true;
+            runAtStartupCheckBox.Name = "runAtStartupCheckBox";
+            runAtStartupCheckBox.TabIndex = 44;
+            runAtStartupCheckBox.Text = "Start with Windows, hidden in the notification area";
+            runAtStartupCheckBox.UseVisualStyleBackColor = true;
+            //
             // updateCheckLabel
             //
             updateCheckLabel.Anchor = AnchorStyles.Left;
@@ -490,16 +538,24 @@ namespace SoftwareCrawler
             rootTableLayoutPanel.Controls.Add(colorModeComboBox, 1, 10);
             rootTableLayoutPanel.Controls.Add(storageLocationLabel, 0, 11);
             rootTableLayoutPanel.Controls.Add(storageFlowLayoutPanel, 1, 11);
-            rootTableLayoutPanel.Controls.Add(updateCheckLabel, 0, 12);
-            rootTableLayoutPanel.Controls.Add(updateCheckComboBox, 1, 12);
-            rootTableLayoutPanel.Controls.Add(versionLabel, 0, 13);
-            rootTableLayoutPanel.Controls.Add(versionFlowLayoutPanel, 1, 13);
-            rootTableLayoutPanel.Controls.Add(toolButtonFlowLayoutPanel, 1, 14);
+            rootTableLayoutPanel.Controls.Add(scheduledTimesLabel, 0, 12);
+            rootTableLayoutPanel.Controls.Add(scheduledTimesTextBox, 1, 12);
+            rootTableLayoutPanel.Controls.Add(frequentCheckIntervalLabel, 0, 13);
+            rootTableLayoutPanel.Controls.Add(frequentCheckIntervalNumericUpDown, 1, 13);
+            rootTableLayoutPanel.Controls.Add(runAtStartupCheckBox, 1, 14);
+            rootTableLayoutPanel.Controls.Add(updateCheckLabel, 0, 15);
+            rootTableLayoutPanel.Controls.Add(updateCheckComboBox, 1, 15);
+            rootTableLayoutPanel.Controls.Add(versionLabel, 0, 16);
+            rootTableLayoutPanel.Controls.Add(versionFlowLayoutPanel, 1, 16);
+            rootTableLayoutPanel.Controls.Add(toolButtonFlowLayoutPanel, 1, 17);
             rootTableLayoutPanel.Dock = DockStyle.Fill;
             rootTableLayoutPanel.Location = new Point(0, 0);
             rootTableLayoutPanel.Name = "rootTableLayoutPanel";
             rootTableLayoutPanel.Padding = new Padding(10);
-            rootTableLayoutPanel.RowCount = 15;
+            rootTableLayoutPanel.RowCount = 18;
+            rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -563,6 +619,7 @@ namespace SoftwareCrawler
             ((System.ComponentModel.ISupportInitialize)tryClickIntervalNumericUpDown).EndInit();
             ((System.ComponentModel.ISupportInitialize)startDownloadTimeoutNumericUpDown).EndInit();
             ((System.ComponentModel.ISupportInitialize)downloadTimeoutNumericUpDown).EndInit();
+            ((System.ComponentModel.ISupportInitialize)frequentCheckIntervalNumericUpDown).EndInit();
             proxyValuePanel.ResumeLayout(false);
             proxyValuePanel.PerformLayout();
             rootTableLayoutPanel.ResumeLayout(false);
@@ -616,6 +673,11 @@ namespace SoftwareCrawler
         private TextBox customStoragePathTextBox;
         private Button browseStoragePathButton;
         private FlowLayoutPanel storageFlowLayoutPanel;
+        private Label scheduledTimesLabel;
+        private TextBox scheduledTimesTextBox;
+        private Label frequentCheckIntervalLabel;
+        private NumericUpDown frequentCheckIntervalNumericUpDown;
+        private CheckBox runAtStartupCheckBox;
         private Label updateCheckLabel;
         private ComboBox updateCheckComboBox;
         private Label versionLabel;

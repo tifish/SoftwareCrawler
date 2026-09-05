@@ -29,11 +29,16 @@ static class Program
         {
             Description = "Force close after download",
         };
+        var trayOption = new Option<bool>("--tray")
+        {
+            Description = "Start hidden in the notification area",
+        };
         var rootCommand = new RootCommand("Software Crawler")
         {
             downloadAllOption,
             autoCloseOption,
             forceCloseOption,
+            trayOption,
         };
         var parseResult = rootCommand.Parse(args);
         if (parseResult.Errors.Count > 0)
@@ -44,6 +49,7 @@ static class Program
         var downloadAll = parseResult.GetValue(downloadAllOption);
         var autoClose = parseResult.GetValue(autoCloseOption);
         var forceClose = parseResult.GetValue(forceCloseOption);
+        var tray = parseResult.GetValue(trayOption);
 
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
@@ -83,6 +89,11 @@ static class Program
         ApplicationConfiguration.Initialize();
         Application.SetColorMode(Settings.ColorMode);
         var mainForm = new MainForm();
+
+        // A plain launch is resident: it keeps the tray icon and runs both schedules.
+        // --download-all is the one-shot shape and stays exactly as it was.
+        mainForm.ConfigureResidentMode(resident: !downloadAll, startHidden: tray);
+
         Application.Idle += ApplicationOnIdle;
         Application.Run(mainForm);
 
@@ -97,6 +108,10 @@ static class Program
             try
             {
                 Application.Idle -= ApplicationOnIdle;
+
+                // A tray start never shows the form, so Load never fires and nothing
+                // would build the browser or start the scheduler.
+                await mainForm.EnsureInitializedAsync();
 
                 if (downloadAll)
                 {
