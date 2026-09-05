@@ -15,7 +15,13 @@ public sealed record ScheduleStatus(
     DateTime? NextFullDue,
     DateTime? NextFrequentDue,
     bool IsRunning,
-    string LastSkipReason
+    string LastSkipReason,
+    /// <summary>
+    /// Why a run started right now would be turned away, or empty if nothing is in
+    /// the way. Answers "why didn't it run?" without having to catch the moment in
+    /// the log.
+    /// </summary>
+    string CurrentBlocker
 );
 
 /// <summary>
@@ -28,10 +34,11 @@ public sealed record ScheduleStatus(
 /// holds the single-instance lock — an external task launching a second copy would
 /// only ever be turned away (see <see cref="SingleInstanceGuard"/>).
 ///
-/// The two schedules differ in what a bad moment means. A frequent sweep that lands
-/// while the user is busy is *dropped*: another one is ten minutes away, and running
-/// late is worse than not running. A full run is only *deferred* — it comes round a
-/// handful of times a day, so it keeps asking every tick until it gets through.
+/// Both schedules stand down under the same conditions (<see cref="CanRunNow"/>),
+/// but they react differently. A frequent sweep that lands at a bad moment is
+/// *dropped*: another one is minutes away, and running late is worse than not
+/// running. A full run is only *deferred* — it comes round a handful of times a
+/// day, so it keeps asking every tick until it gets through.
 /// </summary>
 public sealed class DownloadScheduler
 {
@@ -46,7 +53,6 @@ public sealed class DownloadScheduler
 
     private readonly Func<ScheduledRunKind, IReadOnlyList<SoftwareItem>, Task> _runAsync;
     private readonly Func<bool> _isBatchRunning;
-    private readonly Func<bool> _isWindowVisible;
 
     private System.Windows.Forms.Timer? _timer;
     private bool _isRunning;
@@ -56,16 +62,13 @@ public sealed class DownloadScheduler
 
     /// <param name="runAsync">Runs one batch. Supplied by the window, which owns the browser.</param>
     /// <param name="isBatchRunning">True while any batch — scheduled or hand-started — is in flight.</param>
-    /// <param name="isWindowVisible">True while the main window is up, i.e. someone is working in it.</param>
     public DownloadScheduler(
         Func<ScheduledRunKind, IReadOnlyList<SoftwareItem>, Task> runAsync,
-        Func<bool> isBatchRunning,
-        Func<bool> isWindowVisible
+        Func<bool> isBatchRunning
     )
     {
         _runAsync = runAsync;
         _isBatchRunning = isBatchRunning;
-        _isWindowVisible = isWindowVisible;
     }
 
     /// <summary>
@@ -129,7 +132,8 @@ public sealed class DownloadScheduler
             DownloadSchedulePlanner.NextDue(now, times),
             _lastFrequentRun?.AddMinutes(Settings.FrequentCheckIntervalMinutes),
             _isRunning,
-            _lastSkipReason
+            _lastSkipReason,
+            CanRunNow(out var blocker) ? "" : blocker
         );
     }
 
@@ -159,7 +163,7 @@ public sealed class DownloadScheduler
 
             if (fullDue)
             {
-                if (CanRunNow(ScheduledRunKind.Full, out var reason))
+                if (CanRunNow(out var reason))
                 {
                     _lastFullRun = now;
                     SaveLastFullRun();
@@ -185,7 +189,7 @@ public sealed class DownloadScheduler
             if (FrequentItems().Count == 0)
                 return;
 
-            if (!CanRunNow(ScheduledRunKind.Frequent, out var skipReason))
+            if (!CanRunNow(out var skipReason))
             {
                 NoteSkip($"Frequent check skipped: {skipReason}");
                 return;
@@ -228,27 +232,20 @@ public sealed class DownloadScheduler
     }
 
     /// <summary>
-    /// The whole "do not disturb" contract in one place: never run on top of
-    /// another batch, and never run while Windows says the user is busy.
+    /// Whether a scheduled run may start, and it is the same answer for both
+    /// schedules: not on top of another batch — downloads are strictly serial and
+    /// share one browser — and not while Windows says the user is busy (full
+    /// screen, presenting, quiet hours).
     ///
-    /// An open main window only holds back the <em>full</em> run, which occupies the
-    /// browser for something like ten minutes and would take the grid over while
-    /// someone is working in it. The frequent sweep visits a handful of named items
-    /// for a few seconds, and putting fresh status in that grid is the entire point
-    /// of it — holding it back whenever the window is open meant it never ran while
-    /// anyone could see it, which is how this was first noticed.
+    /// An open main window is deliberately <em>not</em> a condition. It used to hold
+    /// runs back, which meant the frequent sweep only ever ran while nobody could
+    /// see it — the one time you go looking is the one time it will not work.
     /// </summary>
-    private bool CanRunNow(ScheduledRunKind kind, out string reason)
+    private bool CanRunNow(out string reason)
     {
         if (_isBatchRunning())
         {
             reason = "a download batch is already running";
-            return false;
-        }
-
-        if (kind == ScheduledRunKind.Full && _isWindowVisible())
-        {
-            reason = "the main window is open";
             return false;
         }
 

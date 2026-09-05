@@ -1092,6 +1092,9 @@ internal static class DebugMcpServer
             sb.AppendLine($"Next frequent check: {Describe(status.NextFrequentDue)}");
             sb.AppendLine($"Running now: {status.IsRunning}");
             sb.AppendLine(
+                $"Blocked right now: {(status.CurrentBlocker.Length == 0 ? "no" : status.CurrentBlocker)}"
+            );
+            sb.AppendLine(
                 $"Last skip reason: {(status.LastSkipReason.Length == 0 ? "(none)" : status.LastSkipReason)}"
             );
         }

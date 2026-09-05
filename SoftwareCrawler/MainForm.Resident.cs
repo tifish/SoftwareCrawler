@@ -250,11 +250,7 @@ public partial class MainForm
         if (!Visible)
             ApplyProcessPriority(foreground: false);
 
-        _scheduler = new DownloadScheduler(
-            RunScheduledAsync,
-            () => DownloadBatch.IsRunning,
-            () => Visible
-        );
+        _scheduler = new DownloadScheduler(RunScheduledAsync, () => DownloadBatch.IsRunning);
         _scheduler.Start();
     }
 
