@@ -240,6 +240,23 @@ internal static class DebugMcpServer
         /// <summary>The resident scheduler, or null when this instance is one-shot.</summary>
         public DownloadScheduler? Scheduler => CrawlerForm?.Scheduler;
 
+        /// <summary>True when the crawling browser window is where the user can see it.</summary>
+        public bool BrowserWindowShown => CrawlerForm?.IsBrowserWindowShown ?? false;
+
+        /// <summary>Same as the main window's "Show browser" button.</summary>
+        public bool SetBrowserWindowShown(bool shown)
+        {
+            if (CrawlerForm is not { } form)
+                return false;
+
+            if (shown)
+                form.ShowBrowserWindow();
+            else
+                form.HideBrowserWindow();
+
+            return form.IsBrowserWindowShown == shown;
+        }
+
         public bool StartupEnabled => StartupService.IsEnabled;
         public string StartupLocation => StartupService.Location;
 
@@ -1069,6 +1086,7 @@ internal static class DebugMcpServer
 
         sb.AppendLine();
         sb.AppendLine($"Window visible: {form.Visible}");
+        sb.AppendLine($"Browser window shown: {form.IsBrowserWindowShown}");
         sb.AppendLine($"Batch running: {form.DownloadBatch.IsRunning}");
         sb.AppendLine(
             $"User busy: {UserPresence.IsBusy(out var busyReason)}"

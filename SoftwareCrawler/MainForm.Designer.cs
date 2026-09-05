@@ -49,6 +49,7 @@ namespace SoftwareCrawler
             openDownloadDirectoryToolStripMenuItem = new ToolStripMenuItem();
             cleanUpLocalSettingsToolStripMenuItem = new ToolStripMenuItem();
             errorMessageLabel = new Label();
+            showBrowserButton = new Button();
             showDevToolsButton = new Button();
             softwareListDataGridView = new DataGridView();
             rootTableLayoutPanel = new TableLayoutPanel();
@@ -195,6 +196,17 @@ namespace SoftwareCrawler
             errorMessageLabel.TabIndex = 5;
             errorMessageLabel.Text = "Error message";
             //
+            // showBrowserButton
+            //
+            showBrowserButton.Anchor = AnchorStyles.Left;
+            showBrowserButton.AutoSize = true;
+            showBrowserButton.Name = "showBrowserButton";
+            showBrowserButton.Size = new Size(115, 25);
+            showBrowserButton.TabIndex = 3;
+            showBrowserButton.Text = "Show &browser";
+            showBrowserButton.UseVisualStyleBackColor = true;
+            showBrowserButton.Click += showBrowserButton_Click;
+            //
             // showDevToolsButton
             //
             showDevToolsButton.Anchor = AnchorStyles.Left;
@@ -248,6 +260,7 @@ namespace SoftwareCrawler
             //
             toolbarFlowLayoutPanel.AutoSize = true;
             toolbarFlowLayoutPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            toolbarFlowLayoutPanel.Controls.Add(showBrowserButton);
             toolbarFlowLayoutPanel.Controls.Add(showDevToolsButton);
             toolbarFlowLayoutPanel.Controls.Add(clearCookieButton);
             toolbarFlowLayoutPanel.Controls.Add(settingsButton);
@@ -306,6 +319,7 @@ namespace SoftwareCrawler
         private ToolStripMenuItem testAllToolStripMenuItem;
         private ToolStripSeparator toolStripSeparator2;
         private Label errorMessageLabel;
+        private Button showBrowserButton;
         private Button showDevToolsButton;
         private DataGridView softwareListDataGridView;
         private ToolStripSeparator toolStripSeparator3;

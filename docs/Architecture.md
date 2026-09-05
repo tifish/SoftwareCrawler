@@ -74,6 +74,10 @@ SoftwareCrawler.slnx
 - `Application.Run` 无条件把主窗体设为可见，所以 `SetVisibleCore` 要吃掉第一次 Show。但吃掉之后必须**手动 `CreateHandle()`**——否则窗体没有句柄，而 WinForms 只把可见窗体放进 `Application.OpenForms`，调试通道按老办法查找就会摸到 `BrowserHostForm` 或者什么都找不到。查找主窗口一律走 `MainForm.Current`。
 - 浏览器宿主窗口在后台是**移到屏幕外**，不是 `Hide()`。Chromium 会节流它认为不可见的窗口的定时器和渲染，而页面就绪判定恰恰依赖脚本按正常速度跑完。`BrowserHostForm` 同时关掉了任务栏条目并重写 `ShowWithoutActivation`，后台跑的时候不会把焦点从用户手里抢走。
 
+**浏览器窗口的显示归主界面的 "Show browser" 管**（`MainForm.Resident.cs`）。位置由两个条件相与决定：用户要不要看（`_browserWanted`）**且**主窗口在用。所以后台轮次绝不会在屏幕上支起一个浏览器，从托盘打开主窗口也不会顺带把它拽出来；收回托盘时它自己跟着退场，再打开时回到用户上次的选择。`_browserWanted` 的初值取决于启动方式：普通启动为真（保持配方维护者一直以来看得见浏览器的习惯），`--tray` 启动为假。
+
+`BrowserHostForm` **拦截用户关闭**：点它的 X 只是报一个 `HideRequested` 让主窗体把它挪走。真让它关掉会连 WebView2 一起销毁，本次会话后面所有下载都完了——加了 "Show browser" 这个入口之后，用户去点那个 X 的概率只会更高。
+
 ## 4. 爬取配方：SoftwareItem
 
 一行清单就是一个 `SoftwareItem`。字段分成三组，**这个分组是整个配置体系的基础**：

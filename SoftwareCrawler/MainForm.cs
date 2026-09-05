@@ -161,6 +161,7 @@ public partial class MainForm : Form
                 // Placement first: Browser.Init shows this window, and a resident
                 // start must not flash a browser window across the screen.
                 _browserHostForm = new BrowserHostForm { Size = new Size(1280, 720) };
+                _browserHostForm.HideRequested += (_, _) => HideBrowserWindow();
                 ApplyBrowserHostPlacement();
 
                 await Browser.Init(_browserHostForm);
@@ -632,8 +633,15 @@ public partial class MainForm : Form
         );
     }
 
+    private void showBrowserButton_Click(object sender, EventArgs e)
+    {
+        ShowBrowserWindow();
+    }
+
     private void showDevToolsButton_Click(object sender, EventArgs e)
     {
+        // DevTools is only useful next to the page it inspects.
+        ShowBrowserWindow();
         Browser.ShowDevTools();
     }
 

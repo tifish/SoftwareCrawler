@@ -38,9 +38,17 @@ public partial class MainForm
     private static Point OnScreenLocation => new(100, 100);
 
     /// <summary>
-    /// Parks the browser window off-screen while the app runs unattended, and brings
-    /// it back when someone opens the main window — watching a crawl happen is how
-    /// recipes get debugged.
+    /// Whether the user wants to watch the crawl. Starts on for an ordinary launch,
+    /// which is how recipes get debugged, and off for a tray start — nobody asked to
+    /// see a browser when the app came up at logon.
+    /// </summary>
+    private bool _browserWanted;
+
+    /// <summary>
+    /// Puts the browser window where it currently belongs: on screen only when the
+    /// user asked for it *and* the main window is up. So a background run never puts
+    /// a browser on screen, and opening the main window from the tray does not drag
+    /// one out with it.
     ///
     /// Moved rather than hidden on purpose: Chromium throttles a window it thinks is
     /// invisible, and the page-settled logic depends on scripts running at full speed.
@@ -50,8 +58,35 @@ public partial class MainForm
         if (_browserHostForm is null || _browserHostForm.IsDisposed)
             return;
 
-        _browserHostForm.Location =
-            _residentMode && !Visible ? OffScreenLocation : OnScreenLocation;
+        var onScreen = _browserWanted && (!_residentMode || Visible);
+        _browserHostForm.Location = onScreen ? OnScreenLocation : OffScreenLocation;
+    }
+
+    /// <summary>True when the browser window is actually where the user can see it.</summary>
+    internal bool IsBrowserWindowShown =>
+        _browserHostForm is { IsDisposed: false } host && host.Location != OffScreenLocation;
+
+    /// <summary>Brings the browser window on screen and in front. Safe before it exists.</summary>
+    internal void ShowBrowserWindow()
+    {
+        if (_browserHostForm is null || _browserHostForm.IsDisposed)
+            return;
+
+        _browserWanted = true;
+        ApplyBrowserHostPlacement();
+
+        if (_browserHostForm.WindowState == FormWindowState.Minimized)
+            _browserHostForm.WindowState = FormWindowState.Normal;
+
+        // Explicitly asked for, so taking focus here is the point.
+        _browserHostForm.Activate();
+    }
+
+    /// <summary>Parks the browser window off screen without tearing WebView2 down.</summary>
+    internal void HideBrowserWindow()
+    {
+        _browserWanted = false;
+        ApplyBrowserHostPlacement();
     }
 
     /// <summary>Exposed so the debug tools can inspect and drive the schedule.</summary>
@@ -65,6 +100,10 @@ public partial class MainForm
     {
         _residentMode = resident;
         _startHidden = resident && startHidden;
+
+        // Coming up in the tray means nobody is watching; anything else is someone
+        // sitting down to work on recipes, where the browser has always been visible.
+        _browserWanted = !_startHidden;
     }
 
     /// <summary>
