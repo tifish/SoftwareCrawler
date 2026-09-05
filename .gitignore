@@ -46,3 +46,5 @@ bin/Config/*
 # be restocked. Copies of these live next to the downloads they install.
 !bin/InstallScripts/
 !bin/InstallScripts/**
+!bin/Assets/
+!bin/Assets/**

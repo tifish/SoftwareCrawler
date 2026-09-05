@@ -30,6 +30,7 @@ public partial class MainForm : Form
     public MainForm()
     {
         InitializeComponent();
+        Icon = LoadApplicationIcon();
 
         Current = this;
         Text = DebugInstanceContext.DecorateTitle(Text);

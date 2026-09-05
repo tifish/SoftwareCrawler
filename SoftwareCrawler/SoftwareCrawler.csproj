@@ -9,6 +9,7 @@
     <LangVersion>preview</LangVersion>
     <RootNamespace>SoftwareCrawler</RootNamespace>
     <AssemblyName>SoftwareCrawler</AssemblyName>
+    <ApplicationIcon>..\bin\Assets\SoftwareCrawler.ico</ApplicationIcon>
     <!-- Dev builds are always 0.0.0.0; CI overrides with /p:Version=<commit count>. -->
     <Version>0.0.0.0</Version>
     <OutDir>..\bin</OutDir>

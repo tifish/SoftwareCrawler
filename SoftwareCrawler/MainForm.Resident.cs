@@ -148,7 +148,7 @@ public partial class MainForm
 
         _trayIcon = new NotifyIcon
         {
-            Icon = LoadTrayIcon(),
+            Icon = LoadApplicationIcon(),
             Text = DebugInstanceContext.DecorateTitle("Software Crawler"),
             ContextMenuStrip = menu,
             Visible = true,
@@ -163,7 +163,7 @@ public partial class MainForm
         };
     }
 
-    private static Icon LoadTrayIcon()
+    private static Icon LoadApplicationIcon()
     {
         try
         {
@@ -173,7 +173,7 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
-            Log.ZLogWarning(ex, $"Failed to load the tray icon; falling back to the default");
+            Log.ZLogWarning(ex, $"Failed to load the application icon; falling back to the default");
         }
 
         return SystemIcons.Application;
