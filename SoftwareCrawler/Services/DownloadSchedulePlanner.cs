@@ -106,9 +106,9 @@ public static class DownloadSchedulePlanner
     /// Which schedules are due this tick, judged independently.
     ///
     /// Both can come back true, and the caller must treat them separately: a full
-    /// run that is due but cannot start yet has to leave the frequent sweep alone.
-    /// Bundling them once meant a full run waiting for the user to close the main
-    /// window silently held the sweep back for hours.
+    /// run that is due but cannot start has to leave the frequent sweep alone.
+    /// Bundling them once meant a blocked full run silently held the sweep back for
+    /// hours.
     /// </summary>
     public static (bool Full, bool Frequent) GetDueRuns(
         DateTime now,

@@ -34,11 +34,11 @@ public sealed record ScheduleStatus(
 /// holds the single-instance lock — an external task launching a second copy would
 /// only ever be turned away (see <see cref="SingleInstanceGuard"/>).
 ///
-/// Both schedules stand down under the same conditions (<see cref="CanRunNow"/>),
-/// but they react differently. A frequent sweep that lands at a bad moment is
-/// *dropped*: another one is minutes away, and running late is worse than not
-/// running. A full run is only *deferred* — it comes round a handful of times a
-/// day, so it keeps asking every tick until it gets through.
+/// Both schedules stand down under the same conditions (<see cref="CanRunNow"/>)
+/// and both react the same way: a run that lands at a bad moment is *dropped*, and
+/// the next one on the schedule is the next chance. Nothing is queued up to fire
+/// late — a crawl that starts minutes after its slot, with no warning and while the
+/// user has moved on to something else, is worse than one that did not start.
 /// </summary>
 public sealed class DownloadScheduler
 {
@@ -46,8 +46,8 @@ public sealed class DownloadScheduler
 
     /// <summary>
     /// Coarse enough to cost nothing, fine enough that a one-minute frequent
-    /// interval still behaves, and that a deferred full run starts soon after the
-    /// user steps away.
+    /// interval still behaves and that a slot is never missed by more than half a
+    /// minute.
     /// </summary>
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(30);
 
@@ -163,20 +163,23 @@ public sealed class DownloadScheduler
 
             if (fullDue)
             {
+                // Advance the timestamp whether or not it runs: a slot that arrives
+                // at a bad moment is spent, not owed. The next slot on the schedule
+                // is the next chance, so a blocked run cannot come back to life
+                // minutes later and take the browser over with no warning.
+                _lastFullRun = now;
+                SaveLastFullRun();
+
                 if (CanRunNow(out var reason))
                 {
-                    _lastFullRun = now;
-                    SaveLastFullRun();
                     await RunAsync(ScheduledRunKind.Full, now);
                     return;
                 }
 
-                // Deferred, not dropped: leave _lastFullRun alone so the next tick
-                // asks again. Then fall through rather than returning — a full run
-                // waiting for the user to step away must not take the frequent
-                // sweep down with it. It waited hours once, and the sweep, which
-                // has its own laxer conditions, did not run once in all that time.
-                NoteSkip($"Full run deferred: {reason}");
+                // Fall through rather than returning — a skipped full run must not
+                // take the frequent sweep down with it. It swallowed the tick once,
+                // and the sweep did not run for hours.
+                NoteSkip($"Full run skipped: {reason}");
             }
 
             if (!frequentDue)
@@ -260,9 +263,9 @@ public sealed class DownloadScheduler
     }
 
     /// <summary>
-    /// Records why a run did not happen, logging only when the reason changes: a
-    /// deferred full run re-checks every 30 seconds and would otherwise fill the
-    /// log with the same line.
+    /// Records why a run did not happen, logging only when the reason changes: the
+    /// frequent sweep comes round a hundred-odd times a day, and the same line
+    /// repeated would bury everything worth reading.
     /// </summary>
     private void NoteSkip(string reason)
     {
