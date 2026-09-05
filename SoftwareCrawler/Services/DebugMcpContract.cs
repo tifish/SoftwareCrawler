@@ -211,22 +211,24 @@ public static class DebugMcpContract
                     + "interval and which items it covers, when each last ran and is next due, and — when a run "
                     + "was held back — why (a batch already running, the main window open, or Windows reporting "
                     + "the user as busy). run_frequent and run_full start a run immediately, ignoring those "
-                    + "conditions. show_window and hide_window toggle the main window, which is itself one of "
-                    + "the conditions, so a scheduled run can be exercised both ways. enable_startup and "
+                    + "conditions. show_window and hide_window drive the main window, which is itself one of "
+                    + "the conditions, so a scheduled run can be exercised both ways; toggle_window is what a "
+                    + "left click on the tray icon runs. enable_startup and "
                     + "disable_startup write or remove the HKCU Run entry that launches the app into the "
                     + "tray at logon.",
                 new()
                 {
                     ["action"] = Prop(
                         "string",
-                        "status, run_frequent, run_full, show_window, hide_window, enable_startup "
-                            + "or disable_startup (default status).",
+                        "status, run_frequent, run_full, show_window, hide_window, toggle_window, "
+                            + "enable_startup or disable_startup (default status).",
                         [
                             "status",
                             "run_frequent",
                             "run_full",
                             "show_window",
                             "hide_window",
+                            "toggle_window",
                             "enable_startup",
                             "disable_startup",
                         ]

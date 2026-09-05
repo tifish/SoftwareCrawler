@@ -1007,6 +1007,15 @@ internal static class DebugMcpServer
                 });
                 break;
 
+            case "toggle_window":
+                // What a left click on the tray icon runs.
+                await OnUiAsync<object?>(() =>
+                {
+                    form.ToggleMainWindow();
+                    return null;
+                });
+                break;
+
             case "enable_startup":
             case "disable_startup":
             {
@@ -1042,7 +1051,7 @@ internal static class DebugMcpServer
 
             default:
                 return ToolText(
-                    $"Unknown action '{action}'. Use status, run_frequent, run_full, show_window, "
+                    $"Unknown action '{action}'. Use status, run_frequent, run_full, show_window, toggle_window, "
                         + "hide_window, enable_startup or disable_startup.",
                     isError: true
                 );

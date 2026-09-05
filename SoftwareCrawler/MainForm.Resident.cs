@@ -153,7 +153,14 @@ public partial class MainForm
             ContextMenuStrip = menu,
             Visible = true,
         };
-        _trayIcon.DoubleClick += (_, _) => ShowMainWindow();
+        // Left click only: the right button belongs to the context menu. No
+        // DoubleClick handler on purpose — the first click of a double click has
+        // already toggled, and a second action would undo it in front of the user.
+        _trayIcon.MouseClick += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left)
+                ToggleMainWindow();
+        };
     }
 
     private static Icon LoadTrayIcon()
@@ -170,6 +177,23 @@ public partial class MainForm
         }
 
         return SystemIcons.Application;
+    }
+
+    /// <summary>
+    /// What a left click on the tray icon does: show the window, or put it away.
+    ///
+    /// Deliberately keyed on visibility alone. Raising an already-visible window
+    /// instead of hiding it would need to know whether it was in front, and by the
+    /// time this runs the click has already made the taskbar the foreground window
+    /// — so that test reads false no matter what, and the icon would never be able
+    /// to put the window away again.
+    /// </summary>
+    internal void ToggleMainWindow()
+    {
+        if (Visible)
+            HideToTray();
+        else
+            ShowMainWindow();
     }
 
     internal void ShowMainWindow()
