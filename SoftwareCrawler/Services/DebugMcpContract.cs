@@ -213,8 +213,8 @@ public static class DebugMcpContract
                     + "the user as busy). run_frequent and run_full start a run immediately, ignoring those "
                     + "conditions. show_window and hide_window toggle the main window, which is itself one of "
                     + "the conditions, so a scheduled run can be exercised both ways. enable_startup and "
-                    + "disable_startup write or remove the Startup-folder shortcut that launches the app "
-                    + "into the tray at logon.",
+                    + "disable_startup write or remove the HKCU Run entry that launches the app into the "
+                    + "tray at logon.",
                 new()
                 {
                     ["action"] = Prop(

@@ -240,12 +240,12 @@ internal static class DebugMcpServer
         /// <summary>The resident scheduler, or null when this instance is one-shot.</summary>
         public DownloadScheduler? Scheduler => CrawlerForm?.Scheduler;
 
-        public bool StartupShortcutEnabled => StartupShortcutService.IsEnabled;
-        public string StartupShortcutPath => StartupShortcutService.ShortcutPath;
+        public bool StartupEnabled => StartupService.IsEnabled;
+        public string StartupLocation => StartupService.Location;
 
         /// <summary>Same as the schedule tool's enable_startup/disable_startup.</summary>
-        public bool SetStartupShortcut(bool enabled) =>
-            StartupShortcutService.Apply(enabled, out _);
+        public bool SetStartupEnabled(bool enabled) =>
+            StartupService.Apply(enabled, out _);
 
         /// <summary>The queue behind the download and test menu items.</summary>
         public DownloadBatch? DownloadBatch => CrawlerForm?.DownloadBatch;
@@ -994,9 +994,9 @@ internal static class DebugMcpServer
             case "disable_startup":
             {
                 var enable = action == "enable_startup";
-                if (!StartupShortcutService.Apply(enable, out var startupError))
+                if (!StartupService.Apply(enable, out var startupError))
                     return ToolText(
-                        $"Could not {(enable ? "create" : "remove")} the startup shortcut: {startupError}",
+                        $"Could not {(enable ? "add" : "remove")} the startup entry: {startupError}",
                         isError: true
                     );
 
@@ -1074,8 +1074,8 @@ internal static class DebugMcpServer
             $"User busy: {UserPresence.IsBusy(out var busyReason)}"
                 + (busyReason.Length == 0 ? "" : $" ({busyReason})")
         );
-        sb.AppendLine($"Run at startup: {StartupShortcutService.IsEnabled}");
-        sb.AppendLine($"Startup shortcut: {StartupShortcutService.ShortcutPath}");
+        sb.AppendLine($"Run at startup: {StartupService.IsEnabled}");
+        sb.AppendLine($"Startup entry: {StartupService.Location}");
         sb.AppendLine();
 
         sb.AppendLine("Frequent items:");

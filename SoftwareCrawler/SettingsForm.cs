@@ -78,9 +78,9 @@ public partial class SettingsForm : Form
         customStoragePathTextBox.Text = _settings.CustomStoragePath ?? "";
         scheduledTimesTextBox.Text = string.Join(", ", _settings.ScheduledDownloadTimes);
         frequentCheckIntervalNumericUpDown.Value = _settings.FrequentCheckIntervalMinutes;
-        // The Startup folder is the truth, not the setting: the shortcut can be
-        // removed behind the app's back by any startup manager.
-        runAtStartupCheckBox.Checked = StartupShortcutService.IsEnabled;
+        // The registry is the truth, not the setting: Task Manager's Startup tab
+        // and any cleanup tool can turn the entry off behind the app's back.
+        runAtStartupCheckBox.Checked = StartupService.IsEnabled;
 
         UpdateStorageControls();
     }
@@ -181,13 +181,13 @@ public partial class SettingsForm : Form
         _settings.FrequentCheckIntervalMinutes = (int)frequentCheckIntervalNumericUpDown.Value;
 
         if (
-            runAtStartupCheckBox.Checked != StartupShortcutService.IsEnabled
-            && !StartupShortcutService.Apply(runAtStartupCheckBox.Checked, out var startupError)
+            runAtStartupCheckBox.Checked != StartupService.IsEnabled
+            && !StartupService.Apply(runAtStartupCheckBox.Checked, out var startupError)
         )
         {
             MessageBox.Show(
                 this,
-                $"Could not update the startup shortcut: {startupError}",
+                $"Could not update the startup entry: {startupError}",
                 "Start with Windows",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning
@@ -195,7 +195,7 @@ public partial class SettingsForm : Form
             return;
         }
 
-        _settings.RunAtStartup = StartupShortcutService.IsEnabled;
+        _settings.RunAtStartup = StartupService.IsEnabled;
 
         if (!ApplyStorageLocation())
             return;

@@ -19,7 +19,7 @@ irm https://ghfast.top/https://raw.githubusercontent.com/tifish/SoftwareCrawler/
 脚本会下载最新 release 到 `%LOCALAPPDATA%\Programs\SoftwareCrawler`，创建开始菜单快捷方式并启动程序。
 缺少 .NET 10 桌面运行库时会自动运行 `Setup.cmd` 安装。
 
-卸载：退出程序，删除安装目录和开始菜单快捷方式即可，安装过程不写注册表。开启过"开机启动"的话，还要删掉"启动"文件夹里的 `SoftwareCrawler.lnk`。
+卸载：退出程序，删除安装目录和开始菜单快捷方式即可，安装过程不写注册表。开启过"开机启动"的话，先在设置里关掉它（或删掉 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 下的 `SoftwareCrawler` 值），那是程序唯一会写的注册表项。
 
 ## 定时下载
 
@@ -32,7 +32,7 @@ irm https://ghfast.top/https://raw.githubusercontent.com/tifish/SoftwareCrawler/
 
 为了不打扰你的工作，后台轮次在这几种情况下不会开跑：已经有下载在进行、主窗口开着、系统报告你正忙（全屏、投影、勿扰）。高频轮次遇到这些直接跳过等下一轮，全量则会一直等到能跑为止。
 
-关掉主窗口是收进通知区域，不是退出；退出要用托盘图标的右键菜单。设置窗口里可以打开"开机启动"，它在"启动"文件夹放一个快捷方式，不写注册表。
+关掉主窗口是收进通知区域，不是退出；退出要用托盘图标的右键菜单。设置窗口里可以打开"开机启动"，它在 `HKCU\...\Run` 下写一个值（这是程序唯一会写的注册表项），随后登录时直接进通知区域。想临时停掉，任务管理器的"启动应用"里也能禁用。
 
 命令行 `SoftwareCrawler.exe --download-all --auto-close` 仍然可用，跑完就退，适合手工触发或交给外部调度。
 

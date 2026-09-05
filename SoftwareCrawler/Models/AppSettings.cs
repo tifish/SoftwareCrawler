@@ -26,9 +26,9 @@ public class MachineAppSettings
     public string DefaultDownloadDirectory { get; set; } = "";
 
     /// <summary>
-    /// Whether a shortcut in this user's Startup folder launches the app minimized
-    /// to the tray at logon. A shortcut rather than a Run key: the app promises it
-    /// never writes the registry, and uninstalling stays "delete the folder".
+    /// Whether an HKCU Run entry launches the app into the tray at logon. Mirrors
+    /// the registry rather than driving it — StartupService reads the actual entry,
+    /// since Task Manager can turn it off behind our back.
     /// </summary>
     public bool RunAtStartup { get; set; }
 }

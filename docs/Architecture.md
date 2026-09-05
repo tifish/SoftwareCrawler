@@ -11,7 +11,7 @@
 两种使用形态：
 
 - **交互式**：主窗口是一张可编辑的表格，一行一个软件，右键菜单可测试/下载/打开页面/编辑脚本。
-- **常驻**：默认形态。窗口可以收进通知区域，程序自己按两套时间表跑（`DownloadScheduler`）；`--tray` 直接以隐藏窗口启动，开机启动的快捷方式用的就是它。
+- **常驻**：默认形态。窗口可以收进通知区域，程序自己按两套时间表跑（`DownloadScheduler`）；`--tray` 直接以隐藏窗口启动，开机启动项用的就是它。
 - **无人值守（一次性）**：`SoftwareCrawler.exe --download-all --auto-close`，跑完就退。
 
 技术栈：.NET 10 / WinForms / WebView2（Chromium），Windows 专用，非自包含发布（依赖桌面运行时）。
@@ -26,7 +26,7 @@ SoftwareCrawler.slnx
 └── Tests/SoftwareCrawler.Tests/ xunit 测试，覆盖不依赖 UI 的逻辑
 ```
 
-测试跑 `dotnet test Tests/SoftwareCrawler.Tests/SoftwareCrawler.Tests.csproj`，CI 在发布前会执行。因为测试项目引用主程序，构建会写 `bin/SoftwareCrawler.exe`，**跑之前要先停掉本 worktree 正在运行的实例**。目前覆盖两块最经不起回归的纯逻辑：`.tab` 的读写与设置的三方合并。`.tab` 往返测试是按 `DataProperties` 遍历写的，新增字段会自动纳入覆盖。
+测试跑 `dotnet test Tests/SoftwareCrawler.Tests/SoftwareCrawler.Tests.csproj`，CI 在发布前会执行。因为测试项目引用主程序，构建会写 `bin/SoftwareCrawler.exe`，**跑之前要先停掉本 worktree 正在运行的实例**。目前覆盖三块最经不起回归的纯逻辑：`.tab` 的读写、设置的三方合并、定时判定。`.tab` 往返测试是按 `DataProperties` / `ExtraProperties` 遍历写的，新增字段会自动纳入覆盖。
 
 主程序内部分层（依赖方向自上而下）：
 
@@ -81,7 +81,7 @@ SoftwareCrawler.slnx
 - **`DataProperties`（配方，全机器共享，进版本库）**
   `Name` `WebPage` `DirectDownload` `XPathOrScript1..5` `Frames` `WaitSecondsBeforeClick` `StartDownloadTimeout` `FilePatternToDeleteBeforeDownload` `FilePatternToDeleteBeforeExtraction` `ExtractAfterDownload` `ExtractToRoot`
 - **`ExtraProperties`（本机私有，不进版本库）**
-  `Enabled` `DownloadDirectory` `DownloadDirectory2` `UseProxy`
+  `Enabled` `DownloadDirectory` `DownloadDirectory2` `UseProxy` `FrequentCheck`
 - **`[NonSerialized]` 运行时状态**：`Status` `Progress` `ErrorMessage`，通过 `INotifyPropertyChanged` 推给表格。setter 会检查当前 `SynchronizationContext`，必要时 `Post` 回 UI 线程，所以后台线程改状态是安全的。
 
 关键语义：
@@ -303,7 +303,7 @@ Claude Code ──stdio──> bin/SoftwareCrawlerMcp.exe ──命名管道 JSO
 - **版本号**：CI 用 `git rev-list --count HEAD` 作为主版本号（`123.0.0.0`），同时写出 `version.txt`。本地构建恒为 `0.0.0.0`，UI 显示 `dev build`。
 - **自动更新**：`AutoUpdateService` 包装 JeekTools 的 `AutoUpdater`，从固定 tag `latest_release` 拉 `version.txt` 比对，下载 `SoftwareCrawler.zip` 到暂存目录，再启动 `bin/AutoUpdate.ps1` 完成"等进程退出 → 换文件 → 重启"。**Debug 构建禁用更新**；启动时检查一次，之后按 `UpdateCheckFrequency` 定时。
 - **发布**：`.github/workflows/build-and-release.yml` 在 push main 时发布，删除并重建 `latest_release` tag，上传 zip 与 version.txt。本地对应 `Build.cmd`（Release + NetBeauty，输出到 `bin`；无 ReadyToRun）。
-- **安装**：`install.ps1` 装到 `%LOCALAPPDATA%\Programs\SoftwareCrawler`，建开始菜单快捷方式，缺运行时则调 `bin/Setup.cmd`（内含提权 + `dotnet-install.ps1`）。全程不写注册表。
+- **安装**：`install.ps1` 装到 `%LOCALAPPDATA%\Programs\SoftwareCrawler`，建开始菜单快捷方式，缺运行时则调 `bin/Setup.cmd`（内含提权 + `dotnet-install.ps1`）。安装过程不写注册表——程序唯一会写的是开机启动那个 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 值，见 `StartupService`，且只在用户显式开启时才写。
 
 ## 12. 关键不变式
 
