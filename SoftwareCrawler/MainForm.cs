@@ -328,6 +328,10 @@ public partial class MainForm : Form
         softwareListDataGridView.Columns[0].Width = 3 * softwareListDataGridView.Columns[0].Width;
         softwareListDataGridView.Columns[1].Width = 5 * softwareListDataGridView.Columns[1].Width;
 
+        var nameColumn = softwareListDataGridView.Columns[nameof(SoftwareItem.Name)]!;
+        nameColumn.DisplayIndex = 0;
+        nameColumn.Frozen = true;
+
         RestoreGridViewState(viewState);
         if (IsHandleCreated && !IsDisposed)
         {
