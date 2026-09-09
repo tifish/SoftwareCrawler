@@ -7,9 +7,10 @@ using ZLogger;
 namespace SoftwareCrawler;
 
 /// <summary>
-/// Loads and saves the software list. Both files live in the active Config
-/// folder; the per-machine rows are keyed by software name, so reordering
-/// or inserting rows in one file can never shift the other out of alignment.
+/// Loads and saves the software list. The shared list lives in the active Config
+/// folder and the per-machine rows in the machine-local one, keyed by software
+/// name, so reordering or inserting rows in one file can never shift the other
+/// out of alignment.
 /// </summary>
 public static class SoftwareManager
 {
@@ -38,9 +39,13 @@ public static class SoftwareManager
             ? SoftwareTemplatePath
             : Path.Join(SettingsStore.ResolveConfigRoot(), SoftwareFileName);
 
-    /// <summary>This machine's own choices: which items are enabled, and where each downloads to.</summary>
+    /// <summary>
+    /// This machine's own choices: which items are enabled, and where each
+    /// downloads to. Kept under %LOCALAPPDATA%, never in the roaming or portable
+    /// folder - these download directories exist on this computer alone.
+    /// </summary>
     private static string LocalSettingsPath =>
-        Path.Join(SettingsStore.ResolveConfigRoot(), LocalSettingsFileName);
+        Path.Join(SettingsService.MachineConfigRoot, LocalSettingsFileName);
 
     public static List<SoftwareItem> Items { get; private set; } = [];
 

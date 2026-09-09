@@ -27,17 +27,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             if (_status != value)
             {
                 _status = value;
-
-                if (SynchronizationContext.Current == _uiSynchronizationContext)
-                    OnPropertyChanged();
-                else
-                    _uiSynchronizationContext?.Post(
-                        _ =>
-                        {
-                            OnPropertyChanged();
-                        },
-                        null
-                    );
+                NotifyOnUiThread();
             }
         }
     }
@@ -53,17 +43,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             if (_progress != value)
             {
                 _progress = value;
-
-                if (SynchronizationContext.Current == _uiSynchronizationContext)
-                    OnPropertyChanged();
-                else
-                    _uiSynchronizationContext?.Post(
-                        _ =>
-                        {
-                            OnPropertyChanged();
-                        },
-                        null
-                    );
+                NotifyOnUiThread();
             }
         }
     }
@@ -87,6 +67,71 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public bool FrequentCheck { get; set; }
 
     public string Name { get; set; } = string.Empty;
+
+    private DateTime? _lastChecked;
+
+    /// <summary>
+    /// When the crawl last reached a verdict for this item - an update found, a
+    /// file downloaded, or the one on disk confirmed current. A failed attempt
+    /// leaves it alone: a time that keeps moving while the site has been broken
+    /// for a week would say nothing about whether the item is up to date.
+    /// </summary>
+    [NonSerialized]
+    [DisplayName("Last checked")]
+    public DateTime? LastChecked
+    {
+        get => _lastChecked;
+        internal set
+        {
+            if (_lastChecked == value)
+                return;
+
+            _lastChecked = value;
+            NotifyOnUiThread();
+        }
+    }
+
+    private DateTime? _lastDownloadedFileTime;
+
+    /// <summary>
+    /// The timestamp of the file this machine now has, which is the server's
+    /// Last-Modified whenever the server gave one - so it dates the version, not
+    /// the moment it was fetched. Recorded whenever a crawl leaves a file in
+    /// place, including when that file turned out to be the one already there.
+    /// </summary>
+    [NonSerialized]
+    [DisplayName("Last downloaded file time")]
+    public DateTime? LastDownloadedFileTime
+    {
+        get => _lastDownloadedFileTime;
+        internal set
+        {
+            if (_lastDownloadedFileTime == value)
+                return;
+
+            _lastDownloadedFileTime = value;
+            NotifyOnUiThread();
+        }
+    }
+
+    /// <summary>Fills the history columns from the store, for a freshly loaded list.</summary>
+    internal void LoadDownloadHistory()
+    {
+        var entry = DownloadHistoryStore.Get(Name);
+        LastChecked = entry?.LastChecked;
+        LastDownloadedFileTime = entry?.LastDownloadedFileTime;
+    }
+
+    /// <summary>
+    /// Marks the check as done and persists it. Called once per item per run,
+    /// not once per retry.
+    /// </summary>
+    internal void RecordChecked()
+    {
+        LastChecked = DateTime.Now;
+        DownloadHistoryStore.Update(Name, lastChecked: LastChecked);
+    }
+
     public string WebPage { get; set; } = string.Empty;
 
     /// <summary>
@@ -446,6 +491,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
                 switch (downloadResult)
                 {
                     case DownloadPipeline.DownloadOnceResult.Succeeded:
+                        RecordChecked();
                         Log.ZLogInformation(
                             $"Download {Name} successfully, retryCount={i}"
                         );
@@ -490,6 +536,19 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    /// <summary>
+    /// Raises the change notification on the thread the grid lives on. A download
+    /// runs off the UI thread, and a bound property set from there would have
+    /// WinForms touch the grid from the wrong one.
+    /// </summary>
+    private void NotifyOnUiThread([CallerMemberName] string? propertyName = null)
+    {
+        if (SynchronizationContext.Current == _uiSynchronizationContext)
+            OnPropertyChanged(propertyName);
+        else
+            _uiSynchronizationContext?.Post(_ => OnPropertyChanged(propertyName), null);
     }
 
     public void ResetStatus()

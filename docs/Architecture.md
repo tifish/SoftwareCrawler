@@ -224,34 +224,50 @@ flowchart TD
 
 这是本工程最容易改错的部分，多数机制都是为了回答同一个问题：**用户的数据和仓库里的模板如何共存，且任何一方都不会被悄悄覆盖。**
 
-### 7.1 两个文件，一份清单
+### 7.1 数据放在哪：共用的与本机的
 
-| 文件 | 内容 | 版本控制 |
-| --- | --- | --- |
-| `Templates/Software.tab` | 爬取配方（`DataProperties`） | 入库，随发布包分发 |
-| `Config/Software.tab` | 正式版实际读写的清单 | 不入库（首次运行从模板复制） |
-| `Config/LocalSettings.tab` | 本机的 `Enabled`、下载目录与 `UseProxy`（`ExtraProperties`） | 不入库，**世上只有这一份** |
+数据按**是否跟着人走**分在两个目录里：**活动 Config 目录**（AppData / 便携 / 自定义，见 §8）放大家共用的东西，**本机 Config 目录**（恒为 `%LOCALAPPDATA%\SoftwareCrawler\Config`）放只对这台电脑成立的东西。判断标准很简单：换一台电脑还成不成立。启用了哪些项、下载到哪个盘、这台机器什么时候爬过——统统只对这台机器成立。
 
+| 文件 | 目录 | 内容 | 版本控制 |
+| --- | --- | --- | --- |
+| `Templates/Software.tab` | 程序目录 | 爬取配方（`DataProperties`） | 入库，随发布包分发 |
+| `Config/Software.tab` | 活动 | 正式版实际读写的清单 | 不入库（首次运行从模板复制） |
+| `Config/settings.json` | 活动 | `RoamingAppSettings`（超时、主题……） | 不入库 |
+| `LocalSettings.tab` | 本机 | 本机的 `Enabled`、下载目录与 `UseProxy`（`ExtraProperties`） | 不入库，**世上只有这一份** |
+| `DownloadHistory.tab` | 本机 | 每项的"最后检查时间"与"当前文件时间"（`DownloadHistoryStore`） | 不入库，可再生（丢了只丢历史） |
+| `ScheduleState.json` | 本机 | 上次全量跑完的时刻（`DownloadScheduler`） | 不入库，可再生（丢了多爬一趟） |
+| `Config/settings.json` | 本机 | `MachineAppSettings`（存储位置、代理、默认下载目录） | 不入库 |
+
+- **旧版本把本机三件放在活动目录**，`MachineDataMigration` 在启动时（读任何一个之前）把它们搬到本机目录：目标已存在就不动，搬之前先落一份每日备份。加新的本机文件要同时加进它的 `FileNames`，否则升级后那份数据就凭空空了。
+- 便携模式因此**不再把这三件带走**：U 盘换台机器插上，配方和偏好照旧，启用状态和下载目录重新来过——那本来就是另一台机器的事。代价是同一台机器上的多个 worktree 现在**共用**这三份文件（各自的 `bin/Config` 只剩共用数据），两个实例同时写靠 §7.6 的外部改动合并兜住。
 - **Debug 构建直接读写模板本身**（`SoftwareManager.cs:37`），所以开发时改配方即可提交；正式版永远不碰模板，升级只刷新模板，用户的 `Config/Software.tab` 不受影响（`SeedFromTemplate` 只在文件缺失时填补）。
-- 两个文件**按 `Name` 关联**，不是按行号。因此增删行、拖动排序都不会让本机设置错位。
+- 清单的两个文件**按 `Name` 关联**，不是按行号，所以它们分处两个目录也没关系：增删行、拖动排序都不会让本机设置错位。
 
 ### 7.2 列格式
 
 读写只认当前 `DataProperties` / `ExtraProperties` 列序。首行是表头，随后每行一条。`FromDataLine` 允许列数少于属性数：末尾新增的字段在旧行里取默认值。列序变了就直接改模板和代码，不再为旧列序保留第二套属性列表。
 
-### 7.3 孤儿设置的保护
+### 7.3 下载历史（DownloadHistory.tab）
+
+界面上的 **Last checked** / **Last downloaded file time** 两列来自 `DownloadHistoryStore`，独立于清单的两个文件。理由是这两个时间既不是配方（不能进版本库污染所有人），也不该写进 `LocalSettings.tab`——那是不可再生的用户数据，不能每爬一次就重写一遍。
+
+- **写入时机**：`LastChecked` 由 `SoftwareItem.Download` 在一轮**得出结论**时写一次（发现更新 / 下载完成 / 确认已是最新），失败不覆盖，重试也只写一次——否则站点挂了一周这一列还天天在跳，就没有诊断价值了。`LastDownloadedFileTime` 由 `DownloadPipeline.Succeeded` 在文件落到主下载目录后写，取服务器的 `Last-Modified`（拿不到才退回本地写入时间），所以它标的是**版本日期**而不是下载动作发生的时刻；`DownloadDirectory2` 的副本不再重复写。
+- **落盘方式**：整份文件小，进程内缓存一份，改动后 500 ms 去抖写盘，关窗口时 `Flush()`。写入走临时文件加改名，`.tmp` 正是 `ConfigChangeMonitor` 忽略的扩展名。本机目录在进程生命周期内不会变，所以只读一次。
+- **孤儿行**：没有条目认领的行原样写回，改名后再改回来历史还在。删了整份文件只是丢历史，下一轮爬取自己会补。
+
+### 7.4 孤儿设置的保护
 
 清单里没有、但 `LocalSettings.tab` 里有的行，会被记进 `_unclaimedLocalSettings` 并在保存时原样写回。理由：清单变短的原因往往是**临时性的**（另一半文件正被写、外部编辑中、误删了一行），而 `LocalSettings.tab` 没有版本库可回滚。真正要清掉它们得走菜单 **Clean up unused local settings**（或 MCP 的 `App.CleanUpLocalSettings()`），并且保存时会再次核对——期间"复活"的名字不会被写成两份。
 
-### 7.4 写入的三道保险
+### 7.5 写入的三道保险
 
 1. **防抖**：`SoftwareManager.Save()` 合并 500ms 内的连续编辑；关窗和需要立刻落盘的地方调 `FlushAsync()` 绕过防抖。
 2. **外部改动走合并**：`SaveCore` 写之前问 `ConfigChangeMonitor.HasExternalChange()`，发现文件在应用之外被改过，就重新读盘并把应用自己的改动折进去（`MergeWithDisk` → `ApplyLocalEdits`），而不是二选一丢掉一边。规则与 settings.json 的三方合并同构，以上次读写的内容为基准：应用没动过的行用磁盘上的值，动过的行用应用的值；应用增删的行同样生效，外部删掉的行不会复活。**顺序取磁盘的**——这是合并唯一保不住的东西，重新拖一下即可。合并失败才放弃保存。
 3. **原子写 + 每日备份**：先写 `<name>.<pid>.<guid>.tmp` 再 `File.Move` 覆盖（`WriteLinesAtomic`）；写之前 `ConfigBackupService.BackupDaily` 把当天第一份原始内容复制到 `%LOCALAPPDATA%\SoftwareCrawler\Backups\yyyy-MM-dd\`，保留 30 天。备份**故意放在程序目录之外**——`bin/Config` 整体被 gitignore，放在旁边会被 `git clean -xfd` 一起清掉。
 
-### 7.5 外部改动监视（ConfigChangeMonitor）
+### 7.6 外部改动监视（ConfigChangeMonitor）
 
-`FileSystemWatcher` 监视活动 Config 目录（Debug 时另加 `Templates`）。难点在于**区分"别人改的"和"自己写的"**：
+`FileSystemWatcher` 监视活动 Config 目录**和本机 Config 目录**（Debug 时另加 `Templates`）——`LocalSettings.tab` 搬走之后，只盯活动目录就再也看不见它被外部改动了。难点在于**区分"别人改的"和"自己写的"**：
 
 - 每次应用读或写完文件，用 `MarkSelfWrite` 记下内容的 SHA256 **和写入开始时刻**。
 - 事件先攒批：安静 10 秒才上报，最长 30 秒强制上报；`.tmp` 事件直接丢弃。
@@ -318,7 +334,8 @@ Claude Code ──stdio──> bin/SoftwareCrawlerMcp.exe ──命名管道 JSO
 2. **两个 `.tab` 靠 `Name` 关联**，不得退回按行号对齐。
 3. **不要覆盖被外部改过的配置文件**；宁可放弃本次保存，也不要吞掉用户在编辑器里的修改。
 4. **`LocalSettings.tab` 无版本控制**：任何会重写它的改动都要先想清楚失败时怎么恢复（每日备份是最后一道防线）。测试涉及它时先备份。
-5. **`bin/Config/` 必须存在**（靠 `.gitkeep`），它是便携模式的开关，也是多 worktree 互不干扰的前提。
+5. **`bin/Config/` 必须存在**（靠 `.gitkeep`），它是便携模式的开关，也是多 worktree 各用一份共用配置的前提。
+6. **本机数据只放本机目录**：换台电脑就不成立的东西（启用状态、下载目录、爬取历史、定时状态）不进活动 Config 目录，否则会跟着漫游或便携目录去到另一台机器上冒充那里的状态。新增这类文件要同时登记进 `MachineDataMigration.FileNames`。
 6. **运行时文件直接在 `bin/` 下版本控制**，不要从源码目录复制过去（`bin/Templates`、`bin/7-Zip`、各 `.cmd`/`.ps1`）。
 7. **下载判重依赖落盘时回写的文件时间戳**，改动落盘逻辑时别把 `SetLastWriteTime` 去掉。
 8. **调试通道只应在 Debug 下监听**，且只连当前 worktree 的实例。
@@ -333,6 +350,8 @@ Claude Code ──stdio──> bin/SoftwareCrawlerMcp.exe ──命名管道 JSO
 | --- | --- |
 | 给配方加一个字段 | `SoftwareItem` 属性 + `DataProperties`；加在末尾时旧行靠"列数可少于属性数"取默认值。插到中间时同步改 `Templates/Software.tab` 的列序 |
 | 加一个本机私有字段 | `SoftwareItem` 属性 + `ExtraProperties` |
+| 加一个"爬取记录"字段 | `DownloadHistoryStore` 加一列 + `SoftwareItem` 加一个带 `NotifyOnUiThread` 的属性；别往两个 `.tab` 清单里加 |
+| 加一个本机专属的文件 | 路径取 `SettingsService.MachineConfigRoot`，并把文件名登记进 `MachineDataMigration.FileNames` |
 | 加一个设置项 | `MachineAppSettings` 或 `RoamingAppSettings` 二选一 + `AppSettings` 加一行转发（+ 需要范围限制就写进 `Normalize*`）→ `SettingsForm` 加控件 |
 | 支持一种新的下载方式 | 在 `DownloadPipeline` 里复用 `OnBeginDownloadHandler` / `Succeeded` 这条决策与落盘链路（`DirectDownload` 就是这么接的） |
 | 加一个调试能力 | `DebugMcpServer.CreateHost()` 注册工具 + `DebugMcpContract.BuildToolList()` 声明 schema；简单读写优先挂到 `AppRoot` 上，用 `get_value`/`invoke` 直接触达 |

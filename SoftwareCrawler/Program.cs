@@ -75,9 +75,16 @@ static class Program
             return;
         }
 
-        // Pick up settings and list edits made outside the app.
+        // Older builds kept this machine's data in the roaming folder. Move it
+        // before anything reads it, or an upgrade would start from empty.
+        MachineDataMigration.Run();
+
+        // Pick up settings and list edits made outside the app. Both config
+        // folders are watched: the shared list lives in one, this machine's
+        // settings in the other.
         ConfigChangeMonitor.Watch(
             SettingsStore.ResolveConfigRoot(),
+            SettingsService.MachineConfigRoot,
             SoftwareManager.WatchedTemplateFolder
         );
 

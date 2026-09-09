@@ -126,6 +126,9 @@ public partial class MainForm : Form
         {
             Log.ZLogError(ex, $"Failed to flush software list on closing");
         }
+
+        // Separately: a list that would not save must not cost the history too.
+        DownloadHistoryStore.Flush();
     }
 
     protected override void OnLoad(EventArgs args)
@@ -312,10 +315,16 @@ public partial class MainForm : Form
 
     private void BindSoftwareList()
     {
+        // The list was just rebuilt from disk, so the history columns are empty;
+        // fill them from the store, which serves them out of memory.
+        foreach (var item in SoftwareManager.Items)
+            item.LoadDownloadHistory();
+
         var viewState = _pendingGridViewState ?? CaptureGridViewState();
         _pendingGridViewState = null;
         var bindingList = new BindingList<SoftwareItem>(SoftwareManager.Items);
         softwareListDataGridView.DataSource = new BindingSource(bindingList, "");
+        FormatHistoryColumns();
         // Use DisplayedCells instead of AllCells: measuring every cell of a large list
         // blocks the UI thread; measuring only currently visible rows is virtually
         // instant and gives the same visual result for the initial viewport.
@@ -343,6 +352,40 @@ public partial class MainForm : Form
             {
                 // The form went away while a reload was being applied.
             }
+        }
+    }
+
+    /// <summary>
+    /// The history columns are records of what happened, not settings: shown to
+    /// the minute, and not editable in the grid. They also get a minimum width
+    /// that fits a whole timestamp, because the auto-sizing pass measures them
+    /// while they are still empty - an item never checked has nothing to measure.
+    /// </summary>
+    private void FormatHistoryColumns()
+    {
+        var timestampWidth =
+            TextRenderer
+                .MeasureText(
+                    "2026-09-09 15:15",
+                    softwareListDataGridView.DefaultCellStyle.Font ?? Font
+                )
+                .Width + 12;
+
+        foreach (
+            var name in new[]
+            {
+                nameof(SoftwareItem.LastChecked),
+                nameof(SoftwareItem.LastDownloadedFileTime),
+            }
+        )
+        {
+            var column = softwareListDataGridView.Columns[name];
+            if (column is null)
+                continue;
+
+            column.DefaultCellStyle.Format = "yyyy-MM-dd HH:mm";
+            column.ReadOnly = true;
+            column.MinimumWidth = timestampWidth;
         }
     }
 

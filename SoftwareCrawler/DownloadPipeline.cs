@@ -636,6 +636,13 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                     if (downloadFileTime.HasValue)
                         File.SetLastWriteTime(targetFilePath, downloadFileTime.Value);
 
+                    // The file now in the download directory is the version this
+                    // machine has, whether it arrived just now or was already
+                    // there. Recorded here, before extraction may consume it, and
+                    // only for the primary directory - a copy in
+                    // DownloadDirectory2 is the same version, not a later one.
+                    RecordDownloadedFileTime(targetFilePath, downloadFileTime);
+
                     await FinalizeArchiveFile(
                         _item,
                         targetFilePath,
@@ -810,6 +817,29 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                 );
 
             return true;
+        }
+    }
+
+    /// <summary>
+    /// Notes how old the file left in the download directory is. The server's
+    /// Last-Modified is preferred over the file's own timestamp: the two agree
+    /// once the file has been stamped with it, and when the server gave no date
+    /// the local write time is the best there is.
+    /// </summary>
+    private void RecordDownloadedFileTime(string targetFilePath, DateTime? downloadFileTime)
+    {
+        try
+        {
+            var fileTime = downloadFileTime ?? File.GetLastWriteTime(targetFilePath);
+            _item.LastDownloadedFileTime = fileTime;
+            DownloadHistoryStore.Update(_item.Name, lastDownloadedFileTime: fileTime);
+        }
+        catch (Exception ex)
+        {
+            // The history is a convenience; a download must not fail over it.
+            Log.ZLogWarning(
+                $"Could not record the downloaded file time for {_item.Name}: {ex.Message}"
+            );
         }
     }
 

@@ -124,7 +124,8 @@ public static class DebugMcpContract
             Tool(
                 "software_list",
                 "List the loaded software items with their enabled/UseProxy/FrequentCheck flags (x/p/f), "
-                    + "download status, progress, and error message.",
+                    + "download status, progress, error message, when each was last checked, and the "
+                    + "timestamp of the file last put in its download directory.",
                 new()
                 {
                     ["filter"] = Prop("string", "Case-insensitive name filter."),

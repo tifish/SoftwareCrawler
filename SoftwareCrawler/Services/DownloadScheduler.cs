@@ -279,8 +279,10 @@ public sealed class DownloadScheduler
     // Only the full run's timestamp survives a restart. The frequent sweep's
     // interval is short enough that resuming from "now" costs at most one cycle,
     // whereas forgetting the last full run would re-crawl everything on restart.
+    // Machine-local: it records what this computer crawled and when, which says
+    // nothing about any other one.
     private static string StateFilePath =>
-        Path.Join(SettingsStore.ResolveConfigRoot(), "ScheduleState.json");
+        Path.Join(SettingsService.MachineConfigRoot, "ScheduleState.json");
 
     private sealed class ScheduleState
     {

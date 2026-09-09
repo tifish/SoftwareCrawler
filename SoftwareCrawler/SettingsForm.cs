@@ -303,7 +303,11 @@ public partial class SettingsForm : Form
         if (newLocation == StorageLocation.ProgramDirectory)
             Directory.CreateDirectory(destRoot);
 
-        ConfigChangeMonitor.Watch(destRoot, SoftwareManager.WatchedTemplateFolder);
+        ConfigChangeMonitor.Watch(
+            destRoot,
+            SettingsService.MachineConfigRoot,
+            SoftwareManager.WatchedTemplateFolder
+        );
         return true;
     }
 

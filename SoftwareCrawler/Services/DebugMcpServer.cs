@@ -488,7 +488,7 @@ internal static class DebugMcpServer
         {
             ConfigBackupService.BackupDaily(
                 Path.Join(SettingsStore.ResolveConfigRoot(), "Software.tab"),
-                Path.Join(SettingsStore.ResolveConfigRoot(), "LocalSettings.tab"),
+                Path.Join(SettingsService.MachineConfigRoot, "LocalSettings.tab"),
                 SettingsStore.MachineSettingsPath,
                 SettingsStore.RoamingSettingsPath
             );
@@ -692,6 +692,10 @@ internal static class DebugMcpServer
         };
     }
 
+    /// <summary>The history columns as text, with a dash for "never".</summary>
+    private static string FormatHistoryTime(DateTime? value) =>
+        value?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
+
     private static async Task<JsonObject> SoftwareListAsync(JsonObject args)
     {
         var filter = args["filter"]?.GetValue<string>() ?? "";
@@ -712,11 +716,14 @@ internal static class DebugMcpServer
                     $"{(item.Enabled ? "x" : " ")} {(item.UseProxy ? "p" : " ")} "
                         + $"{(item.FrequentCheck ? "f" : " ")} {item.Name}"
                         + $"\t{item.Status}\t{item.Progress}\t{item.ErrorMessage}"
+                        + $"\t{FormatHistoryTime(item.LastChecked)}"
+                        + $"\t{FormatHistoryTime(item.LastDownloadedFileTime)}"
                 )
                 .ToList();
             return lines.Count == 0
                 ? "(no matching software items)"
-                : "Enabled UseProxy Frequent Name\tStatus\tProgress\tError\n"
+                : "Enabled UseProxy Frequent Name\tStatus\tProgress\tError"
+                    + "\tLastChecked\tLastDownloadedFileTime\n"
                     + string.Join('\n', lines);
         });
 
@@ -963,7 +970,10 @@ internal static class DebugMcpServer
         sb.AppendLine($"Roaming config root: {SettingsStore.ResolveConfigRoot()}");
         sb.AppendLine($"Machine config root: {SettingsService.MachineConfigRoot}");
         sb.AppendLine($"Program config root: {SettingsService.ProgramConfigRoot}");
-        sb.AppendLine($"Watching: {ConfigChangeMonitor.Root}");
+        sb.AppendLine($"Watching: {string.Join(", ", ConfigChangeMonitor.Roots)}");
+        sb.AppendLine(
+            $"Machine-local data: {string.Join(", ", MachineDataMigration.FileNames)}"
+        );
         sb.AppendLine($"WebView2 profile: {Browser.UserDataFolder}");
         sb.AppendLine(
             $"Instance lock: {SingleInstanceGuard.LockPath} "
