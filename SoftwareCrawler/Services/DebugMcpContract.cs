@@ -147,6 +147,28 @@ public static class DebugMcpContract
                 ["name"]
             ),
             Tool(
+                "directory_probe",
+                "Check a download directory the way the pipeline does: report whether it is "
+                    + "usable, how long the answer took, and which shares are currently written "
+                    + "off as unreachable. Use this against an offline UNC path to confirm the "
+                    + "app gives up on it instead of freezing.",
+                new()
+                {
+                    ["action"] = Prop(
+                        "string",
+                        "probe a path, report status, or clear the written-off shares "
+                            + "(default probe).",
+                        ["probe", "status", "clear"]
+                    ),
+                    ["path"] = Prop("string", "Directory to probe. Required for action=probe."),
+                    ["wait"] = Prop(
+                        "boolean",
+                        "Wait for the probe to finish (default true). Pass false to return at "
+                            + "once and check that the UI thread stayed free."
+                    ),
+                }
+            ),
+            Tool(
                 "download_batch",
                 "Drive the whole download queue the way the menu does: run a batch, cancel the "
                     + "running one, or report what it is on. Use this to check ordering, the "

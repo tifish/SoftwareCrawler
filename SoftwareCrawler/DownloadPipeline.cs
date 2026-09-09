@@ -51,31 +51,26 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         if (string.IsNullOrEmpty(_item.FinalDownloadDirectory))
             return Failed("Download directory is empty.", DownloadOnceResult.FailedAndNoRetry);
 
-        if (!Directory.Exists(_item.FinalDownloadDirectory))
-            try
-            {
-                Directory.CreateDirectory(_item.FinalDownloadDirectory);
-            }
-            catch (Exception)
-            {
-                return Failed(
-                    "Download directory does not exist, and failed to create.",
-                    DownloadOnceResult.FailedAndNoRetry
-                );
-            }
+        var directoryError = await DownloadDirectoryAccess.EnsureExistsAsync(
+            _item.FinalDownloadDirectory
+        );
+        if (directoryError is not null)
+            return Failed(
+                $"Download directory {directoryError}",
+                DownloadOnceResult.FailedAndNoRetry
+            );
 
-        if (_item.DownloadDirectory2 != "" && !Directory.Exists(_item.DownloadDirectory2))
-            try
-            {
-                Directory.CreateDirectory(_item.DownloadDirectory2);
-            }
-            catch (Exception)
-            {
+        if (_item.DownloadDirectory2 != "")
+        {
+            directoryError = await DownloadDirectoryAccess.EnsureExistsAsync(
+                _item.DownloadDirectory2
+            );
+            if (directoryError is not null)
                 return Failed(
-                    "Download directory 2 does not exist, and failed to create.",
+                    $"Download directory 2 {directoryError}",
                     DownloadOnceResult.FailedAndNoRetry
                 );
-            }
+        }
 
         var suggestedFileName = string.Empty;
         var downloadFileSize = 0L;
@@ -666,7 +661,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                         await DeleteOtherFilesInSameDirectory(targetFile2);
                         secondaryWasCopied = await CopyFileIfChanged(targetFilePath, targetFile2);
 
-                        if (File.Exists(targetFile2))
+                        if (await DownloadDirectoryAccess.FileExistsAsync(targetFile2))
                             await FinalizeArchiveFile(
                                 _item,
                                 targetFile2,
@@ -696,7 +691,10 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                         );
                     }
 
-                    if (targetFile2 is not null && File.Exists(targetFile2))
+                    if (
+                        targetFile2 is not null
+                        && await DownloadDirectoryAccess.FileExistsAsync(targetFile2)
+                    )
                     {
                         var secondaryArchiveProcessed = false;
                         var retryRetainedSecondaryArchive =

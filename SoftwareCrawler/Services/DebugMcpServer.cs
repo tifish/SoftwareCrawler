@@ -84,6 +84,7 @@ internal static class DebugMcpServer
         host.AddTool("download_batch", DownloadBatchAsync);
         host.AddTool("script_edit", ScriptEditAsync);
         host.AddTool("page_state", PageStateAsync);
+        host.AddTool("directory_probe", DirectoryProbeAsync);
         host.AddTool("storage_info", _ => Task.FromResult(StorageInfo()));
         host.AddTool("config_monitor", _ => Task.FromResult(ConfigMonitorInfo()));
         host.AddTool("schedule", ScheduleAsync);
@@ -955,6 +956,55 @@ internal static class DebugMcpServer
                 sb.AppendLine($"Frame: {frame}");
         }
 
+        return ToolText(sb.ToString());
+    }
+
+    /// <summary>
+    /// Probes a download directory the way the pipeline does, from the UI thread.
+    /// Exists so an unreachable share can be aimed at on purpose and watched to
+    /// give up instead of taking the UI thread down with it - otherwise that only
+    /// reproduces by unplugging a file server. If the probe ever blocks the UI
+    /// thread again, this very call hangs, which is the tell.
+    /// </summary>
+    private static async Task<JsonObject> DirectoryProbeAsync(JsonObject args)
+    {
+        var action = args["action"]?.GetValue<string>() ?? "probe";
+
+        if (action == "clear")
+        {
+            DownloadDirectoryAccess.ResetUnreachable();
+            return ToolText("Forgot every unreachable root.");
+        }
+
+        var sb = new StringBuilder();
+
+        if (action == "probe")
+        {
+            var path = args["path"]?.GetValue<string>();
+            if (string.IsNullOrWhiteSpace(path))
+                return ToolText("path is required for action=probe.", isError: true);
+
+            var startedAt = Stopwatch.GetTimestamp();
+
+            // Started on the UI thread, where the pipeline starts it.
+            var probe = await OnUiAsync(() => DownloadDirectoryAccess.EnsureExistsAsync(path));
+
+            if (!(args["wait"]?.GetValue<bool>() ?? true))
+                return ToolText(
+                    $"Started probing {path}. The UI thread is free again; call other tools to "
+                        + "prove it, then probe once more to see the outcome."
+                );
+
+            var error = await probe;
+            sb.AppendLine($"Path: {path}");
+            sb.AppendLine($"Result: {error ?? "usable"}");
+            sb.AppendLine($"Took: {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:0.00}s");
+        }
+
+        var roots = DownloadDirectoryAccess.UnreachableRoots;
+        sb.AppendLine(
+            $"Unreachable roots: {(roots.Count > 0 ? string.Join(", ", roots) : "none")}"
+        );
         return ToolText(sb.ToString());
     }
 
