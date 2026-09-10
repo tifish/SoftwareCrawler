@@ -613,7 +613,8 @@ public partial class MainForm : Form
             await SoftwareManager.Save();
     }
 
-    // Failed downloads are shown in red so they stand out while scanning the list.
+    // Failed downloads are red and finished ones green, so the outcome of a batch
+    // can be read off the list at a glance.
     private void softwareListDataGridView_CellFormatting(
         object? sender,
         DataGridViewCellFormattingEventArgs e
@@ -628,15 +629,25 @@ public partial class MainForm : Form
             return;
         if (softwareListDataGridView.Rows[e.RowIndex].DataBoundItem is not SoftwareItem item)
             return;
-        if (item.Status != DownloadingStatus.Failed)
-            return;
 
-        var failedColor = Application.IsDarkModeEnabled
-            ? Color.FromArgb(255, 110, 110)
-            : Color.FromArgb(200, 0, 0);
-        e.CellStyle.ForeColor = failedColor;
-        // The selection background is dark in both themes, so keep the lighter red there.
-        e.CellStyle.SelectionForeColor = Color.FromArgb(255, 160, 160);
+        var darkMode = Application.IsDarkModeEnabled;
+
+        switch (item.Status)
+        {
+            case DownloadingStatus.Failed:
+                e.CellStyle.ForeColor = darkMode
+                    ? Color.FromArgb(255, 110, 110)
+                    : Color.FromArgb(200, 0, 0);
+                // The selection background is dark in both themes, so keep the lighter red there.
+                e.CellStyle.SelectionForeColor = Color.FromArgb(255, 160, 160);
+                break;
+            case DownloadingStatus.Downloaded:
+                e.CellStyle.ForeColor = darkMode
+                    ? Color.FromArgb(110, 210, 110)
+                    : Color.FromArgb(0, 140, 0);
+                e.CellStyle.SelectionForeColor = Color.FromArgb(150, 230, 150);
+                break;
+        }
     }
 
     private async void softwareListDataGridView_CellEndEdit(
