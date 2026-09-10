@@ -18,6 +18,7 @@ public partial class MainForm : Form
     private System.Windows.Forms.Timer? _updateCheckTimer;
     private GridViewState? _pendingGridViewState;
     private bool _reloadAfterBatchPending;
+    private readonly Queue<IReadOnlyList<SoftwareItem>> _queuedDownloads = new();
 
     private sealed record GridViewState(
         IReadOnlySet<string> SelectedNames,
@@ -65,7 +66,6 @@ public partial class MainForm : Form
         {
             _mainForm = mainForm;
 
-            _mainForm.downloadSelectedToolStripMenuItem.Enabled = false;
             _mainForm.downloadAllToolStripMenuItem.Enabled = false;
             _mainForm.testSelectedToolStripMenuItem.Enabled = false;
             _mainForm.testAllToolStripMenuItem.Enabled = false;
@@ -77,7 +77,6 @@ public partial class MainForm : Form
 
         public void Dispose()
         {
-            _mainForm.downloadSelectedToolStripMenuItem.Enabled = true;
             _mainForm.downloadAllToolStripMenuItem.Enabled = true;
             _mainForm.testSelectedToolStripMenuItem.Enabled = true;
             _mainForm.testAllToolStripMenuItem.Enabled = true;
@@ -490,12 +489,18 @@ public partial class MainForm : Form
             operation: "DownloadAll"
         );
 
-    public Task<bool> DownloadSelected() =>
-        RunBatchAsync(
-            GetSelectedItems(),
-            retryCount: Settings.DownloadRetryCount,
-            operation: "DownloadSelected"
-        );
+    public Task<bool> DownloadSelected()
+    {
+        var items = GetSelectedItems();
+        if (DownloadBatch.IsRunning)
+        {
+            if (items.Count != 0)
+                _queuedDownloads.Enqueue(items);
+            return Task.FromResult(true);
+        }
+
+        return RunBatchAsync(items, retryCount: Settings.DownloadRetryCount, operation: "DownloadSelected");
+    }
 
     /// <summary>
     /// Wraps a batch in what only the window can supply: waiting for the browser
@@ -518,6 +523,11 @@ public partial class MainForm : Form
         finally
         {
             await ReloadDeferredAfterBatchAsync();
+            if (!DownloadBatch.IsRunning && _queuedDownloads.Count != 0)
+            {
+                var next = _queuedDownloads.Dequeue();
+                _ = RunBatchAsync(next, retryCount: Settings.DownloadRetryCount, operation: "DownloadQueued");
+            }
         }
     }
 
