@@ -683,7 +683,7 @@ public partial class MainForm : Form
 
     private void showBrowserButton_Click(object sender, EventArgs e)
     {
-        ShowBrowserWindow();
+        ToggleBrowserWindow();
     }
 
     private void showDevToolsButton_Click(object sender, EventArgs e)

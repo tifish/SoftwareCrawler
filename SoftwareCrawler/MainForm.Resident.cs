@@ -55,11 +55,19 @@ public partial class MainForm
     /// </summary>
     internal void ApplyBrowserHostPlacement()
     {
-        if (_browserHostForm is null || _browserHostForm.IsDisposed)
-            return;
+        if (_browserHostForm is { IsDisposed: false } host)
+        {
+            var onScreen = _browserWanted && (!_residentMode || Visible);
+            host.Location = onScreen ? OnScreenLocation : OffScreenLocation;
+        }
 
-        var onScreen = _browserWanted && (!_residentMode || Visible);
-        _browserHostForm.Location = onScreen ? OnScreenLocation : OffScreenLocation;
+        UpdateShowBrowserButton();
+    }
+
+    /// <summary>Keeps the toolbar button naming the action it would perform next.</summary>
+    private void UpdateShowBrowserButton()
+    {
+        showBrowserButton.Text = IsBrowserWindowShown ? "Hide &browser" : "Show &browser";
     }
 
     /// <summary>True when the browser window is actually where the user can see it.</summary>
@@ -87,6 +95,15 @@ public partial class MainForm
     {
         _browserWanted = false;
         ApplyBrowserHostPlacement();
+    }
+
+    /// <summary>What the toolbar button does: put the browser on screen, or take it away.</summary>
+    internal void ToggleBrowserWindow()
+    {
+        if (IsBrowserWindowShown)
+            HideBrowserWindow();
+        else
+            ShowBrowserWindow();
     }
 
     /// <summary>Exposed so the debug tools can inspect and drive the schedule.</summary>
