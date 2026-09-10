@@ -20,6 +20,21 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
     /// <summary>The item being downloaded: its recipe drives this, its status reflects it.</summary>
     private readonly SoftwareItem _item = softwareItem;
 
+    /// <summary>
+    /// The directory this attempt treats as the item's own: the file lands here,
+    /// the metadata and the history are written from here, and the event scripts
+    /// run here. Normally the item's download directory, but the second one takes
+    /// the part over when the first cannot be reached.
+    /// </summary>
+    private string _primaryDirectory = string.Empty;
+
+    /// <summary>
+    /// The directory that gets a copy of the finished file, empty when there is
+    /// none to give one to - either the item has no second directory, or the one
+    /// it has could not be reached this time.
+    /// </summary>
+    private string _secondaryDirectory = string.Empty;
+
     private static readonly ILogger Log = LogManager.CreateLogger(nameof(DownloadPipeline));
 
     /// <summary>How one attempt ended, and whether trying again could help.</summary>
@@ -40,6 +55,92 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         Started,
     }
 
+    /// <summary>
+    /// What an attempt has left to work with once both download directories have
+    /// been tried: where the file goes, who gets a copy, and what was lost on the
+    /// way. <see cref="Error"/> is set only when nothing usable is left.
+    /// </summary>
+    internal readonly record struct DirectoryResolution(
+        string Primary,
+        string Secondary,
+        string? Skipped,
+        string? Error
+    );
+
+    /// <summary>
+    /// Settles which of the item's download directories an attempt can use.
+    /// One of them being unreachable does not sink the attempt: the file goes to
+    /// whichever one answered, and the other is left for a later run to find back.
+    /// Losing the first one hands the whole job - file, metadata, scripts - to the
+    /// second, so an item with two directories keeps working off either alone.
+    /// </summary>
+    internal static async Task<DirectoryResolution> ResolveDownloadDirectories(SoftwareItem item)
+    {
+        var primary = item.FinalDownloadDirectory;
+        var secondary = item.DownloadDirectory2;
+
+        var primaryError = await DownloadDirectoryAccess.EnsureExistsAsync(primary);
+        var secondaryError =
+            secondary.Length == 0
+                ? null
+                : await DownloadDirectoryAccess.EnsureExistsAsync(secondary);
+
+        if (primaryError is null)
+            return new DirectoryResolution(
+                primary,
+                secondaryError is null ? secondary : string.Empty,
+                secondaryError is null ? null : $"Download directory 2 {secondaryError}",
+                null
+            );
+
+        if (secondary.Length == 0)
+            return new DirectoryResolution(
+                string.Empty,
+                string.Empty,
+                null,
+                $"Download directory {primaryError}"
+            );
+
+        if (secondaryError is not null)
+            return new DirectoryResolution(
+                string.Empty,
+                string.Empty,
+                null,
+                $"Download directory {primaryError} Download directory 2 {secondaryError}"
+            );
+
+        return new DirectoryResolution(
+            secondary,
+            string.Empty,
+            $"Download directory {primaryError}",
+            null
+        );
+    }
+
+    /// <summary>
+    /// Takes the resolution above for this attempt.
+    /// </summary>
+    /// <returns>null once a directory is usable, otherwise why none is.</returns>
+    private async Task<string?> TakeDownloadDirectories()
+    {
+        var resolution = await ResolveDownloadDirectories(_item);
+        if (resolution.Error is not null)
+            return resolution.Error;
+
+        _primaryDirectory = resolution.Primary;
+        _secondaryDirectory = resolution.Secondary;
+
+        if (resolution.Skipped is not null)
+        {
+            // The attempt still counts as a success, so this only has the error
+            // message to say it in - the one place the row shows free text.
+            _item.ErrorMessage = $"Skipped: {resolution.Skipped}";
+            Log.ZLogWarning($"{_item.Name}: skipped a download directory. {resolution.Skipped}");
+        }
+
+        return null;
+    }
+
     public async Task<DownloadOnceResult> RunAsync()
     {
         // Initialize
@@ -51,26 +152,9 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         if (string.IsNullOrEmpty(_item.FinalDownloadDirectory))
             return Failed("Download directory is empty.", DownloadOnceResult.FailedAndNoRetry);
 
-        var directoryError = await DownloadDirectoryAccess.EnsureExistsAsync(
-            _item.FinalDownloadDirectory
-        );
+        var directoryError = await TakeDownloadDirectories();
         if (directoryError is not null)
-            return Failed(
-                $"Download directory {directoryError}",
-                DownloadOnceResult.FailedAndNoRetry
-            );
-
-        if (_item.DownloadDirectory2 != "")
-        {
-            directoryError = await DownloadDirectoryAccess.EnsureExistsAsync(
-                _item.DownloadDirectory2
-            );
-            if (directoryError is not null)
-                return Failed(
-                    $"Download directory 2 {directoryError}",
-                    DownloadOnceResult.FailedAndNoRetry
-                );
-        }
+            return Failed(directoryError, DownloadOnceResult.FailedAndNoRetry);
 
         var suggestedFileName = string.Empty;
         var downloadFileSize = 0L;
@@ -490,7 +574,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                 return;
             }
 
-            targetFilePath = Path.Join(_item.FinalDownloadDirectory, suggestedFileName);
+            targetFilePath = Path.Join(_primaryDirectory, suggestedFileName);
 
             // Archive metadata is the durable server-side identity. Once it exists,
             // do not let a retained or hand-modified archive override that identity.
@@ -537,7 +621,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             )
             {
                 oldFile = Directory
-                    .GetFiles(_item.FinalDownloadDirectory, _item.FilePatternToDeleteBeforeDownload)
+                    .GetFiles(_primaryDirectory, _item.FilePatternToDeleteBeforeDownload)
                     .FirstOrDefault();
             }
 
@@ -652,10 +736,10 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
 
                     string? targetFile2 = null;
                     var secondaryWasCopied = false;
-                    if (!string.IsNullOrEmpty(_item.DownloadDirectory2))
+                    if (!string.IsNullOrEmpty(_secondaryDirectory))
                     {
                         targetFile2 = Path.Combine(
-                            _item.DownloadDirectory2,
+                            _secondaryDirectory,
                             Path.GetFileName(targetFilePath)
                         );
                         await DeleteOtherFilesInSameDirectory(targetFile2);
@@ -673,7 +757,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
 
                     if (primaryWasCopied || retryRetainedArchive)
                         primaryArchiveProcessed |= await CallEventScript(
-                            _item.FinalDownloadDirectory,
+                            _primaryDirectory,
                             "AfterDownload",
                             targetFilePath
                         );
@@ -685,7 +769,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                     {
                         primaryArchiveProcessed |= await ExtractArchiveFile(targetFilePath);
                         primaryArchiveProcessed |= await CallEventScript(
-                            _item.FinalDownloadDirectory,
+                            _primaryDirectory,
                             "AfterExtract",
                             targetFilePath
                         );
@@ -703,7 +787,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
 
                         if (secondaryWasCopied || retryRetainedSecondaryArchive)
                             secondaryArchiveProcessed |= await CallEventScript(
-                                _item.DownloadDirectory2,
+                                _secondaryDirectory,
                                 "AfterDownload",
                                 targetFile2
                             );
@@ -715,7 +799,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                         {
                             secondaryArchiveProcessed |= await ExtractArchiveFile(targetFile2);
                             secondaryArchiveProcessed |= await CallEventScript(
-                                _item.DownloadDirectory2,
+                                _secondaryDirectory,
                                 "AfterExtract",
                                 targetFile2
                             );
@@ -883,13 +967,15 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
     {
         metadataFilePath = string.Empty;
         isSame = false;
+
+        // The metadata belongs to the directory the file is going to, which is
+        // not always the item's own: an unreachable directory hands the job to
+        // the second one, metadata included.
+        var directory = Path.GetDirectoryName(targetFilePath) ?? string.Empty;
+
         if (
             !IsArchiveFile(targetFilePath)
-            || !DownloadMetadataStore.TryGet(
-                item.FinalDownloadDirectory,
-                item.Name,
-                out var metadata
-            )
+            || !DownloadMetadataStore.TryGet(directory, item.Name, out var metadata)
             || string.IsNullOrWhiteSpace(metadata.FileName)
             || !IsArchiveFile(metadata.FileName)
             || !string.Equals(
@@ -900,7 +986,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         )
             return false;
 
-        metadataFilePath = Path.Join(item.FinalDownloadDirectory, metadata.FileName);
+        metadataFilePath = Path.Join(directory, metadata.FileName);
         isSame = IsSameDownload(
             currentSize,
             currentLastModified,

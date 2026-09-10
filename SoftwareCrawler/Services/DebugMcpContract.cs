@@ -151,16 +151,22 @@ public static class DebugMcpContract
                 "Check a download directory the way the pipeline does: report whether it is "
                     + "usable, how long the answer took, and which shares are currently written "
                     + "off as unreachable. Use this against an offline UNC path to confirm the "
-                    + "app gives up on it instead of freezing.",
+                    + "app gives up on it instead of freezing, and action=resolve to see which "
+                    + "of a pair of download directories a download would actually use.",
                 new()
                 {
                     ["action"] = Prop(
                         "string",
-                        "probe a path, report status, or clear the written-off shares "
-                            + "(default probe).",
-                        ["probe", "status", "clear"]
+                        "probe a path, resolve a pair of download directories, report status, "
+                            + "or clear the written-off shares (default probe).",
+                        ["probe", "resolve", "status", "clear"]
                     ),
-                    ["path"] = Prop("string", "Directory to probe. Required for action=probe."),
+                    ["path"] = Prop(
+                        "string",
+                        "Directory to probe. Required for action=probe. For action=resolve, "
+                            + "the two download directories separated by |, standing in for an "
+                            + "item's own pair."
+                    ),
                     ["wait"] = Prop(
                         "boolean",
                         "Wait for the probe to finish (default true). Pass false to return at "

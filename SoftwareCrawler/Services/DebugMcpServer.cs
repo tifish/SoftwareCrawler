@@ -978,6 +978,47 @@ internal static class DebugMcpServer
 
         var sb = new StringBuilder();
 
+        if (action == "resolve")
+        {
+            var paths = args["path"]?.GetValue<string>();
+            if (string.IsNullOrWhiteSpace(paths))
+                return ToolText(
+                    "path is required for action=resolve: the two download directories, "
+                        + "separated by |.",
+                    isError: true
+                );
+
+            var both = paths.Split('|');
+
+            // A stand-in item, so an unreachable directory can be aimed at without
+            // touching a real one's configuration.
+            var probeItem = new SoftwareItem
+            {
+                Name = "directory_probe",
+                DownloadDirectory = both[0].Trim(),
+                DownloadDirectory2 = both.Length > 1 ? both[1].Trim() : string.Empty,
+            };
+
+            // Started on the UI thread, where the pipeline starts it.
+            var resolving = await OnUiAsync(
+                () => DownloadPipeline.ResolveDownloadDirectories(probeItem)
+            );
+            var resolution = await resolving;
+
+            sb.AppendLine($"Directory: {probeItem.FinalDownloadDirectory}");
+            sb.AppendLine(
+                $"Directory 2: {(probeItem.DownloadDirectory2.Length > 0 ? probeItem.DownloadDirectory2 : "none")}"
+            );
+            sb.AppendLine(
+                $"Would download to: {(resolution.Error is null ? resolution.Primary : "nowhere")}"
+            );
+            sb.AppendLine(
+                $"Would copy to: {(resolution.Secondary.Length > 0 ? resolution.Secondary : "nowhere")}"
+            );
+            sb.AppendLine($"Skipped: {resolution.Skipped ?? "nothing"}");
+            sb.AppendLine($"Failure: {resolution.Error ?? "none"}");
+        }
+
         if (action == "probe")
         {
             var path = args["path"]?.GetValue<string>();
