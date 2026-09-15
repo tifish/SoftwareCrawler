@@ -457,6 +457,13 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     private bool _hasCancelled;
 
+    private CancellationTokenSource _cancellation = new();
+
+    /// <summary>
+    /// Fires when the user asks this item to stop, for the steps that wait on
+    /// something outside the browser - an event script, 7-Zip.
+    /// </summary>
+    internal CancellationToken CancellationToken => _cancellation.Token;
 
     /// <summary>
     /// There is one browser and one set of download callbacks, so two downloads
@@ -478,6 +485,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         Progress = "";
 
         _hasCancelled = false;
+        if (_cancellation.IsCancellationRequested)
+        {
+            _cancellation.Dispose();
+            _cancellation = new CancellationTokenSource();
+        }
 
         await DownloadGate.WaitAsync().ConfigureAwait(true);
         try
@@ -561,6 +573,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public void CancelDownload()
     {
         _hasCancelled = true;
+        _cancellation.Cancel();
         Browser.Cancel();
 
         Status = DownloadingStatus.Cancelled;

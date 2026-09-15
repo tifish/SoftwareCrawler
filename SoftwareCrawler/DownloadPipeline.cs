@@ -888,14 +888,18 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                 fileName,
                 arguments,
                 directory,
-                $"{eventName} script {script}"
+                $"{eventName} script {script}",
+                EventScriptTimeout,
+                _item.CancellationToken
             );
 
             // The user put the script there to finish the job; a failure that only
             // showed up as a vanished console window used to pass as success.
             if (exitCode != 0)
                 throw new PostProcessException(
-                    $"{eventName} script exited with code {exitCode}: {script}"
+                    exitCode == -1
+                        ? $"{eventName} script could not start, timed out or was cancelled: {script}"
+                        : $"{eventName} script exited with code {exitCode}: {script}"
                 );
 
             return true;
@@ -1074,16 +1078,29 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
     private sealed class PostProcessException(string message) : Exception(message);
 
     /// <summary>
+    /// How long an event script may run. A script that waits on something that
+    /// never happens - a tray app ignoring a polite close - would otherwise hold
+    /// the whole batch until somebody notices.
+    /// </summary>
+    internal static readonly TimeSpan EventScriptTimeout = TimeSpan.FromMinutes(10);
+
+    /// <summary>Extraction is bounded too, with room for big archives on slow shares.</summary>
+    internal static readonly TimeSpan SevenZipTimeout = TimeSpan.FromMinutes(30);
+
+    /// <summary>
     /// Runs a helper process to completion with no console window and returns its
-    /// exit code, or -1 when it could not be started. Output is captured and logged
-    /// on failure: these run unattended at night, where a window that flashes an
-    /// error and closes tells nobody anything.
+    /// exit code, or -1 when it could not be started, timed out or was cancelled -
+    /// in the last two cases after killing its whole process tree. Output is
+    /// captured and logged on failure: these run unattended at night, where a
+    /// window that flashes an error and closes tells nobody anything.
     /// </summary>
     internal static async Task<int> RunProcessAsync(
         string fileName,
         string arguments,
         string workingDirectory,
-        string what
+        string what,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default
     )
     {
         var startInfo = new ProcessStartInfo
@@ -1110,7 +1127,33 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             // buffer blocks until somebody reads it, and we would never get there.
             var standardOutput = process.StandardOutput.ReadToEndAsync();
             var standardError = process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken
+            );
+            timeoutCts.CancelAfter(timeout);
+            try
+            {
+                await process.WaitForExitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // A batch file's children (timeout, tasklist) would keep the pipes
+                // open and outlive cmd.exe, so the whole tree has to go.
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch (Exception ex)
+                {
+                    Log.ZLogWarning($"{what} could not be killed: {ex.Message}");
+                }
+
+                Log.ZLogWarning(
+                    $"{what} {(cancellationToken.IsCancellationRequested ? "was cancelled" : $"did not finish within {timeout}")} and was killed."
+                );
+                return -1;
+            }
 
             if (process.ExitCode != 0)
             {
@@ -1374,7 +1417,9 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             SevenZipPath,
             $@"{extractCommand} -y -o""{archiveDir}"" ""{archiveFile}"" -r",
             archiveDir,
-            $"7-Zip extracting {Path.GetFileName(archiveFile)}"
+            $"7-Zip extracting {Path.GetFileName(archiveFile)}",
+            SevenZipTimeout,
+            _item.CancellationToken
         );
 
         // 7-Zip reports 1 for non-fatal warnings, such as a file it could not read;

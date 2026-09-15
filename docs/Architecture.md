@@ -133,11 +133,11 @@ flowchart TD
 
 > **不要把在途文件写进目标目录。** 看上去可以省掉一次跨卷复制（3GB 的包写两遍确实肉疼），但**目标目录的性质是不确定的**：可能是 UNC 共享（边下边写等于每个写操作过网络，抖一下整个传输就没了），也可能正被同步工具监视（不完整的文件会被反复同步、中断的残留会传播到每台设备）。程序无法可靠判断这两种情况，而"只有完整文件才出现在目标目录"这一条对三种情况都成立。这个取舍试过一次并撤回了，别再试第二次。
 
-扩展点：目标目录下若存在 `AfterDownload.cmd`/`.ps1` 或 `AfterExtract.cmd`/`.ps1`，会以文件路径为参数同步调用（`.cmd` 优先）。解压用随程序附带的 `bin/7-Zip/7z.exe`，默认用 `x -r` 保留压缩包中的目录结构；只有配方显式设置 `ExtractToRoot` 时才用 `e -r` 展平到根目录，并清理空子目录。`.tar.gz`/`.tgz` 里套着一层 tar，7-Zip 一次只剥一层，所以要跑第二遍再删掉中间的 `.tar`——否则下载目录里会多出一个配方没要求保留的归档。若配置了 `FilePatternToDeleteBeforeExtraction`，解压前先按该模式删除目标目录顶层的旧文件——抽出的安装包文件名常带版本号，否则新旧会并存。每个下载完成的归档都会写入 `.softwarecrawler-download-metadata.json`（按软件名保存源 URL、文件名、大小和 `Last-Modified`）；一旦该项元数据存在，后续更新判断只比较元数据，不再比较保留在目录中的归档。归档只有在本次实际执行并成功完成了解压或上述任一脚本后才删除，脚本文件仅仅存在不构成删除条件；没有成功执行任何处理时保留归档本体。
+扩展点：目标目录下若存在 `AfterDownload.cmd`/`.ps1` 或 `AfterExtract.cmd`/`.ps1`，会以文件路径为参数同步调用（`.cmd` 优先）。脚本限时 10 分钟、7-Zip 限时 30 分钟，超时或取消本项时连同子进程整棵杀掉并按失败处理——一个等不到结果的脚本（比如托盘程序不理会不带 `/F` 的 `taskkill`）否则会让整批永远停在这一项。解压用随程序附带的 `bin/7-Zip/7z.exe`，默认用 `x -r` 保留压缩包中的目录结构；只有配方显式设置 `ExtractToRoot` 时才用 `e -r` 展平到根目录，并清理空子目录。`.tar.gz`/`.tgz` 里套着一层 tar，7-Zip 一次只剥一层，所以要跑第二遍再删掉中间的 `.tar`——否则下载目录里会多出一个配方没要求保留的归档。若配置了 `FilePatternToDeleteBeforeExtraction`，解压前先按该模式删除目标目录顶层的旧文件——抽出的安装包文件名常带版本号，否则新旧会并存。每个下载完成的归档都会写入 `.softwarecrawler-download-metadata.json`（按软件名保存源 URL、文件名、大小和 `Last-Modified`）；一旦该项元数据存在，后续更新判断只比较元数据，不再比较保留在目录中的归档。归档只有在本次实际执行并成功完成了解压或上述任一脚本后才删除，脚本文件仅仅存在不构成删除条件；没有成功执行任何处理时保留归档本体。
 
 这两类外部进程都**不显示控制台窗口、检查退出码、失败时把输出记进日志**（`RunProcessAsync`）。失败即视为该项失败且不重试——文件已经在盘上，重下没有意义；状态停在 `Extracting` 或 `RunningEventScript`，错误信息里能看出是哪一步。7-Zip 的退出码 1 是非致命警告，按成功处理，2 及以上才算失败。
 
-取消：`DownloadBatch.Cancel()` 停下这一批并把请求转给当前项，`CancelDownload()` 置 `_hasCancelled` 并调 `Browser.Cancel()`；流水线中的等待循环都会检查这个标志。`Browser.Cancel()` 在 `Init` 之前也可能被调到（启动途中点取消），所以它对未建好的 WebView2 是空操作。
+取消：`DownloadBatch.Cancel()` 停下这一批并把请求转给当前项，`CancelDownload()` 置 `_hasCancelled`、取消 `CancellationToken` 并调 `Browser.Cancel()`；流水线中的等待循环都会检查这个标志，外部进程（事件脚本、7-Zip）则靠这个令牌被杀掉。`Browser.Cancel()` 在 `Init` 之前也可能被调到（启动途中点取消），所以它对未建好的 WebView2 是空操作。
 
 ### 5.1 定时：DownloadScheduler
 

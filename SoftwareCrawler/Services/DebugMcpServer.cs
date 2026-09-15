@@ -467,11 +467,23 @@ internal static class DebugMcpServer
 
         /// <summary>
         /// Runs a helper process the way the pipeline runs 7-Zip and event
-        /// scripts, and returns its exit code (-1 when it could not start).
+        /// scripts, and returns its exit code (-1 when it could not start or
+        /// ran past <paramref name="timeoutSeconds"/> and was killed).
         /// </summary>
-        public int RunProcessProbe(string fileName, string arguments, string workingDirectory) =>
+        public int RunProcessProbe(
+            string fileName,
+            string arguments,
+            string workingDirectory,
+            int timeoutSeconds
+        ) =>
             Task.Run(() =>
-                    DownloadPipeline.RunProcessAsync(fileName, arguments, workingDirectory, "probe")
+                    DownloadPipeline.RunProcessAsync(
+                        fileName,
+                        arguments,
+                        workingDirectory,
+                        "probe",
+                        TimeSpan.FromSeconds(timeoutSeconds)
+                    )
                 )
                 .GetAwaiter()
                 .GetResult();
