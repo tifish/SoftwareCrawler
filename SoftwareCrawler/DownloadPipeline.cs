@@ -838,6 +838,11 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                 return Failed(ex.Message, DownloadOnceResult.FailedAndNoRetry);
             }
 
+            // Extraction and event scripts name their step in Status while they run;
+            // once they are done the item ends in the status it succeeded with.
+            if (!_item.CancellationToken.IsCancellationRequested)
+                _item.Status = finalStatus;
+
             return DownloadOnceResult.Succeeded;
         }
 
