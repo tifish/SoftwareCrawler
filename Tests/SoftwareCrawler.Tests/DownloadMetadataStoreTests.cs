@@ -155,7 +155,8 @@ public class DownloadMetadataStoreTests
             await DownloadPipeline.FinalizeArchiveFile(
                 item,
                 archive,
-                processingSucceeded: true
+                processed: true,
+                deleteArchive: true
             );
 
             Assert.False(File.Exists(archive));
@@ -191,7 +192,8 @@ public class DownloadMetadataStoreTests
             await DownloadPipeline.FinalizeArchiveFile(
                 item,
                 archive,
-                processingSucceeded: false
+                processed: false,
+                deleteArchive: false
             );
 
             Assert.True(File.Exists(archive));
@@ -200,6 +202,60 @@ public class DownloadMetadataStoreTests
             );
             Assert.Equal("package.zip", metadata.FileName);
             Assert.Equal("archive bytes".Length, metadata.Size);
+            Assert.False(metadata.Processed);
+        }
+        finally
+        {
+            directory.Delete(true);
+        }
+    }
+
+    [Fact]
+    public async Task SameVersionKeepsItsProcessedFlagAndNewVersionResetsIt()
+    {
+        var directory = Directory.CreateTempSubdirectory("SoftwareCrawlerArchive");
+        try
+        {
+            var archive = Path.Join(directory.FullName, "package.tar.gz");
+            await File.WriteAllTextAsync(archive, "archive bytes");
+            var item = new SoftwareItem
+            {
+                Name = "ScriptedArchive",
+                WebPage = "https://example.test/package.tar.gz",
+            };
+
+            // An AfterDownload script ran: the archive stays, marked as processed.
+            await DownloadPipeline.FinalizeArchiveFile(
+                item,
+                archive,
+                processed: true,
+                deleteArchive: false
+            );
+            Assert.True(File.Exists(archive));
+
+            // A later run finds the same version and must not forget that.
+            await DownloadPipeline.FinalizeArchiveFile(
+                item,
+                archive,
+                processed: null,
+                deleteArchive: false
+            );
+            Assert.True(
+                DownloadMetadataStore.TryGet(directory.FullName, item.Name, out var same)
+            );
+            Assert.True(same.Processed);
+
+            // A new download starts over.
+            await DownloadPipeline.FinalizeArchiveFile(
+                item,
+                archive,
+                processed: false,
+                deleteArchive: false
+            );
+            Assert.True(
+                DownloadMetadataStore.TryGet(directory.FullName, item.Name, out var fresh)
+            );
+            Assert.False(fresh.Processed);
         }
         finally
         {

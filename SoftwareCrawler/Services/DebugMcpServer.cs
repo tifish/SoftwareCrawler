@@ -411,13 +411,15 @@ internal static class DebugMcpServer
         }
 
         /// <summary>
-        /// Records an archive download and optionally applies the deletion that
-        /// follows a successfully executed extraction or event script.
+        /// Records an archive download the way the pipeline does after processing
+        /// it: the archive is deleted when it was extracted, whether or not an
+        /// event script ran.
         /// </summary>
         public void FinalizeArchiveProbe(
             string name,
             string archiveFile,
-            bool processingSucceeded
+            bool extracted,
+            bool scriptRan
         )
         {
             var item =
@@ -429,7 +431,8 @@ internal static class DebugMcpServer
                     DownloadPipeline.FinalizeArchiveFile(
                         item,
                         archiveFile,
-                        processingSucceeded
+                        processed: extracted || scriptRan,
+                        deleteArchive: extracted
                     )
                 )
                 .GetAwaiter()

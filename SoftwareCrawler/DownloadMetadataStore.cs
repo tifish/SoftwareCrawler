@@ -23,6 +23,13 @@ internal static class DownloadMetadataStore
         public string FileName { get; set; } = string.Empty;
         public long Size { get; set; }
         public DateTime? LastModified { get; set; }
+
+        /// <summary>
+        /// Whether extraction or an event script has already run successfully on
+        /// this version. A retained archive that is not processed yet is retried
+        /// without a second download; a processed one is left alone.
+        /// </summary>
+        public bool Processed { get; set; }
     }
 
     private sealed class Document
