@@ -888,13 +888,27 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                     $"-ExecutionPolicy Bypass -NoProfile -File \"{script}\" \"{filePath}\""
                 );
 
+            // The file path is the first argument, and has been since the first
+            // event script. These say the same thing without taking an argument
+            // position - a script written against the old contract keeps working,
+            // and one that wants to act only on what just arrived (upload it, say)
+            // can tell which item and which event it is being run for.
+            var environment = new Dictionary<string, string>
+            {
+                ["SOFTWARECRAWLER_EVENT"] = eventName,
+                ["SOFTWARECRAWLER_ITEM"] = _item.Name,
+                ["SOFTWARECRAWLER_FILE"] = filePath,
+                ["SOFTWARECRAWLER_DIRECTORY"] = directory,
+            };
+
             var exitCode = await RunProcessAsync(
                 fileName,
                 arguments,
                 directory,
                 $"{eventName} script {script}",
                 EventScriptTimeout,
-                _item.CancellationToken
+                _item.CancellationToken,
+                environment
             );
 
             // The user put the script there to finish the job; a failure that only
@@ -1130,7 +1144,8 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         string workingDirectory,
         string what,
         TimeSpan timeout,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? environment = null
     )
     {
         var startInfo = new ProcessStartInfo
@@ -1143,6 +1158,10 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+
+        if (environment is not null)
+            foreach (var (key, value) in environment)
+                startInfo.Environment[key] = value;
 
         try
         {
