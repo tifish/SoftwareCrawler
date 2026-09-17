@@ -563,8 +563,17 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             downloadedFilePath = Path.Combine(SoftwareItem.SystemDownloadFolder, suggestedFileName);
             var ext = Path.GetExtension(item.SuggestedFileName).ToLower();
 
+            // A Unix CLI ships as a bare binary: Claude Code is "claude", the Grok CLI
+            // is "grok-<version>-macos-aarch64" - and the dots in that version make
+            // GetExtension hand back ".34-macos-aarch64", so an empty extension is not
+            // the only shape to allow. What this check is really guarding against is a
+            // page served instead of a file, and that always arrives as .html or .htm,
+            // so anything that is not shaped like a real extension is safe to accept.
+            var isBareUnixBinary = !LooksLikeFileExtension(ext);
+
             if (
-                !ExecutableFileTypes.Contains(ext)
+                !isBareUnixBinary
+                && !ExecutableFileTypes.Contains(ext)
                 && !MacInstallerFileTypes.Contains(ext)
                 && !ArchiveFileTypes.Contains(ext)
             )
@@ -956,6 +965,14 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         if (deleteArchive)
             await Task.Run(() => File.Delete(archivePath));
     }
+
+    /// <summary>
+    /// Whether <paramref name="ext"/> (as <see cref="Path.GetExtension(string)"/> returns
+    /// it, leading dot included) is shaped like a real file extension rather than the
+    /// tail of a dotted name.
+    /// </summary>
+    private static bool LooksLikeFileExtension(string ext) =>
+        ext.Length is >= 2 and <= 9 && ext[0] == '.' && ext.Skip(1).All(char.IsLetterOrDigit);
 
     internal static bool IsArchiveFile(string path) =>
         ArchiveFileTypes.Contains(Path.GetExtension(path).ToLowerInvariant());
