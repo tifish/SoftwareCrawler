@@ -28,6 +28,7 @@ public class SoftwareItemDataLineTests
             FilePatternToDeleteBeforeExtraction = "*.dll",
             ExtractAfterDownload = true,
             ExtractToRoot = true,
+            SaveAsFileName = "claude-macos-arm64",
             DirectDownload = true,
             UseProxy = true,
         };
@@ -129,6 +130,9 @@ public class SoftwareItemDataLineTests
         Assert.Equal("*.dll", item.FilePatternToDeleteBeforeExtraction);
         Assert.True(item.ExtractAfterDownload);
         Assert.False(item.ExtractToRoot);
+        // SaveAsFileName came after ExtractToRoot: an empty one means "keep the
+        // name the server offers", which is what every older recipe expects.
+        Assert.Equal(string.Empty, item.SaveAsFileName);
     }
 
     [Fact]

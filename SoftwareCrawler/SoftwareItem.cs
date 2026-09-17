@@ -236,6 +236,14 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     public bool ExtractToRoot { get; set; }
 
     /// <summary>
+    /// Saves the download under this name instead of the one the server offers.
+    /// Two builds of the same tool often arrive under one name - upstream calls the
+    /// macOS Claude Code binary "claude" whatever the architecture - which would
+    /// otherwise force them into separate download directories.
+    /// </summary>
+    public string SaveAsFileName { get; set; } = string.Empty;
+
+    /// <summary>
     /// The proxy string this item should use right now: the machine setting when
     /// <see cref="UseProxy"/> is on, otherwise empty (go direct).
     /// </summary>
@@ -314,6 +322,9 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             nameof(FilePatternToDeleteBeforeExtraction),
             nameof(ExtractAfterDownload),
             nameof(ExtractToRoot),
+            // New columns go last: a file written by an older version simply ends
+            // early, and FromDataLine leaves the rest at their defaults.
+            nameof(SaveAsFileName),
         }
             .Select(name => typeof(SoftwareItem).GetProperty(name)!)
             .ToList(),

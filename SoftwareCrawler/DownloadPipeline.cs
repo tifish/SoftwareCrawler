@@ -549,6 +549,12 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         // Called when download starts, decide whether to download.
         void OnBeginDownloadHandler(object? o, DownloadItem item)
         {
+            // Pinning the name is the recipe's business, so overwrite the server's
+            // suggestion here at the source: the paths below, the progress line and
+            // the download metadata then all speak of the file that actually lands.
+            if (!string.IsNullOrWhiteSpace(_item.SaveAsFileName))
+                item.SuggestedFileName = _item.SaveAsFileName.Trim();
+
             suggestedFileName = item.SuggestedFileName;
             downloadFileSize = item.TotalBytes;
             downloadFileTime = item.EndTime;
