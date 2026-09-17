@@ -563,7 +563,11 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             downloadedFilePath = Path.Combine(SoftwareItem.SystemDownloadFolder, suggestedFileName);
             var ext = Path.GetExtension(item.SuggestedFileName).ToLower();
 
-            if (!ExecutableFileTypes.Contains(ext) && !ArchiveFileTypes.Contains(ext))
+            if (
+                !ExecutableFileTypes.Contains(ext)
+                && !MacInstallerFileTypes.Contains(ext)
+                && !ArchiveFileTypes.Contains(ext)
+            )
             {
                 Failed(
                     $"Unexpected file name: {suggestedFileName}",
@@ -1040,6 +1044,13 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
     }
 
     private static readonly List<string> ExecutableFileTypes = [".exe", ".msi", ".vsix", ".msix"];
+
+    /// <summary>
+    /// macOS installer images. Nothing here ever runs or unpacks them: they are
+    /// downloaded so a Mac can pick them up from the share, so they only have to
+    /// pass the accepted-download check.
+    /// </summary>
+    private static readonly List<string> MacInstallerFileTypes = [".dmg", ".pkg"];
 
     private static readonly List<string> ArchiveFileTypes = [".zip", ".rar", ".7z", ".gz", ".tgz"];
 
