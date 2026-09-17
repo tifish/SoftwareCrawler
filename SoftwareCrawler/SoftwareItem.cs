@@ -218,6 +218,20 @@ public sealed class SoftwareItem : INotifyPropertyChanged
         }
     }
     public string DownloadDirectory2 { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Saves the download under this name instead of the one the server offers.
+    /// Two builds of the same tool often arrive under one name - upstream calls the
+    /// macOS Claude Code binary "claude" whatever the architecture - which would
+    /// otherwise force them into separate download directories.
+    /// </summary>
+    /// <remarks>
+    /// Declared here because the grid takes its column order from this class, and
+    /// this belongs beside the directories. Its place in the .tab file is decided
+    /// by <see cref="DataProperties"/>, where it stays last.
+    /// </remarks>
+    public string SaveAsFileName { get; set; } = string.Empty;
+
     public string FilePatternToDeleteBeforeDownload { get; set; } = string.Empty;
 
     /// <summary>
@@ -234,14 +248,6 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     /// preserving the directory structure stored in the archive.
     /// </summary>
     public bool ExtractToRoot { get; set; }
-
-    /// <summary>
-    /// Saves the download under this name instead of the one the server offers.
-    /// Two builds of the same tool often arrive under one name - upstream calls the
-    /// macOS Claude Code binary "claude" whatever the architecture - which would
-    /// otherwise force them into separate download directories.
-    /// </summary>
-    public string SaveAsFileName { get; set; } = string.Empty;
 
     /// <summary>
     /// The proxy string this item should use right now: the machine setting when
