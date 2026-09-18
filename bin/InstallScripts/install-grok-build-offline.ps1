@@ -19,12 +19,12 @@ $ProgressPreference = 'SilentlyContinue'
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-$source = Get-ChildItem -LiteralPath $scriptDir -Filter 'grok-*-windows-*.exe' -File |
+$source = Get-ChildItem -LiteralPath $scriptDir -Filter 'grok-*windows*.exe' -File |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
 
 if (-not $source) {
-    throw "No grok-*-windows-*.exe was found next to this script ($scriptDir). Download Grok Build first."
+    throw "No grok-*windows*.exe was found next to this script ($scriptDir). Download Grok Build first."
 }
 
 $grokDir = Join-Path $env:USERPROFILE '.grok'
