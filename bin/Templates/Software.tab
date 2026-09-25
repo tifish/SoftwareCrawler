@@ -1,6 +1,7 @@
 ﻿Name	WebPage	DirectDownload	XPathOrScript1	XPathOrScript2	XPathOrScript3	XPathOrScript4	XPathOrScript5	Frames	WaitSecondsBeforeClick	StartDownloadTimeout	FilePatternToDeleteBeforeDownload	FilePatternToDeleteBeforeExtraction	ExtractAfterDownload	ExtractToRoot	SaveAsFileName
 搜狗输入法	https://pinyin.sogou.com/		//a[contains(@href, '.exe')]								*.exe				
 百度输入法	https://shurufa.baidu.com/		a = document.evaluate(`n    "//a[text()='立即下载']",`n    document,`n    null,`n    XPathResult.FIRST_ORDERED_NODE_TYPE,`n    null`n).singleNodeValue;`nsetTimeout(function () {`n    a.click();`n}, 2000);								*.exe				
+豆包输入法	https://shurufa.doubao.com/pc		//article[.//h3[contains(., 'Windows')]]//button								DoubaoIME_Installer_*.exe				
 TortoiseSVN	https://sourceforge.net/projects/tortoisesvn/files/latest/download	true									TortoiseSVN*.msi				
 XnViewMP	https://download.xnview.com/XnViewMP-win-x64.exe										*.exe				
 Notepad++	https://notepad-plus-plus.org/downloads/		//main[@id='main']//a	//main[@id='main']//a[contains(@href, 'x64.exe')]							*.exe				
