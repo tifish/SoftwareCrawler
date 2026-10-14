@@ -13,6 +13,18 @@ public enum UpdateCheckFrequency
 }
 
 /// <summary>
+/// Which coding agent CLI is handed the failures of an automatic download round
+/// (<see cref="SoftwareCrawler.Services.AutoFixService"/>). None turns it off.
+/// </summary>
+public enum AutoFixAgent
+{
+    None,
+    ClaudeCode,
+    Codex,
+    GrokBuild,
+}
+
+/// <summary>
 /// Settings bound to this machine: local paths and the local proxy endpoint.
 /// Always stored in %LOCALAPPDATA%\SoftwareCrawler\Config, never roamed.
 /// </summary>
@@ -31,6 +43,18 @@ public class MachineAppSettings
     /// since Task Manager can turn it off behind our back.
     /// </summary>
     public bool RunAtStartup { get; set; }
+
+    /// <summary>
+    /// The agent that fixes what an automatic round could not download. Machine-local:
+    /// which CLIs are installed and signed in is a fact about this computer.
+    /// </summary>
+    public AutoFixAgent AutoFixAgent { get; set; } = AutoFixAgent.None;
+
+    /// <summary>
+    /// The git checkout the agent works in. Empty means the checkout this copy was
+    /// built from, which is where a Debug build runs.
+    /// </summary>
+    public string AutoFixRepository { get; set; } = "";
 }
 
 /// <summary>
@@ -120,6 +144,16 @@ public class AppSettings
     {
         get => Machine.RunAtStartup;
         set => Machine.RunAtStartup = value;
+    }
+    public AutoFixAgent AutoFixAgent
+    {
+        get => Machine.AutoFixAgent;
+        set => Machine.AutoFixAgent = value;
+    }
+    public string AutoFixRepository
+    {
+        get => Machine.AutoFixRepository;
+        set => Machine.AutoFixRepository = value;
     }
 
     // Roaming

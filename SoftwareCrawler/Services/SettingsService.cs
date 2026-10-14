@@ -111,6 +111,7 @@ public class SettingsService
         settings.Proxy = settings.Proxy.Trim();
         settings.ExternalJavascriptEditor = settings.ExternalJavascriptEditor.Trim();
         settings.DefaultDownloadDirectory = settings.DefaultDownloadDirectory.Trim();
+        settings.AutoFixRepository = settings.AutoFixRepository.Trim();
     }
 
     private static void NormalizeRoamingSettings(RoamingAppSettings settings)

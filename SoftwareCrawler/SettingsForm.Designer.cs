@@ -62,6 +62,12 @@ namespace SoftwareCrawler
             frequentCheckIntervalLabel = new Label();
             frequentCheckIntervalNumericUpDown = new NumericUpDown();
             runAtStartupCheckBox = new CheckBox();
+            autoFixAgentLabel = new Label();
+            autoFixAgentComboBox = new ComboBox();
+            autoFixRepositoryLabel = new Label();
+            autoFixRepositoryTextBox = new TextBox();
+            browseAutoFixRepositoryButton = new Button();
+            autoFixRepositoryFlowLayoutPanel = new FlowLayoutPanel();
             updateCheckLabel = new Label();
             updateCheckComboBox = new ComboBox();
             versionLabel = new Label();
@@ -83,6 +89,7 @@ namespace SoftwareCrawler
             rootTableLayoutPanel.SuspendLayout();
             flowLayoutPanel2.SuspendLayout();
             storageFlowLayoutPanel.SuspendLayout();
+            autoFixRepositoryFlowLayoutPanel.SuspendLayout();
             versionFlowLayoutPanel.SuspendLayout();
             toolButtonFlowLayoutPanel.SuspendLayout();
             SuspendLayout();
@@ -452,6 +459,60 @@ namespace SoftwareCrawler
             runAtStartupCheckBox.Text = "Start with Windows, hidden in the notification area";
             runAtStartupCheckBox.UseVisualStyleBackColor = true;
             //
+            // autoFixAgentLabel
+            //
+            autoFixAgentLabel.Anchor = AnchorStyles.Left;
+            autoFixAgentLabel.AutoSize = true;
+            autoFixAgentLabel.Name = "autoFixAgentLabel";
+            autoFixAgentLabel.TabIndex = 45;
+            autoFixAgentLabel.Text = "Fix failed rounds with";
+            //
+            // autoFixAgentComboBox
+            //
+            autoFixAgentComboBox.Anchor = AnchorStyles.Left;
+            autoFixAgentComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            autoFixAgentComboBox.FormattingEnabled = true;
+            autoFixAgentComboBox.Name = "autoFixAgentComboBox";
+            autoFixAgentComboBox.Size = new Size(160, 23);
+            autoFixAgentComboBox.TabIndex = 46;
+            //
+            // autoFixRepositoryLabel
+            //
+            autoFixRepositoryLabel.Anchor = AnchorStyles.Left;
+            autoFixRepositoryLabel.AutoSize = true;
+            autoFixRepositoryLabel.Name = "autoFixRepositoryLabel";
+            autoFixRepositoryLabel.TabIndex = 47;
+            autoFixRepositoryLabel.Text = "Repository to fix in";
+            //
+            // autoFixRepositoryTextBox
+            //
+            autoFixRepositoryTextBox.Anchor = AnchorStyles.Left;
+            autoFixRepositoryTextBox.MinimumSize = new Size(250, 23);
+            autoFixRepositoryTextBox.Name = "autoFixRepositoryTextBox";
+            autoFixRepositoryTextBox.PlaceholderText = "Empty: the checkout this copy runs from";
+            autoFixRepositoryTextBox.Size = new Size(333, 23);
+            autoFixRepositoryTextBox.TabIndex = 48;
+            //
+            // browseAutoFixRepositoryButton
+            //
+            browseAutoFixRepositoryButton.Anchor = AnchorStyles.Left;
+            browseAutoFixRepositoryButton.Name = "browseAutoFixRepositoryButton";
+            browseAutoFixRepositoryButton.Size = new Size(75, 25);
+            browseAutoFixRepositoryButton.TabIndex = 49;
+            browseAutoFixRepositoryButton.Text = "Browse...";
+            browseAutoFixRepositoryButton.UseVisualStyleBackColor = true;
+            browseAutoFixRepositoryButton.Click += browseAutoFixRepositoryButton_Click;
+            //
+            // autoFixRepositoryFlowLayoutPanel
+            //
+            autoFixRepositoryFlowLayoutPanel.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            autoFixRepositoryFlowLayoutPanel.AutoSize = true;
+            autoFixRepositoryFlowLayoutPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            autoFixRepositoryFlowLayoutPanel.Controls.Add(autoFixRepositoryTextBox);
+            autoFixRepositoryFlowLayoutPanel.Controls.Add(browseAutoFixRepositoryButton);
+            autoFixRepositoryFlowLayoutPanel.Name = "autoFixRepositoryFlowLayoutPanel";
+            autoFixRepositoryFlowLayoutPanel.TabIndex = 50;
+            //
             // updateCheckLabel
             //
             updateCheckLabel.Anchor = AnchorStyles.Left;
@@ -543,16 +604,22 @@ namespace SoftwareCrawler
             rootTableLayoutPanel.Controls.Add(frequentCheckIntervalLabel, 0, 13);
             rootTableLayoutPanel.Controls.Add(frequentCheckIntervalNumericUpDown, 1, 13);
             rootTableLayoutPanel.Controls.Add(runAtStartupCheckBox, 1, 14);
-            rootTableLayoutPanel.Controls.Add(updateCheckLabel, 0, 15);
-            rootTableLayoutPanel.Controls.Add(updateCheckComboBox, 1, 15);
-            rootTableLayoutPanel.Controls.Add(versionLabel, 0, 16);
-            rootTableLayoutPanel.Controls.Add(versionFlowLayoutPanel, 1, 16);
-            rootTableLayoutPanel.Controls.Add(toolButtonFlowLayoutPanel, 1, 17);
+            rootTableLayoutPanel.Controls.Add(autoFixAgentLabel, 0, 15);
+            rootTableLayoutPanel.Controls.Add(autoFixAgentComboBox, 1, 15);
+            rootTableLayoutPanel.Controls.Add(autoFixRepositoryLabel, 0, 16);
+            rootTableLayoutPanel.Controls.Add(autoFixRepositoryFlowLayoutPanel, 1, 16);
+            rootTableLayoutPanel.Controls.Add(updateCheckLabel, 0, 17);
+            rootTableLayoutPanel.Controls.Add(updateCheckComboBox, 1, 17);
+            rootTableLayoutPanel.Controls.Add(versionLabel, 0, 18);
+            rootTableLayoutPanel.Controls.Add(versionFlowLayoutPanel, 1, 18);
+            rootTableLayoutPanel.Controls.Add(toolButtonFlowLayoutPanel, 1, 19);
             rootTableLayoutPanel.Dock = DockStyle.Fill;
             rootTableLayoutPanel.Location = new Point(0, 0);
             rootTableLayoutPanel.Name = "rootTableLayoutPanel";
             rootTableLayoutPanel.Padding = new Padding(10);
-            rootTableLayoutPanel.RowCount = 18;
+            rootTableLayoutPanel.RowCount = 20;
+            rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootTableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -628,6 +695,8 @@ namespace SoftwareCrawler
             flowLayoutPanel2.PerformLayout();
             storageFlowLayoutPanel.ResumeLayout(false);
             storageFlowLayoutPanel.PerformLayout();
+            autoFixRepositoryFlowLayoutPanel.ResumeLayout(false);
+            autoFixRepositoryFlowLayoutPanel.PerformLayout();
             versionFlowLayoutPanel.ResumeLayout(false);
             versionFlowLayoutPanel.PerformLayout();
             toolButtonFlowLayoutPanel.ResumeLayout(false);
@@ -678,6 +747,12 @@ namespace SoftwareCrawler
         private Label frequentCheckIntervalLabel;
         private NumericUpDown frequentCheckIntervalNumericUpDown;
         private CheckBox runAtStartupCheckBox;
+        private Label autoFixAgentLabel;
+        private ComboBox autoFixAgentComboBox;
+        private Label autoFixRepositoryLabel;
+        private TextBox autoFixRepositoryTextBox;
+        private Button browseAutoFixRepositoryButton;
+        private FlowLayoutPanel autoFixRepositoryFlowLayoutPanel;
         private Label updateCheckLabel;
         private ComboBox updateCheckComboBox;
         private Label versionLabel;

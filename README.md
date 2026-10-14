@@ -38,6 +38,15 @@ irm https://ghfast.top/https://raw.githubusercontent.com/tifish/SoftwareCrawler/
 
 命令行 `SoftwareCrawler.exe --download-all --auto-close` 仍然可用，跑完就退，适合手工触发或交给外部调度。
 
+## 失败自动修复
+
+设置窗口的 "Fix failed rounds with" 可以选 Claude Code、Codex CLI 或 Grok Build（默认关闭）。选了之后，定时轮次里有项下载失败时，程序会在后台启动这个 agent：它读日志、用 Debug MCP 排查，修好配方或代码并验证，提交后 `git pull --rebase` 再 `git push`，最后用 `bin\RestartClient.ps1` 重启客户端。
+
+- 需要一个 git checkout 作为工作目录："Repository to fix in" 留空时用程序自己所在的仓库（从仓库 `bin` 里跑 Debug 版就是这种情况），否则填一个。对应的 CLI 要已安装并登录，并且能直接 push。
+- agent 以全权限无人值守运行（`--dangerously-skip-permissions` / `--dangerously-bypass-approvals-and-sandbox` / `--always-approve`），开启前请确认你接受这一点。
+- 同一项交给 agent 后 24 小时内不会再交；成功一次就解除。agent 干活期间定时轮次暂停，最长 2 小时。
+- 每次会话的说明和完整输出在 `bin\Logs\AutoFix\`。
+
 ## 配置存放位置
 
 - 软件列表 `Templates\Software.tab` 只含爬取规则，随程序发布并入库。正式版首次运行时把它复制成 `Config\Software.tab` 使用，之后归用户所有，升级不会覆盖；开发版直接读写模板本身，改动即可提交。

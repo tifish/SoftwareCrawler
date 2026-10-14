@@ -161,7 +161,7 @@ flowchart TD
 - `LastFullRun` 落在 `Config/ScheduleState.json`，跨重启保留——丢了就会每次重启重爬一遍。高频那个只在内存里，重启最多损失一轮。
 - 首次启动把 `LastFullRun` 锚定到"最近一个已过的时刻"再落盘，所以装好程序不会立刻触发一趟全量。
 
-**门禁**（`CanRunNow`）只有两条，两种轮次一视同仁：已有批次在跑（下载严格串行、共用一个浏览器），以及 `UserPresence.IsBusy()`（`SHQueryUserNotificationState` 报告全屏 / 投影 / 勿扰）。注意锁屏（`QUNS_NOT_PRESENT`）**不算忙**——那恰恰是最好的时机。
+**门禁**（`CanRunNow`）有三条，两种轮次一视同仁：已有批次在跑（下载严格串行、共用一个浏览器）、`UserPresence.IsBusy()`（`SHQueryUserNotificationState` 报告全屏 / 投影 / 勿扰），以及有 agent 会话在修上一轮的失败（见 5.2）。注意锁屏（`QUNS_NOT_PRESENT`）**不算忙**——那恰恰是最好的时机。
 
 **主窗口开着不是条件**。曾经是（先是两种轮次都拦，后来只拦全量），结果是高频只在没人看的时候跑——你去看它的那一刻正是它不工作的那一刻。功能观察不到就没法被信任，所以这条整个去掉了。代价是：你开着窗口干活时，到点的全量会照跑并占住浏览器十几分钟；真要拦住它，用取消，或者把那个时刻从时间表里去掉。
 
@@ -172,6 +172,31 @@ flowchart TD
 `NoteSkip` 只在原因**变化**时记日志：一天 100 多轮，同一条原因重复几十遍会把日志淹掉。
 
 后台运行时进程优先级压到 `BelowNormal`，窗口打开时恢复 `Normal`。注意这只管得住本进程，WebView2 是独立进程树，不继承。
+
+### 5.2 失败轮次交给 agent：AutoFixService
+
+定时轮次跑完后 `MainForm.RunScheduledAsync` 调 `AutoFixService.OnRoundFinished`：成功的项清掉冷却，失败（`Status == Failed`）且 24 小时内没交过的项交给 `Settings.AutoFixAgent` 选的 CLI。取舍规则、各 CLI 的命令行和给 agent 的说明都在纯函数 `AutoFixPlanner` 里，由 `AutoFixPlannerTests` 覆盖。
+
+| Agent | 命令 | Debug MCP 怎么接上 |
+| --- | --- | --- |
+| Claude Code | `claude -p --dangerously-skip-permissions --mcp-config <repo>\.mcp.json < prompt` | 显式传 `.mcp.json`：print 模式不会停下来问"要不要信任项目里的 server" |
+| Codex CLI | `codex exec --dangerously-bypass-approvals-and-sandbox -C <repo> -c "mcp_servers.sc-debug.command='…'" - < prompt` | Codex 只读自己的 `config.toml`，所以在命令行上临时注册 |
+| Grok Build | `grok --always-approve --cwd <repo> --prompt-file prompt` | 自己会读项目的 `.mcp.json` |
+
+三者都是全权限无人值守——没人批准每一步，而且这趟活以 push 收尾。工作目录是设置里的 `AutoFixRepository`，留空则取本副本所在的 checkout（Debug 构建就是这种情况），不是 git checkout 就不启动。
+
+**agent 必须活得过客户端**，这条决定了启动方式：它的测试回路要重建客户端，也就是杀掉启动它的那个实例，最后一步还要再重启一次。所以：
+
+- 经 `cmd.exe /c "… > transcript 2>&1"` 启动，输出写文件而不是接管道——管道的读端在客户端里，客户端一死 agent 写输出就会出错。
+- 正在跑的会话（pid + 进程启动时间，防 pid 复用）记在本机目录的 `AutoFixState.<instance id>.json`。按实例 id 分文件，因为所有 worktree 共用本机目录、各有各的 agent；被重启的客户端从同一目录起来、id 相同，读到它就知道 agent 还在干活。这个文件从没在别处放过，不需要登记进 `MachineDataMigration`。
+- 启动它的那个实例监听 `Exited` 记下退出码；别的实例在门禁检查时发现进程没了才收尾。
+- 剥掉 `CLAUDECODE` 等环境变量：从 agent 会话里起的客户端会继承它们，Claude Code 看到会以为自己被嵌套而拒绝启动。
+
+**重启客户端走 `bin/RestartClient.ps1`**：按可执行路径只停本目录那个实例、可选 `-Configuration` 重建（只有客户端就跑在仓库自己的 `bin` 里时才带——安装版靠自动更新拿代码）、再用 `Win32_Process.Create` 以 `--tray` 启动。经 WMI 创建，新进程的父进程是 `WmiPrvSE`，不在 agent 的进程树里：有的 CLI 退出时会清理自己的整棵树，直接 `start` 起来的客户端会被一起带走。构建失败也照样启动旧版本，客户端停着会漏掉每一轮。
+
+**门禁**：会话期间 `DownloadScheduler.CanRunNow` 让两种轮次都让路——agent 正通过 Debug MCP 用同一个浏览器验证，而且马上要重启客户端。会话超过 2 小时视为卡死，结束它的进程树。这里不能用 `Process.Kill(entireProcessTree)`：agent 用 `Run.cmd` 起的测试客户端就在这棵树里，问话的很可能正是它。所以自己用 Toolhelp 快照遍历，跳过 `SoftwareCrawler.exe` 及其子树。
+
+说明（`<stamp>-prompt.md`）和输出（`<stamp>-agent.log`）放在 `bin/Logs/AutoFix/`，保留 30 天。MCP `auto_fix` 能看状态与输出末尾、预览说明、手动启动（`prompt` 参数替换说明，用来只验证启动链路而不让 agent 真去改代码 push）、取消、清冷却。
 
 ## 6. 浏览器层（BrowserObject）
 
@@ -238,6 +263,7 @@ flowchart TD
 | `LocalSettings.tab` | 本机 | 本机的 `Enabled`、下载目录与 `UseProxy`（`ExtraProperties`） | 不入库，**世上只有这一份** |
 | `DownloadHistory.tab` | 本机 | 每项的"最后检查时间"与"当前文件时间"（`DownloadHistoryStore`） | 不入库，可再生（丢了只丢历史） |
 | `ScheduleState.json` | 本机 | 上次全量跑完的时刻（`DownloadScheduler`） | 不入库，可再生（丢了多爬一趟） |
+| `AutoFixState.<instance id>.json` | 本机 | 正在跑的 agent 会话、各项交出去的时间（`AutoFixService`） | 不入库，可再生（丢了只丢冷却） |
 | `Config/settings.json` | 本机 | `MachineAppSettings`（存储位置、代理、默认下载目录） | 不入库 |
 
 - **旧版本把本机三件放在活动目录**，`MachineDataMigration` 在启动时（读任何一个之前）把它们搬到本机目录：目标已存在就不动，搬之前先落一份每日备份。加新的本机文件要同时加进它的 `FileNames`，否则升级后那份数据就凭空空了。
@@ -314,7 +340,7 @@ Claude Code ──stdio──> bin/SoftwareCrawlerMcp.exe ──命名管道 JSO
 - 适配器是**单文件发布**到 `bin`（`Build.cmd` / `Run.cmd` 里那一步是 `dotnet publish`）：runtimeconfig 被打进 exe，NetBeauty 就扫不到它。否则适配器会被打上主程序的 `libloader` 启动钩子，agent 会话期间它一直开着 `libloader.dll`，**主程序下一次构建就会失败**。
 - 启动后仍写 `bin/debug-mcp.json`（管道名、pid、可执行路径、instance id、worktree 根、Config 根），但那只是给人排查用的记录，连接不再依赖它。
 - 实例身份由 `DebugInstanceContext` 计算：InstanceId 同上，再从 `.git`（支持 worktree 的 `gitdir:` 标记）读分支与短 commit，拼成窗口标题后缀，肉眼即可分辨多开实例。
-- 工具清单集中在 `DebugMcpContract.BuildToolList()`——**放在应用侧，适配器未启动应用时也能回答 `tools/list`**。通用工具 `describe` `get_value` `set_value` `invoke` `list_members` `read_logs` 来自 `McpHost` + `ObjectGraph`；应用工具为 `control_tree` `screenshot` `software_list` `download_probe` `download_batch` `script_edit` `page_state` `storage_info` `config_monitor`。`download_batch` 驱动的是菜单同一条路径（`run` / `cancel` / `status`，`wait: false` 用来先起后停），验取消和顺序靠它，验单个配方靠 `download_probe`。`page_state` 报当前 URL、load 事件 / 网络静默 / 原地替换各自过去了多久、是否 settled，带 `xpath` 时还报点击目标是 `ReadyLink` / `Ready` / `Pending` / `Missing`——"页面慢""XPath 不对""点了但没绑上处理器"就是靠它分开的。
+- 工具清单集中在 `DebugMcpContract.BuildToolList()`——**放在应用侧，适配器未启动应用时也能回答 `tools/list`**。通用工具 `describe` `get_value` `set_value` `invoke` `list_members` `read_logs` 来自 `McpHost` + `ObjectGraph`；应用工具为 `control_tree` `screenshot` `software_list` `download_probe` `download_batch` `script_edit` `page_state` `storage_info` `config_monitor` `schedule` `auto_fix`。`download_batch` 驱动的是菜单同一条路径（`run` / `cancel` / `status`，`wait: false` 用来先起后停），验取消和顺序靠它，验单个配方靠 `download_probe`。`page_state` 报当前 URL、load 事件 / 网络静默 / 原地替换各自过去了多久、是否 settled，带 `xpath` 时还报点击目标是 `ReadyLink` / `Ready` / `Pending` / `Missing`——"页面慢""XPath 不对""点了但没绑上处理器"就是靠它分开的。
 - 对象路径根：`App`（聚合入口，还挂着 `FlushSoftwareList` / `ReloadSoftwareList` / `BackupConfigNow` / `CleanUpLocalSettings` 等动作）、`MainForm`、`Settings`、`SettingsStore`、`Browser`、`Software`。`#Name` 按名字深搜控件。
 - 所有工具在 UI 线程上执行，带 15 秒超时；`download_probe` 特意只在 UI 线程上**启动**下载，随后在池线程 await，避免死锁。
 
@@ -360,3 +386,5 @@ Claude Code ──stdio──> bin/SoftwareCrawlerMcp.exe ──命名管道 JSO
 | 排查"配置被覆盖/没保存" | MCP `config_monitor`：watcher 是否存活、pending 事件、每个文件的基线哈希与 `externallyChanged`、备份清单 |
 | 改定时规则 | 判定逻辑在 `DownloadSchedulePlanner`（纯函数，先加测试）；触发与门禁在 `DownloadScheduler`；跑哪一批在 `MainForm.RunScheduledAsync` |
 | 排查"定时没跑/跑了不该跑" | MCP `schedule`：两套时间表的上次与下次、高频覆盖哪些项、当前门禁判定，以及最后一次被挡下的原因 |
+| 改"失败交给 agent"的规则或说明 | 取舍、命令行、说明文本在 `AutoFixPlanner`（纯函数，先加测试）；启动、会话追踪、超时在 `AutoFixService`；重启在 `bin/RestartClient.ps1` |
+| 排查"agent 没起来/起了做了什么" | MCP `auto_fix`：设置、仓库、当前与上一次会话、输出末尾、冷却中的项；完整输出在 `bin/Logs/AutoFix/` |

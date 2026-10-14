@@ -19,6 +19,8 @@ public partial class SettingsForm : Form
 
     private sealed record UpdateCheckOption(string DisplayName, UpdateCheckFrequency Frequency);
 
+    private sealed record AutoFixAgentOption(string DisplayName, AutoFixAgent Agent);
+
     private static readonly ColorModeOption[] ColorModeOptions =
     [
         new("Follow system", SystemColorMode.System),
@@ -41,6 +43,14 @@ public partial class SettingsForm : Form
         new("Weekly", UpdateCheckFrequency.Weekly),
     ];
 
+    private static readonly AutoFixAgentOption[] AutoFixAgentOptions =
+    [
+        new("Nobody (off)", AutoFixAgent.None),
+        new(AutoFixPlanner.DisplayName(AutoFixAgent.ClaudeCode), AutoFixAgent.ClaudeCode),
+        new(AutoFixPlanner.DisplayName(AutoFixAgent.Codex), AutoFixAgent.Codex),
+        new(AutoFixPlanner.DisplayName(AutoFixAgent.GrokBuild), AutoFixAgent.GrokBuild),
+    ];
+
     public SettingsForm()
     {
         InitializeComponent();
@@ -60,6 +70,12 @@ public partial class SettingsForm : Form
         updateCheckComboBox.ValueMember = nameof(UpdateCheckOption.Frequency);
         updateCheckComboBox.DataSource = UpdateCheckOptions;
         updateCheckComboBox.SelectedValue = _settings.UpdateCheckFrequency;
+
+        autoFixAgentComboBox.DisplayMember = nameof(AutoFixAgentOption.DisplayName);
+        autoFixAgentComboBox.ValueMember = nameof(AutoFixAgentOption.Agent);
+        autoFixAgentComboBox.DataSource = AutoFixAgentOptions;
+        autoFixAgentComboBox.SelectedValue = _settings.AutoFixAgent;
+        autoFixRepositoryTextBox.Text = _settings.AutoFixRepository;
 
         versionValueLabel.Text = AutoUpdateService.GetDisplayVersion();
         checkUpdateButton.Enabled = !DebugInstanceContext.IsDebugBuild;
@@ -98,6 +114,19 @@ public partial class SettingsForm : Form
     private void storageLocationComboBox_SelectedIndexChanged(object sender, EventArgs e) =>
         UpdateStorageControls();
 
+    private void browseAutoFixRepositoryButton_Click(object sender, EventArgs e)
+    {
+        using var dialog = new FolderBrowserDialog
+        {
+            Description = "Select the git checkout the agent fixes and pushes from",
+            UseDescriptionForTitle = true,
+            SelectedPath = autoFixRepositoryTextBox.Text,
+        };
+
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+            autoFixRepositoryTextBox.Text = dialog.SelectedPath;
+    }
+
     private void browseStoragePathButton_Click(object sender, EventArgs e)
     {
         using var dialog = new FolderBrowserDialog
@@ -125,6 +154,8 @@ public partial class SettingsForm : Form
         _settings.ExternalJavascriptEditor = externalJavascriptEditorTextBox.Text;
         _settings.DefaultDownloadDirectory = defaultDownloadDirectoryTextBox.Text;
         _settings.UpdateCheckFrequency = (UpdateCheckFrequency)updateCheckComboBox.SelectedValue!;
+        _settings.AutoFixAgent = (AutoFixAgent)autoFixAgentComboBox.SelectedValue!;
+        _settings.AutoFixRepository = autoFixRepositoryTextBox.Text.Trim();
 
         if (!DownloadSchedulePlanner.TryParseTimeList(scheduledTimesTextBox.Text, out var scheduledTimes, out var badTime))
         {

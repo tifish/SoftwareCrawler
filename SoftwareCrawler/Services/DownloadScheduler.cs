@@ -258,6 +258,14 @@ public sealed class DownloadScheduler
             return false;
         }
 
+        // The agent drives this same browser through the debug channel to verify
+        // its fixes, and restarts the client when it is done.
+        if (AutoFixService.IsBusy(out var agentReason))
+        {
+            reason = agentReason;
+            return false;
+        }
+
         reason = "";
         return true;
     }

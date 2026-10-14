@@ -88,6 +88,7 @@ internal static class DebugMcpServer
         host.AddTool("storage_info", _ => Task.FromResult(StorageInfo()));
         host.AddTool("config_monitor", _ => Task.FromResult(ConfigMonitorInfo()));
         host.AddTool("schedule", ScheduleAsync);
+        host.AddTool("auto_fix", AutoFixAsync);
         return host;
     }
 
@@ -1241,6 +1242,121 @@ internal static class DebugMcpServer
 
         static string Describe(DateTime? moment) =>
             moment?.ToString("yyyy-MM-dd HH:mm:ss") ?? "never";
+    }
+
+    /// <summary>
+    /// Inspects and drives the agent that fixes failed automatic rounds. preview
+    /// shows the brief without starting anything; run with a prompt replaces the
+    /// brief, so the launch path can be exercised without an agent pushing changes.
+    /// </summary>
+    private static async Task<JsonObject> AutoFixAsync(JsonObject args)
+    {
+        var action = args["action"]?.GetValue<string>() ?? "status";
+
+        switch (action)
+        {
+            case "status":
+            {
+                var lines = Math.Clamp(args["lines"]?.GetValue<int>() ?? 30, 0, 500);
+                var text = await OnUiAsync(AutoFixService.DescribeStatus);
+                if (lines > 0)
+                    text += $"\nTranscript tail:\n{AutoFixService.TailTranscript(lines)}";
+                return ToolText(text);
+            }
+
+            case "cancel":
+                return ToolText(
+                    await OnUiAsync(AutoFixService.Cancel)
+                        ? "Stopped the agent session."
+                        : "No agent session is running."
+                );
+
+            case "forget":
+                return ToolText($"Cleared the cooldown of {AutoFixService.ForgetHandOffs()} item(s).");
+
+            case "preview":
+            case "run":
+                break;
+
+            default:
+                return ToolText(
+                    $"Unknown action '{action}'. Use status, preview, run, cancel or forget.",
+                    isError: true
+                );
+        }
+
+        var names = args["names"]?.GetValue<string>() ?? "";
+        List<AutoFixFailure> failures;
+        if (string.IsNullOrWhiteSpace(names))
+        {
+            failures = await OnUiAsync(() =>
+                SoftwareManager
+                    .Items.Where(item => item is { Enabled: true, Status: DownloadingStatus.Failed })
+                    .Select(AutoFixService.ToFailure)
+                    .ToList()
+            );
+            if (failures.Count == 0)
+                return ToolText(
+                    "No item is in the Failed state; pass names to choose some.",
+                    isError: true
+                );
+        }
+        else
+        {
+            failures = [];
+            foreach (
+                var name in names.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            )
+            {
+                var item = SoftwareManager.Items.FirstOrDefault(candidate =>
+                    candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
+                );
+                if (item is null)
+                    return ToolText($"No software item named '{name}'.", isError: true);
+                failures.Add(AutoFixService.ToFailure(item));
+            }
+        }
+
+        var agent = Settings.AutoFixAgent;
+        var agentName = args["agent"]?.GetValue<string>();
+        if (!string.IsNullOrWhiteSpace(agentName) && !Enum.TryParse(agentName, true, out agent))
+            return ToolText(
+                $"Unknown agent '{agentName}'. Use ClaudeCode, Codex or GrokBuild.",
+                isError: true
+            );
+
+        const string trigger = "debug tools";
+
+        if (action == "preview")
+        {
+            var repository = AutoFixService.ResolveRepository(out var problem);
+            if (repository is null)
+                return ToolText($"No usable repository: {problem}", isError: true);
+
+            var prompt = await OnUiAsync(() =>
+                AutoFixPlanner.BuildPrompt(AutoFixService.BuildContext(trigger, failures, repository))
+            );
+            var command =
+                agent == AutoFixAgent.None
+                    ? "(no agent selected)"
+                    : AutoFixPlanner.BuildAgentCommand(
+                        agent,
+                        Path.Join(AutoFixService.SessionFolder, "<stamp>-prompt.md"),
+                        repository
+                    );
+            return ToolText($"Command: {command}\n\n{prompt}");
+        }
+
+        var promptOverride = args["prompt"]?.GetValue<string>();
+        var outcome = await OnUiAsync(() =>
+            AutoFixService.Launch(
+                trigger,
+                failures,
+                agent,
+                string.IsNullOrWhiteSpace(promptOverride) ? null : promptOverride
+            )
+        );
+        return ToolText(outcome.Message, isError: !outcome.Launched);
     }
 
     private static JsonObject ConfigMonitorInfo()

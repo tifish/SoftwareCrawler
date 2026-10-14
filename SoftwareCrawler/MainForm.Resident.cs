@@ -279,6 +279,10 @@ public partial class MainForm
         var retryCount = kind == ScheduledRunKind.Full ? Settings.DownloadRetryCount : 0;
 
         await RunBatchAsync(items, testOnly: false, retryCount, operation: $"Scheduled{kind}");
+
+        // Scheduled rounds only (the tray's "now" items and the debug tools run them
+        // too); a batch started from the grid has someone watching it.
+        AutoFixService.OnRoundFinished(kind, items, DownloadBatch.HasCancelled);
     }
 
     private void RunScheduleNow(ScheduledRunKind kind)

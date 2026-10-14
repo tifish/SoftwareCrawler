@@ -266,6 +266,35 @@ public static class DebugMcpContract
                 }
             ),
             Tool(
+                "auto_fix",
+                "Inspect and drive the coding agent (Claude Code, Codex or Grok Build, chosen in Settings) that "
+                    + "a failed scheduled round is handed to: it diagnoses and fixes the failures, pushes, and "
+                    + "restarts the client. status reports the setting, the repository it works in, the running "
+                    + "or last session with the tail of its transcript, and which items are on the 24-hour "
+                    + "cooldown. preview shows the command and the brief without starting anything. run starts "
+                    + "a session now, ignoring the cooldown; pass prompt to replace the brief, so the launch "
+                    + "path can be tested without an agent changing and pushing code. cancel stops the session, "
+                    + "forget clears the cooldowns. While a session runs, scheduled rounds stand down.",
+                new()
+                {
+                    ["action"] = Prop(
+                        "string",
+                        "status, preview, run, cancel or forget (default status).",
+                        ["status", "preview", "run", "cancel", "forget"]
+                    ),
+                    ["names"] = Prop(
+                        "string",
+                        "preview/run: comma-separated item names. Omit for the items now in the Failed state."
+                    ),
+                    ["agent"] = Prop(
+                        "string",
+                        "preview/run: ClaudeCode, Codex or GrokBuild instead of the configured agent."
+                    ),
+                    ["prompt"] = Prop("string", "run: text that replaces the generated brief."),
+                    ["lines"] = Prop("integer", "status: transcript lines to include, 0-500 (default 30)."),
+                }
+            ),
+            Tool(
                 "config_monitor",
                 "Report the config watcher state: whether it is live, which events are waiting for the quiet period, "
                     + "and for every tracked config file the content baseline the app holds and whether the file on disk "
