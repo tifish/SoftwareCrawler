@@ -5,7 +5,7 @@
 TortoiseSVN	https://sourceforge.net/projects/tortoisesvn/files/latest/download	true									TortoiseSVN*.msi				
 XnViewMP	https://download.xnview.com/XnViewMP-win-x64.exe										*.exe				
 Notepad++	https://notepad-plus-plus.org/downloads/		//main[@id='main']//a	//main[@id='main']//a[contains(@href, 'x64.exe')]							*.exe				
-完美解码	https://www.puresys.net/4007.html		//a[normalize-space(.)='本地下载']								*.exe				
+完美解码	https://www.puresys.net/4007.html		//a[normalize-space(.)='本地下载2']								*.exe				
 QQ	https://im.qq.com/pcqq/index.shtml		//a[contains(@href, '.exe')]								*.exe				
 Epic Installer	https://store.epicgames.com/en-US/download		//a[contains(@href, '.exe')]								*.exe				
 TIM	https://office.qq.com/download.html		//a[contains(@href, '.exe')]								*.exe				
