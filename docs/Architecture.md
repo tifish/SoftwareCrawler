@@ -104,6 +104,8 @@ SoftwareCrawler.slnx
 
 `SoftwareItem.Download()` 是重试外壳（含串行闸门），`DownloadPipeline.RunAsync()` 是一次完整尝试——每次尝试新建一个 `DownloadPipeline`，那一趟的中间状态（建议文件名、大小、时间戳、目标路径、暂存路径）就是它的字段。其结果只有三种：`Succeeded` / `FailedAndRetry` / `FailedAndNoRetry`。重试次数来自 `Settings.DownloadRetryCount`，间隔 `DownloadRetryInterval` 秒。**只有可能是瞬时故障的错误才标记重试**（点击失败、脚本失败、超时、HTTP 非 2xx、字节数不足）；目录创建失败、文件名不合法、复制失败一律不重试。
 
+文件传输超时是重试规则的例外：`DownloadTimeout` 默认 900 秒，浏览器等待以 `TimeoutException` 区分超时与用户取消；超时先取消浏览器传输，再清理暂存文件。HTTP 传输用同一时限并链接本项的取消令牌。两条路径均置运行时 `SoftwareItem.DownloadTimedOut`、返回 `FailedAndNoRetry`，让后续项继续。定时轮次沿用 `AutoFixService.OnRoundFinished`，手动批次结束时由 `OnTimeoutsFinished` 只提交超时项；成功清除冷却、取消不交接、同一项 24 小时冷却的规则不变。MCP `software_list` 显示超时标记，`auto_fix dispatch_timeouts` 可复测同一交接路径并用 `prompt` 覆盖 brief 做启动验证。
+
 ```mermaid
 flowchart TD
     A[检查/创建下载目录] --> B{DirectDownload?}

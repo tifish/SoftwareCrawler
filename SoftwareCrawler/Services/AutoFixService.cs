@@ -86,6 +86,25 @@ public static class AutoFixService
         ScheduledRunKind kind,
         IReadOnlyList<SoftwareItem> items,
         bool cancelled
+    ) => OnRoundFinished(
+        kind == ScheduledRunKind.Full ? "scheduled full run" : "frequent check", items, cancelled
+    );
+
+    /// <summary>Manual batches also hand off transfer timeouts, once the browser is free.</summary>
+    public static AutoFixOutcome OnTimeoutsFinished(
+        IReadOnlyList<SoftwareItem> items,
+        bool cancelled,
+        string? promptOverride = null
+    ) => OnRoundFinished(
+        "download timeout", items, cancelled, promptOverride, timeoutsOnly: true
+    );
+
+    private static AutoFixOutcome OnRoundFinished(
+        string trigger,
+        IReadOnlyList<SoftwareItem> items,
+        bool cancelled,
+        string? promptOverride = null,
+        bool timeoutsOnly = false
     )
     {
         var enabled = items.Where(item => item.Enabled).ToList();
@@ -107,7 +126,9 @@ public static class AutoFixService
         if (Settings.AutoFixAgent == AutoFixAgent.None)
             return new AutoFixOutcome(false, "Auto-fix is off.");
 
-        var failed = enabled.Where(item => item.Status == DownloadingStatus.Failed).ToList();
+        var failed = enabled.Where(item =>
+            item.Status == DownloadingStatus.Failed && (!timeoutsOnly || item.DownloadTimedOut)
+        ).ToList();
         if (failed.Count == 0)
             return new AutoFixOutcome(false, "Nothing failed.");
 
@@ -128,11 +149,11 @@ public static class AutoFixService
             return new AutoFixOutcome(false, message);
         }
 
-        var trigger = kind == ScheduledRunKind.Full ? "scheduled full run" : "frequent check";
         return Launch(
             trigger,
             failed.Where(item => names.Contains(item.Name)).Select(ToFailure).ToList(),
-            Settings.AutoFixAgent
+            Settings.AutoFixAgent,
+            promptOverride
         );
     }
 

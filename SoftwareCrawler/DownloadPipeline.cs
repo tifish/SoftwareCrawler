@@ -217,6 +217,11 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
 
             return await Succeeded(DownloadingStatus.Downloaded);
         }
+        catch (TimeoutException)
+        {
+            Browser.Cancel();
+            return TransferTimedOut();
+        }
         catch (Exception ex)
         {
             Log.ZLogError(ex, $"Download {_item.Name} failed");
@@ -322,9 +327,10 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                 _item.Status = DownloadingStatus.Downloading;
                 try
                 {
-                    using var downloadCts = new CancellationTokenSource(
-                        TimeSpan.FromSeconds(Settings.DownloadTimeout)
+                    using var downloadCts = CancellationTokenSource.CreateLinkedTokenSource(
+                        _item.CancellationToken
                     );
+                    downloadCts.CancelAfter(TimeSpan.FromSeconds(Settings.DownloadTimeout));
                     await using var httpStream = await response.Content.ReadAsStreamAsync(
                         downloadCts.Token
                     );
@@ -379,6 +385,12 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                             OnDownloadProgressHandler(this, item);
                         }
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    if (_item.HasCancelled)
+                        return DownloadOnceResult.FailedAndNoRetry;
+                    return TransferTimedOut();
                 }
                 catch (Exception ex)
                 {
@@ -853,6 +865,16 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             var dir = Path.GetDirectoryName(filePath)!;
 
             return DeleteOldVersions(dir, _item.FilePatternToDeleteBeforeDownload, filePath);
+        }
+
+        DownloadOnceResult TransferTimedOut()
+        {
+            _item.DownloadTimedOut = true;
+            Log.ZLogWarning($"{_item.Name}: download timed out after {Settings.DownloadTimeout}s; skipping retries and handing off after the batch");
+            return Failed(
+                $"Download timed out after {Settings.DownloadTimeout} seconds.",
+                DownloadOnceResult.FailedAndNoRetry
+            );
         }
 
         // When download fails, return error message.

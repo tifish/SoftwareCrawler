@@ -18,6 +18,11 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     private DownloadingStatus _status;
 
+    /// <summary>A transfer exhausted its time budget; reported to auto-fix after the batch.</summary>
+    [NonSerialized]
+    [Browsable(false)]
+    public bool DownloadTimedOut { get; internal set; }
+
     [NonSerialized]
     public DownloadingStatus Status
     {
@@ -500,6 +505,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
             return true;
 
         Progress = "";
+        DownloadTimedOut = false;
 
         _hasCancelled = false;
         if (_cancellation.IsCancellationRequested)
@@ -582,6 +588,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     public void ResetStatus()
     {
+        DownloadTimedOut = false;
         Status = DownloadingStatus.Idle;
         Progress = string.Empty;
         ErrorMessage = string.Empty;

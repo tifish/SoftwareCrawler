@@ -734,13 +734,13 @@ internal static class DebugMcpServer
                         + $"{(item.FrequentCheck ? "f" : " ")} {item.Name}"
                         + $"\t{item.Status}\t{item.Progress}\t{item.ErrorMessage}"
                         + $"\t{FormatHistoryTime(item.LastChecked)}"
-                        + $"\t{FormatHistoryTime(item.LastDownloadedFileTime)}"
+                        + $"\t{FormatHistoryTime(item.LastDownloadedFileTime)}\t{item.DownloadTimedOut}"
                 )
                 .ToList();
             return lines.Count == 0
                 ? "(no matching software items)"
                 : "Enabled UseProxy Frequent Name\tStatus\tProgress\tError"
-                    + "\tLastChecked\tLastDownloadedFileTime\n"
+                    + "\tLastChecked\tLastDownloadedFileTime\tDownloadTimedOut\n"
                     + string.Join('\n', lines);
         });
 
@@ -1255,6 +1255,21 @@ internal static class DebugMcpServer
 
         switch (action)
         {
+            case "dispatch_timeouts":
+            {
+                var timeoutOutcome = await OnUiAsync(() =>
+                {
+                    if (CrawlerForm?.DownloadBatch.IsRunning == true || SoftwareItem.IsDownloading)
+                        return new AutoFixOutcome(false, "A download is still running.");
+                    return AutoFixService.OnTimeoutsFinished(
+                        SoftwareManager.Items,
+                        cancelled: false,
+                        promptOverride: args["prompt"]?.GetValue<string>()
+                    );
+                });
+                return ToolText(timeoutOutcome.Message);
+            }
+
             case "status":
             {
                 var lines = Math.Clamp(args["lines"]?.GetValue<int>() ?? 30, 0, 500);

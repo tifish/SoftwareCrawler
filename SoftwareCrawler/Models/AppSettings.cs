@@ -69,7 +69,7 @@ public class RoamingAppSettings
     public int TryClickCount { get; set; } = 10;
     public int TryClickInterval { get; set; } = 1;
     public int StartDownloadTimeout { get; set; } = 60;
-    public int DownloadTimeout { get; set; } = 7200;
+    public int DownloadTimeout { get; set; } = 900;
     public SystemColorMode ColorMode { get; set; } = SystemColorMode.System;
     public bool CheckUpdateOnStartup { get; set; } = true;
     public UpdateCheckFrequency UpdateCheckFrequency { get; set; } = UpdateCheckFrequency.Daily;

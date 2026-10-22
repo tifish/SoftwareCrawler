@@ -515,10 +515,17 @@ public partial class MainForm : Form
     {
         await _onLoadTaskCompletionSource.Task;
 
+        var batchItems = items.ToList();
+
         try
         {
+            bool succeeded;
             using (new DownloadUIDisabler(this))
-                return await DownloadBatch.RunAsync(items, testOnly, retryCount, operation);
+                succeeded = await DownloadBatch.RunAsync(batchItems, testOnly, retryCount, operation);
+
+            if (!operation.StartsWith("Scheduled", StringComparison.Ordinal))
+                AutoFixService.OnTimeoutsFinished(batchItems, DownloadBatch.HasCancelled);
+            return succeeded;
         }
         finally
         {

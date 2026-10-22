@@ -125,7 +125,7 @@ public static class DebugMcpContract
                 "software_list",
                 "List the loaded software items with their enabled/UseProxy/FrequentCheck flags (x/p/f), "
                     + "download status, progress, error message, when each was last checked, and the "
-                    + "timestamp of the file last put in its download directory.",
+                    + "timestamp of the file last put in its download directory, and DownloadTimedOut.",
                 new()
                 {
                     ["filter"] = Prop("string", "Case-insensitive name filter."),
@@ -274,13 +274,15 @@ public static class DebugMcpContract
                     + "cooldown. preview shows the command and the brief without starting anything. run starts "
                     + "a session now, ignoring the cooldown; pass prompt to replace the brief, so the launch "
                     + "path can be tested without an agent changing and pushing code. cancel stops the session, "
-                    + "forget clears the cooldowns. While a session runs, scheduled rounds stand down.",
+                    + "forget clears the cooldowns. dispatch_timeouts hands off timed-out items using the "
+                    + "same cooldown and cancellation policy as a finished batch; prompt can replace its brief. "
+                    + "While a session runs, scheduled rounds stand down.",
                 new()
                 {
                     ["action"] = Prop(
                         "string",
-                        "status, preview, run, cancel or forget (default status).",
-                        ["status", "preview", "run", "cancel", "forget"]
+                        "status, preview, run, dispatch_timeouts, cancel or forget (default status).",
+                        ["status", "preview", "run", "dispatch_timeouts", "cancel", "forget"]
                     ),
                     ["names"] = Prop(
                         "string",
@@ -290,7 +292,7 @@ public static class DebugMcpContract
                         "string",
                         "preview/run: ClaudeCode, Codex or GrokBuild instead of the configured agent."
                     ),
-                    ["prompt"] = Prop("string", "run: text that replaces the generated brief."),
+                    ["prompt"] = Prop("string", "run/dispatch_timeouts: text that replaces the generated brief."),
                     ["lines"] = Prop("integer", "status: transcript lines to include, 0-500 (default 30)."),
                 }
             ),

@@ -815,7 +815,7 @@ public class BrowserObject
     public async Task<bool> WaitForDownloaded(TimeSpan timeout)
     {
         if (_downloadTaskCompletionSource != null)
-            return await WithTimeout(_downloadTaskCompletionSource.Task, timeout);
+            return await _downloadTaskCompletionSource.Task.WaitAsync(timeout);
 
         return false;
     }
