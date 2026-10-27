@@ -676,8 +676,16 @@ public partial class MainForm : Form
             return;
 
         var rowUnderCursor = softwareListDataGridView.Rows[hit.RowIndex];
-        if (!rowUnderCursor.Selected)
-            softwareListDataGridView.CurrentCell = rowUnderCursor.Cells[hit.ColumnIndex];
+        if (rowUnderCursor.Selected)
+            return;
+
+        // Row headers have a row index but no column (ColumnIndex == -1).
+        // Select their row through a visible cell, just like a right-click on a cell.
+        var columnIndex = hit.ColumnIndex >= 0
+            ? hit.ColumnIndex
+            : softwareListDataGridView.Columns.GetFirstColumn(DataGridViewElementStates.Visible)?.Index ?? -1;
+        if (columnIndex >= 0)
+            softwareListDataGridView.CurrentCell = rowUnderCursor.Cells[columnIndex];
     }
 
     private async void softwareListDataGridView_UserAddedRow(
