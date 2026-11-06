@@ -84,6 +84,8 @@ JDK 11	https://bell-sw.com/pages/downloads/#jdk-11-lts		//a[contains(@href, 'jdk
 JDK 21	https://bell-sw.com/pages/downloads/#jdk-21-lts		//a[contains(@href, 'jdk21.') and contains(@href, '-windows-amd64.msi')]						2		bellsoft-jdk21*.msi				
 JDK 17	https://bell-sw.com/pages/downloads/#jdk-17-lts		//a[contains(@href, 'jdk17.') and contains(@href, '-windows-amd64.msi')]						2		bellsoft-jdk17*.msi				
 JDK 25	https://bell-sw.com/pages/downloads/#jdk-25-lts		//a[contains(@href, 'jdk25') and contains(@href, '-windows-amd64.msi')]						2		bellsoft-jdk25*.msi				
+Node.js 24	https://nodejs.org/download/release/latest-v24.x/		//a[contains(@href, 'node-v24.') and contains(@href, '-x64.msi')]								node-v24.*-x64.msi				
+Node.js 26	https://nodejs.org/download/release/latest-v26.x/		//a[contains(@href, 'node-v26.') and contains(@href, '-x64.msi')]								node-v26.*-x64.msi				
 Python 3.13	https://www.python.org/downloads/windows		//a[contains(@href, '-3.13.') and contains(@href, '-amd64.exe')]								python-3.13.*.exe				
 Python 3.12	https://www.python.org/downloads/windows		//a[contains(@href, '-3.12.') and contains(@href, '-amd64.exe')]								python-3.12.*.exe				
 Python 3.11	https://www.python.org/downloads/windows		//a[contains(@href, '-3.11.') and contains(@href, '-amd64.exe')]								python-3.11.*.exe				
