@@ -86,6 +86,8 @@ JDK 17	https://api.adoptium.net/v3/installer/latest/17/ga/windows/x64/jdk/hotspo
 JDK 25	https://api.adoptium.net/v3/installer/latest/25/ga/windows/x64/jdk/hotspot/normal/eclipse?project=jdk	True									OpenJDK25U-jdk_x64_windows_hotspot_*.msi				
 Node.js 24	https://nodejs.org/download/release/latest-v24.x/		//a[contains(@href, 'node-v24.') and contains(@href, '-x64.msi')]								node-v24.*-x64.msi				
 Node.js 26	https://nodejs.org/download/release/latest-v26.x/		//a[contains(@href, 'node-v26.') and contains(@href, '-x64.msi')]								node-v26.*-x64.msi				
+Python 3.15	https://www.python.org/downloads/windows		//a[contains(@href, '-3.15.') and contains(@href, '-amd64.exe')]								python-3.15.*.exe				
+Python 3.14	https://www.python.org/downloads/windows		//a[contains(@href, '-3.14.') and contains(@href, '-amd64.exe')]								python-3.14.*.exe				
 Python 3.13	https://www.python.org/downloads/windows		//a[contains(@href, '-3.13.') and contains(@href, '-amd64.exe')]								python-3.13.*.exe				
 Python 3.12	https://www.python.org/downloads/windows		//a[contains(@href, '-3.12.') and contains(@href, '-amd64.exe')]								python-3.12.*.exe				
 Python 3.11	https://www.python.org/downloads/windows		//a[contains(@href, '-3.11.') and contains(@href, '-amd64.exe')]								python-3.11.*.exe				
