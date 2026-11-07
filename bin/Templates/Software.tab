@@ -85,8 +85,8 @@ JDK 21	https://api.adoptium.net/v3/installer/latest/21/ga/windows/x64/jdk/hotspo
 JDK 17	https://api.adoptium.net/v3/installer/latest/17/ga/windows/x64/jdk/hotspot/normal/eclipse?project=jdk	True									OpenJDK17U-jdk_x64_windows_hotspot_*.msi				
 JDK 25	https://api.adoptium.net/v3/installer/latest/25/ga/windows/x64/jdk/hotspot/normal/eclipse?project=jdk	True									OpenJDK25U-jdk_x64_windows_hotspot_*.msi				
 Rust	https://forge.rust-lang.org/infra/other-installation-methods.html		(//tr[td/code[text()='x86_64-pc-windows-msvc']]/td[2]//a[contains(@href, '.msi') and not(contains(@href, '.msi.asc'))])[1]								rust-*-x86_64-pc-windows-msvc.msi				
-Go 1.27	https://go.dev/dl/		(//a[starts-with(@href, '/dl/go1.27.') and contains(@href, '.windows-amd64.zip')])[1]								go1.27.*.windows-amd64.zip				
-Go 1.26	https://go.dev/dl/		(//a[starts-with(@href, '/dl/go1.26.') and contains(@href, '.windows-amd64.zip')])[1]								go1.26.*.windows-amd64.zip				
+Go 1.27	https://go.dev/dl/		const link = document.querySelector('a[href^="/dl/go1.27."][href$=".windows-amd64.msi"]'); if (!link) throw new Error('Go installer link not found'); window.open(link.href, '_blank');								go1.27.*.windows-amd64.msi				
+Go 1.26	https://go.dev/dl/		const link = document.querySelector('a[href^="/dl/go1.26."][href$=".windows-amd64.msi"]'); if (!link) throw new Error('Go installer link not found'); window.open(link.href, '_blank');								go1.26.*.windows-amd64.msi				
 Node.js 24	https://nodejs.org/download/release/latest-v24.x/		//a[contains(@href, 'node-v24.') and contains(@href, '-x64.msi')]								node-v24.*-x64.msi				
 Node.js 26	https://nodejs.org/download/release/latest-v26.x/		//a[contains(@href, 'node-v26.') and contains(@href, '-x64.msi')]								node-v26.*-x64.msi				
 Python 3.15	https://www.python.org/downloads/windows		//a[contains(@href, '-3.15.') and contains(@href, '-amd64.exe')]								python-3.15.*.exe				
