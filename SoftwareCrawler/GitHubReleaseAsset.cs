@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace SoftwareCrawler;
 
@@ -18,6 +19,15 @@ internal readonly record struct GitHubReleaseAsset(
     string FileName
 )
 {
+    /// <summary>
+    /// <c>*</c> or <c>?</c> in the file name. The release gateway cannot resolve
+    /// a pattern, so the caller asks the API which asset matches.
+    /// </summary>
+    internal bool IsPattern => FileName is not null && IsWildcard(FileName);
+
+    internal static bool IsWildcard(string fileName) =>
+        fileName.Contains('*') || fileName.Contains('?');
+
     /// <summary>
     /// Reads a release-asset URL. Other GitHub pages, and every other host, are
     /// left alone: this is only the shape whose download gateway answers 504
@@ -87,7 +97,7 @@ internal readonly record struct GitHubReleaseAsset(
     /// <summary>
     /// The API URL of the named asset (<c>assets[].url</c>), which redirects to
     /// the file. <c>browser_download_url</c> is the gateway link that just failed,
-    /// so it is not used.
+    /// so it is not used. A wildcard file name must match exactly one asset.
     /// </summary>
     internal static string? FindAssetApiUrl(string json, string fileName)
     {
@@ -97,26 +107,53 @@ internal readonly record struct GitHubReleaseAsset(
             if (!document.RootElement.TryGetProperty("assets", out var assets))
                 return null;
 
+            var wildcard = IsWildcard(fileName);
+            string? found = null;
             foreach (var asset in assets.EnumerateArray())
             {
-                if (
-                    !asset.TryGetProperty("name", out var name)
-                    || !string.Equals(name.GetString(), fileName, StringComparison.Ordinal)
-                )
+                if (!asset.TryGetProperty("name", out var nameElement))
+                    continue;
+
+                var name = nameElement.GetString();
+                if (string.IsNullOrEmpty(name) || !NameMatches(fileName, name))
                     continue;
 
                 if (!asset.TryGetProperty("url", out var url))
                     return null;
 
                 var apiUrl = url.GetString();
-                return string.IsNullOrWhiteSpace(apiUrl) ? null : apiUrl;
+                if (string.IsNullOrWhiteSpace(apiUrl))
+                    return null;
+
+                // An exact name returns on the first hit, as it always has. A pattern
+                // must name one asset: zero or several is not a file we can fetch.
+                if (!wildcard)
+                    return apiUrl;
+
+                if (found != null)
+                    return null;
+
+                found = apiUrl;
             }
+
+            return found;
         }
         catch (JsonException)
         {
             return null;
         }
+    }
 
-        return null;
+    /// <summary>
+    /// Exact ordinal match, or a shell-style pattern where <c>*</c> and <c>?</c>
+    /// are the only wildcards. Every other character, including <c>.</c>, is literal.
+    /// </summary>
+    internal static bool NameMatches(string pattern, string name)
+    {
+        if (!IsWildcard(pattern))
+            return string.Equals(pattern, name, StringComparison.Ordinal);
+
+        var regex = "^" + Regex.Escape(pattern).Replace("\\*", ".*").Replace("\\?", ".") + "$";
+        return Regex.IsMatch(name, regex, RegexOptions.CultureInvariant);
     }
 }

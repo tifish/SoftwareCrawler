@@ -81,4 +81,74 @@ public class GitHubReleaseAssetTests
         Assert.Null(GitHubReleaseAsset.FindAssetApiUrl(json, "missing.tar.gz"));
         Assert.Null(GitHubReleaseAsset.FindAssetApiUrl("not json", "missing.tar.gz"));
     }
+
+    [Fact]
+    public void WildcardDownloadUrlIsAPatternAgainstLatest()
+    {
+        var parsed = GitHubReleaseAsset.TryParse(
+            "https://github.com/pingdotgg/t3code/releases/latest/download/*-x64.exe",
+            out var asset
+        );
+
+        Assert.True(parsed);
+        Assert.Equal("pingdotgg", asset.Owner);
+        Assert.Equal("t3code", asset.Repo);
+        Assert.Null(asset.Tag);
+        Assert.Equal("*-x64.exe", asset.FileName);
+        Assert.True(asset.IsPattern);
+        Assert.Equal(
+            "https://api.github.com/repos/pingdotgg/t3code/releases/latest",
+            GitHubReleaseAsset.ReleaseApiUrl(asset)
+        );
+    }
+
+    [Fact]
+    public void WildcardMatchesOneAssetAndRejectsZeroOrSeveral()
+    {
+        const string json = """
+            {
+              "assets": [
+                {
+                  "name": "T3-Code-0.1.7-arm64.exe",
+                  "url": "https://api.github.com/repos/pingdotgg/t3code/releases/assets/1"
+                },
+                {
+                  "name": "T3-Code-0.1.7-x64.exe",
+                  "url": "https://api.github.com/repos/pingdotgg/t3code/releases/assets/2"
+                },
+                {
+                  "name": "T3-Code-0.1.7-x64.exe.blockmap",
+                  "url": "https://api.github.com/repos/pingdotgg/t3code/releases/assets/3"
+                },
+                {
+                  "name": "T3-Code-0.1.7-x64.dmg",
+                  "url": "https://api.github.com/repos/pingdotgg/t3code/releases/assets/4"
+                }
+              ]
+            }
+            """;
+
+        Assert.Equal(
+            "https://api.github.com/repos/pingdotgg/t3code/releases/assets/2",
+            GitHubReleaseAsset.FindAssetApiUrl(json, "*-x64.exe")
+        );
+        Assert.Null(GitHubReleaseAsset.FindAssetApiUrl(json, "*-no-such-file"));
+
+        const string ambiguous = """
+            {
+              "assets": [
+                {
+                  "name": "App-1-x64.exe",
+                  "url": "https://api.github.com/repos/example/app/releases/assets/1"
+                },
+                {
+                  "name": "App-2-x64.exe",
+                  "url": "https://api.github.com/repos/example/app/releases/assets/2"
+                }
+              ]
+            }
+            """;
+
+        Assert.Null(GitHubReleaseAsset.FindAssetApiUrl(ambiguous, "*-x64.exe"));
+    }
 }

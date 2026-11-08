@@ -258,32 +258,71 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             var startDownloadTimeout =
                 _item.StartDownloadTimeout > 0 ? _item.StartDownloadTimeout : Settings.StartDownloadTimeout;
 
-            HttpResponseMessage? response;
-            try
+            HttpResponseMessage? response = null;
+            // A wildcard file name (*-x64.exe) is not a gateway URL. Ask the API
+            // which asset matches, the same detour a 504 takes below.
+            var patternRequest =
+                GitHubReleaseAsset.TryParse(_item.WebPage, out var patternAsset)
+                && patternAsset.IsPattern;
+            if (patternRequest)
             {
-                using var headerCts = new CancellationTokenSource(
-                    TimeSpan.FromSeconds(startDownloadTimeout)
-                );
-                response = await client.GetAsync(
-                    _item.WebPage,
-                    HttpCompletionOption.ResponseHeadersRead,
-                    headerCts.Token
-                );
+                try
+                {
+                    using var patternCts = CancellationTokenSource.CreateLinkedTokenSource(
+                        _item.CancellationToken
+                    );
+                    patternCts.CancelAfter(TimeSpan.FromSeconds(startDownloadTimeout));
+                    response = await TryGitHubReleaseApiAsync(client, null, patternCts.Token);
+                }
+                catch (OperationCanceledException) when (_item.HasCancelled)
+                {
+                    return DownloadOnceResult.FailedAndNoRetry;
+                }
+                catch (Exception ex)
+                {
+                    return Failed(
+                        $"Failed to request download URL: {ex.Message}",
+                        DownloadOnceResult.FailedAndRetry
+                    );
+                }
+
+                if (response == null)
+                    return Failed(
+                        $"GitHub release has no single asset matching {patternAsset.FileName}.",
+                        _item.HasCancelled
+                            ? DownloadOnceResult.FailedAndNoRetry
+                            : DownloadOnceResult.FailedAndRetry
+                    );
             }
-            catch (Exception ex)
+            else
             {
-                return Failed(
-                    $"Failed to request download URL: {ex.Message}",
-                    DownloadOnceResult.FailedAndRetry
-                );
+                try
+                {
+                    using var headerCts = new CancellationTokenSource(
+                        TimeSpan.FromSeconds(startDownloadTimeout)
+                    );
+                    response = await client.GetAsync(
+                        _item.WebPage,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        headerCts.Token
+                    );
+                }
+                catch (Exception ex)
+                {
+                    return Failed(
+                        $"Failed to request download URL: {ex.Message}",
+                        DownloadOnceResult.FailedAndRetry
+                    );
+                }
             }
 
             // github.com/releases/download 504s once a release lists enough assets
             // (Codex publishes ~200). The file is still on the API: that URL 302s
             // to the CDN. Only this gateway failure takes the detour; any other
-            // host or status is unchanged.
+            // host or status is unchanged. A pattern request already took it.
             if (
-                response is { IsSuccessStatusCode: false }
+                !patternRequest
+                && response is { IsSuccessStatusCode: false }
                 && IsGitHubGatewayFailure(response.StatusCode)
             )
             {
@@ -1587,9 +1626,14 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         )
             return null;
 
-        Log.ZLogInformation(
-            $"Download {_item.Name}: GitHub release gateway failed, resolving {asset.FileName} through the API"
-        );
+        if (asset.IsPattern)
+            Log.ZLogInformation(
+                $"Download {_item.Name}: resolving asset matching {asset.FileName} through the GitHub API"
+            );
+        else
+            Log.ZLogInformation(
+                $"Download {_item.Name}: GitHub release gateway failed, resolving {asset.FileName} through the API"
+            );
 
         using var releaseRequest = new HttpRequestMessage(
             HttpMethod.Get,
