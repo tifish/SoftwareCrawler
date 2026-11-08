@@ -93,7 +93,7 @@ SoftwareCrawler.slnx
 - **XPath 还是脚本**：以 `//字母` 或 `(//字母` 开头视为 XPath（`DownloadPipeline.ClickAndTriggerDownload`），否则整段当 JavaScript 执行。
 - **多步点击**：`XPathOrScript1..5` 按顺序执行，最后一步应触发下载。`Frames` 用反引号 `` ` `` 分隔，按下标与每一步对应，指定该步在哪个 iframe 里执行。
 - **控制字符编码**：`.tab` 是制表符分隔的单行记录，换行以 `` `n ``、制表符以 `` `t `` 存储。属性里存的就是这个转义形式（表格显示的也是它），`GetXPathOrScripts()` / `SetXPathOrScripts()` 在编辑脚本时做还原与编码；`ToDataLine` 对**所有**字符串列再兜一次底，粘进单元格的制表符不会挪动后面的列。
-- **`DirectDownload`**：跳过浏览器，直接用 `HttpClient` 拉 `WebPage`。为 SourceForge 这类"对自动化浏览器发 Cloudflare 挑战、对普通 HTTP 客户端放行"的站点准备；User-Agent 里保留 `Windows NT` 使 `latest/download` 之类链接解析到 Windows 版本。
+- **`DirectDownload`**：跳过浏览器，直接用 `HttpClient` 拉 `WebPage`。为 SourceForge 这类"对自动化浏览器发 Cloudflare 挑战、对普通 HTTP 客户端放行"的站点准备；User-Agent 里保留 `Windows NT` 使 `latest/download` 之类链接解析到 Windows 版本。`github.com/.../releases/download/` 在一次发布挂了非常多资源时会由网关直接回 502/503/504（文件本身仍在）。只有这种 GitHub 发布资源链接、且只有这几个状态码，才会改走 API：`api.github.com/repos/.../releases/latest` 或 `/releases/tags/{tag}` 里同名资源的 `url`，带 `Accept: application/octet-stream`，跟随它到 CDN。其它地址和其它状态码不走这条路径。
 - **`FinalDownloadDirectory`**：`DownloadDirectory` 为空时回退到 `Settings.DefaultDownloadDirectory`（再为空则系统下载目录）并追加以软件名命名的子目录。
 
 ## 5. 下载流水线

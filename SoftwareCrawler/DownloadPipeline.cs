@@ -258,7 +258,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             var startDownloadTimeout =
                 _item.StartDownloadTimeout > 0 ? _item.StartDownloadTimeout : Settings.StartDownloadTimeout;
 
-            HttpResponseMessage response;
+            HttpResponseMessage? response;
             try
             {
                 using var headerCts = new CancellationTokenSource(
@@ -278,7 +278,57 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                 );
             }
 
-            using (response)
+            // github.com/releases/download 504s once a release lists enough assets
+            // (Codex publishes ~200). The file is still on the API: that URL 302s
+            // to the CDN. Only this gateway failure takes the detour; any other
+            // host or status is unchanged.
+            if (
+                response is { IsSuccessStatusCode: false }
+                && IsGitHubGatewayFailure(response.StatusCode)
+            )
+            {
+                var failedUri = response.RequestMessage?.RequestUri;
+                var statusCode = (int)response.StatusCode;
+                var reason = response.ReasonPhrase;
+                response.Dispose();
+                response = null;
+
+                if (!_item.HasCancelled)
+                {
+                    try
+                    {
+                        using var fallbackCts = CancellationTokenSource.CreateLinkedTokenSource(
+                            _item.CancellationToken
+                        );
+                        fallbackCts.CancelAfter(TimeSpan.FromSeconds(startDownloadTimeout));
+                        response = await TryGitHubReleaseApiAsync(
+                            client,
+                            failedUri,
+                            fallbackCts.Token
+                        );
+                    }
+                    catch (OperationCanceledException) when (_item.HasCancelled)
+                    {
+                        return DownloadOnceResult.FailedAndNoRetry;
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.ZLogWarning(
+                            $"GitHub API fallback failed for {_item.Name}: {ex.Message}"
+                        );
+                    }
+                }
+
+                if (response == null)
+                    return Failed(
+                        $"Download URL returned {statusCode} {reason}.",
+                        _item.HasCancelled
+                            ? DownloadOnceResult.FailedAndNoRetry
+                            : DownloadOnceResult.FailedAndRetry
+                    );
+            }
+
+            using (response!)
             {
                 if (!response.IsSuccessStatusCode)
                     return Failed(
@@ -1513,5 +1563,80 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                 return candidate;
 
         return null;
+    }
+
+    private static bool IsGitHubGatewayFailure(HttpStatusCode status) =>
+        status is HttpStatusCode.BadGateway
+            or HttpStatusCode.ServiceUnavailable
+            or HttpStatusCode.GatewayTimeout;
+
+    /// <summary>
+    /// Asks the GitHub API for the asset the release-download gateway refused.
+    /// Returns the CDN response, still open at the headers, or null when this
+    /// URL is not a release asset or the API cannot name the file.
+    /// </summary>
+    private async Task<HttpResponseMessage?> TryGitHubReleaseApiAsync(
+        HttpClient client,
+        Uri? failedUri,
+        CancellationToken cancellationToken
+    )
+    {
+        if (
+            (failedUri == null || !GitHubReleaseAsset.TryParse(failedUri, out var asset))
+            && !GitHubReleaseAsset.TryParse(_item.WebPage, out asset)
+        )
+            return null;
+
+        Log.ZLogInformation(
+            $"Download {_item.Name}: GitHub release gateway failed, resolving {asset.FileName} through the API"
+        );
+
+        using var releaseRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            GitHubReleaseAsset.ReleaseApiUrl(asset)
+        );
+        releaseRequest.Headers.Accept.ParseAdd("application/vnd.github+json");
+        using var releaseResponse = await client.SendAsync(
+            releaseRequest,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken
+        );
+        if (!releaseResponse.IsSuccessStatusCode)
+        {
+            Log.ZLogWarning(
+                $"GitHub API fallback for {_item.Name} got {(int)releaseResponse.StatusCode} {releaseResponse.ReasonPhrase}"
+            );
+            return null;
+        }
+
+        var json = await releaseResponse.Content.ReadAsStringAsync(cancellationToken);
+        var assetUrl = GitHubReleaseAsset.FindAssetApiUrl(json, asset.FileName);
+        if (assetUrl == null)
+        {
+            Log.ZLogWarning(
+                $"GitHub API fallback for {_item.Name} found no asset named {asset.FileName}"
+            );
+            return null;
+        }
+
+        using var fileRequest = new HttpRequestMessage(HttpMethod.Get, assetUrl);
+        // Without this, the asset URL returns JSON metadata instead of redirecting
+        // at the file.
+        fileRequest.Headers.Accept.ParseAdd("application/octet-stream");
+        var fileResponse = await client.SendAsync(
+            fileRequest,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken
+        );
+        if (!fileResponse.IsSuccessStatusCode)
+        {
+            Log.ZLogWarning(
+                $"GitHub API asset for {_item.Name} returned {(int)fileResponse.StatusCode} {fileResponse.ReasonPhrase}"
+            );
+            fileResponse.Dispose();
+            return null;
+        }
+
+        return fileResponse;
     }
 }
