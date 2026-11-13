@@ -124,7 +124,7 @@ flowchart TD
 几个必须知道的决策规则（都在 `DownloadPipeline.OnBeginDownloadHandler`）：
 
 - **文件类型白名单**：可执行 `.exe .msi .vsix .msix`、压缩包 `.zip .rar .7z .gz .tgz`。其它一律判失败——这是"点错了链接、下到 HTML"的兜底。
-- **"是不是同一个文件"**：优先比服务器给的大小；没有 `Content-Length` 时比服务器 `Last-Modified` 与本地文件修改时间（±2 秒）；两者都没有就当作需要下载。为让第二条成立，落盘后会用服务器时间戳回写文件的 `LastWriteTime`。
+- **"是不是同一个文件"**：优先比服务器给的大小；没有 `Content-Length` 时比服务器 `Last-Modified` 与本地文件修改时间（±2 秒）；两者都没有就当作需要下载。为让第二条成立，落盘后会用服务器时间戳回写文件的 `LastWriteTime`。浏览器在 `DownloadStarting` 时经常还没填上总字节，即便响应里有 `Content-Length`。这个 0 不是“服务器没给长度”：先用已经从这次响应里记下的**未压缩**长度（浏览器要了 gzip 时，响应里的长度是压缩后的，不能拿来和磁盘上的安装包比），还没有就对下载地址做一次不接受压缩的 HEAD，有了长度再比。只有长度始终未知才退回修改时间。否则服务器只改了修改时间、或只是压了一下传输，字节没变时，会把同一份文件重新下下来，传输一卡住就整项超时。
 - **文件名会变的站点**（如 Epic Launcher）：靠 `FilePatternToDeleteBeforeDownload` 找到目录里的旧文件再比对。
 - **旧版本清理的边界**：多个软件项共用一个下载目录是常规用法（7 个 JetBrains IDE 一个目录、每个 CUDA 版本一个目录），**靠模式本身区分彼此**——`FilePatternToDeleteBeforeDownload` 就是这个约定，程序不去猜别的项想要什么，各项之间也不产生关联。唯一的兜底是数量上限：单次匹配超过 10 个就整体放弃并记警告（`SelectOldVersions`），挡住把模式指向通用下载目录这类事故。在途的 `.partial` 永远不参与。
 - **`testOnly`**：走完整个链路直到能判断"有没有更新"，随即取消下载，状态记为 `HasUpdate`。菜单里的 Test 和 MCP 的 `download_probe` 默认走这条路。

@@ -53,6 +53,10 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         Downloaded,
         HasUpdate,
         Started,
+
+        // The browser has not reported a size. A local file exists, so the
+        // pipeline resolves Content-Length before treating that file as changed.
+        NeedSize,
     }
 
     /// <summary>
@@ -161,6 +165,8 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         DateTime? downloadFileTime = null;
         var targetFilePath = string.Empty;
         var downloadedFilePath = string.Empty;
+        var pendingLocalPath = string.Empty;
+        var pendingDownloadUrl = string.Empty;
         var beginDownloadResult = BeginDownloadResult.NoDownload;
 
         Browser.BeginDownloadHandler += OnBeginDownloadHandler;
@@ -208,6 +214,22 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                     return await Succeeded(DownloadingStatus.SameFileAlreadyDownloaded);
                 case BeginDownloadResult.HasUpdate: // Has update but test only
                     return await Succeeded(DownloadingStatus.HasUpdate);
+                case BeginDownloadResult.NeedSize:
+                    if (_item.HasCancelled)
+                        return DownloadOnceResult.FailedAndNoRetry;
+
+                    // Same bytes: stop the transfer that already started and do not
+                    // touch the file in the download directory.
+                    if (await ResolveUnknownSizeAsCurrent(pendingDownloadUrl, pendingLocalPath))
+                        return await Succeeded(DownloadingStatus.SameFileAlreadyDownloaded);
+
+                    if (testOnly)
+                    {
+                        await AbandonStagedDownload();
+                        return await Succeeded(DownloadingStatus.HasUpdate);
+                    }
+
+                    break;
             }
 
             // Wait for download to complete.
@@ -647,6 +669,69 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             return DownloadOnceResult.Succeeded;
         }
 
+        // The browser started a transfer before it knew the length. Content-Length
+        // from that response, or a HEAD of the same URL, decides whether the local
+        // file is already that file. True means it is, and the staged bytes have
+        // been dropped.
+        async Task<bool> ResolveUnknownSizeAsCurrent(string url, string localPath)
+        {
+            var size = ResolveDownloadSize(downloadFileSize, await ResolveContentLength(url));
+            if (size <= 0 || !File.Exists(localPath))
+                return false;
+
+            var info = new FileInfo(localPath);
+            if (!IsSameDownload(size, downloadFileTime, info.Length, info.LastWriteTime))
+            {
+                downloadFileSize = size;
+                return false;
+            }
+
+            downloadFileSize = size;
+            // The bytes did not change. Stamping a drifted Last-Modified onto the
+            // file would be a write for a file we just decided not to touch.
+            downloadFileTime = null;
+            targetFilePath = localPath;
+            Log.ZLogInformation(
+                $"{_item.Name}: Content-Length {size} matches the local file; not downloading"
+            );
+            await AbandonStagedDownload();
+            return true;
+        }
+
+        async Task AbandonStagedDownload()
+        {
+            Browser.Cancel();
+            var staged = downloadedFilePath;
+            downloadedFilePath = string.Empty;
+            if (!string.IsNullOrEmpty(staged))
+                await DeleteStagedFile(staged);
+        }
+
+        async Task<long> ResolveContentLength(string url)
+        {
+            var deadline = DateTime.UtcNow.AddMilliseconds(500);
+            do
+            {
+                if (Browser.TryGetResponseContentLength(url, out var seen))
+                    return seen;
+
+                // The browser asked for gzip. That Content-Length is not the
+                // file, so waiting longer will not produce one.
+                if (Browser.ResponseWasEncoded(url))
+                    break;
+
+                if (DateTime.UtcNow >= deadline)
+                    break;
+
+                await Task.Delay(50);
+            } while (!_item.HasCancelled);
+
+            if (_item.HasCancelled)
+                return 0;
+
+            return await TryHeadContentLength(url, _item.EffectiveProxy);
+        }
+
         // Called when download starts, decide whether to download.
         void OnBeginDownloadHandler(object? o, DownloadItem item)
         {
@@ -767,6 +852,22 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                     beginDownloadResult = BeginDownloadResult.Downloaded;
                     targetFilePath = oldFile;
                     item.IsCancelled = true;
+                    return;
+                }
+
+                // WebView2 raises DownloadStarting before TotalBytesToReceive is
+                // filled in, even when the response has Content-Length. A
+                // Last-Modified that has moved since this file was stamped is
+                // not, on its own, a reason to transfer it again.
+                if (downloadFileSize <= 0 && !_item.DirectDownload)
+                {
+                    beginDownloadResult = BeginDownloadResult.NeedSize;
+                    pendingLocalPath = oldFile;
+                    pendingDownloadUrl = item.Url;
+                    item.DownloadedFilePath = downloadedFilePath;
+                    Log.ZLogDebug(
+                        $"{_item.Name}: download started with no reported size; resolving Content-Length before deciding"
+                    );
                     return;
                 }
             }
@@ -1207,6 +1308,68 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
     /// run, so unpacking them takes a second pass over the tar that falls out.
     /// </summary>
     private static readonly List<string> CompressedTarFileTypes = [".gz", ".tgz"];
+
+    /// <summary>
+    /// The size to compare. The browser's own figure wins when it has one.
+    /// Zero means it spoke too early; the Content-Length observed on the same
+    /// response (or a HEAD of the download URL) is what the server sent.
+    /// </summary>
+    internal static long ResolveDownloadSize(long browserReportedSize, long observedContentLength) =>
+        browserReportedSize > 0 ? browserReportedSize : observedContentLength;
+
+    /// <summary>
+    /// Content-Length of <paramref name="url"/>, or 0 when the server does not
+    /// say, answers with a page, or cannot be asked. An HTML body is rejected
+    /// so an error page cannot impersonate an installer of the same length.
+    /// </summary>
+    private static async Task<long> TryHeadContentLength(string url, string? proxy)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return 0;
+
+        try
+        {
+            using var handler = new HttpClientHandler
+            {
+                AutomaticDecompression = DecompressionMethods.None,
+            };
+            if (!string.IsNullOrWhiteSpace(proxy))
+                handler.Proxy = new WebProxy(proxy);
+
+            using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15) };
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "SoftwareCrawler/1.0 (Windows NT 10.0; Win64; x64)"
+            );
+
+            using var request = new HttpRequestMessage(HttpMethod.Head, url);
+            // The browser's download is gzipped and its Content-Length is the
+            // compressed size. Ask for the bytes that will actually be stored.
+            request.Headers.AcceptEncoding.ParseAdd("identity");
+            using var response = await client.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead
+            );
+            if (!response.IsSuccessStatusCode)
+                return 0;
+
+            var mediaType = response.Content.Headers.ContentType?.MediaType;
+            if (
+                mediaType is not null
+                && mediaType.Contains("html", StringComparison.OrdinalIgnoreCase)
+            )
+                return 0;
+
+            var length = response.Content.Headers.ContentLength ?? 0;
+            if (length > 0)
+                Log.ZLogDebug($"HEAD {url} Content-Length {length}");
+            return length;
+        }
+        catch (Exception ex)
+        {
+            Log.ZLogDebug($"HEAD {url} did not report a size: {ex.Message}");
+            return 0;
+        }
+    }
 
     internal static bool IsSameDownload(
         long currentSize,

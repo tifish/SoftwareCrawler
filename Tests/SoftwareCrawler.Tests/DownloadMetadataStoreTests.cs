@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SoftwareCrawler;
 
 namespace SoftwareCrawler.Tests;
 
@@ -71,6 +72,85 @@ public class DownloadMetadataStoreTests
         var time = new DateTime(2026, 8, 15, 1, 2, 3, DateTimeKind.Local);
         Assert.True(DownloadPipeline.IsSameDownload(0, time, 0, time.AddSeconds(1)));
         Assert.False(DownloadPipeline.IsSameDownload(0, time, 0, time.AddSeconds(2)));
+    }
+
+    [Fact]
+    public void HeaderSizeMatchesWhenTheBrowserHasNotReportedOne()
+    {
+        // The browser reported no size, and Last-Modified has drifted since the
+        // file was stamped. The Content-Length on that response is the real size.
+        var stored = new DateTime(2026, 11, 10, 21, 16, 15, DateTimeKind.Local);
+        var drifted = stored.AddHours(4);
+        var size = DownloadPipeline.ResolveDownloadSize(
+            browserReportedSize: 0,
+            observedContentLength: 60_732_976
+        );
+
+        Assert.Equal(60_732_976, size);
+        Assert.True(DownloadPipeline.IsSameDownload(size, drifted, 60_732_976, stored));
+        Assert.False(DownloadPipeline.IsSameDownload(0, drifted, 60_732_976, stored));
+        Assert.Equal(60_732_976, DownloadPipeline.ResolveDownloadSize(60_732_976, 1));
+    }
+
+    [Fact]
+    public void ResponseHeaderFactsKeepContentLengthAndLastModified()
+    {
+        const string payload = """
+            {
+              "response": {
+                "url": "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/9.0.23/windowsdesktop-runtime-9.0.23-win-x64.exe",
+                "headers": {
+                  "content-length": "60732976",
+                  "last-modified": "Tue, 10 Nov 2026 17:11:32 GMT"
+                }
+              }
+            }
+            """;
+
+        Assert.True(BrowserObject.TryParseResponseHeaderFacts(payload, out var facts));
+        Assert.Equal(
+            "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/9.0.23/windowsdesktop-runtime-9.0.23-win-x64.exe",
+            facts.Url
+        );
+        Assert.Equal(60_732_976, facts.ContentLength);
+        Assert.False(facts.ContentEncoded);
+        Assert.Equal(
+            new DateTime(2026, 11, 10, 17, 11, 32, DateTimeKind.Utc),
+            facts.LastModified?.ToUniversalTime()
+        );
+        Assert.False(BrowserObject.TryParseResponseHeaderFacts("{}", out _));
+    }
+
+    [Fact]
+    public void GzipContentLengthIsNotTheFileSize()
+    {
+        // builds.dotnet.microsoft.com answers a browser with gzip. The compressed
+        // length is not the installer that lands on disk.
+        const string payload = """
+            {
+              "response": {
+                "url": "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/9.0.23/windowsdesktop-runtime-9.0.23-win-x64.exe",
+                "headers": {
+                  "content-encoding": "gzip",
+                  "content-length": "60495713"
+                }
+              }
+            }
+            """;
+
+        Assert.True(BrowserObject.TryParseResponseHeaderFacts(payload, out var facts));
+        Assert.True(facts.ContentEncoded);
+        Assert.Equal(60_495_713, facts.ContentLength);
+        Assert.Equal(
+            0,
+            DownloadPipeline.ResolveDownloadSize(
+                browserReportedSize: 0,
+                observedContentLength: facts.ContentEncoded ? 0 : facts.ContentLength
+            )
+        );
+        Assert.False(BrowserObject.IsEncodedContent(null));
+        Assert.False(BrowserObject.IsEncodedContent("identity"));
+        Assert.True(BrowserObject.IsEncodedContent("gzip"));
     }
 
     [Fact]

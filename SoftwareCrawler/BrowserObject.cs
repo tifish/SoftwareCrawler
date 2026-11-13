@@ -1,6 +1,7 @@
 ﻿global using static SoftwareCrawler.BrowserObject;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using JeekTools;
 using Microsoft.Extensions.Logging;
@@ -548,6 +549,28 @@ public class BrowserObject
 
     private DateTime? _lastRespondTime = null;
 
+    // Identity Content-Length, and whether the body was content-encoded, by
+    // response URL. DownloadStarting often runs before WebView2 fills in
+    // TotalBytesToReceive, and the parser that sees the header runs off the UI
+    // thread, so the pipeline polls this for a moment before it gives up.
+    // An encoded length is not the file size: builds.dotnet.microsoft.com
+    // gzips for a browser and the compressed length is a different number.
+    private readonly object _contentLengthLock = new();
+    private readonly Dictionary<string, ResponseSize> _responseSizes =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Queue<string> _contentLengthOrder = new();
+    private const int MaxRememberedContentLengths = 64;
+
+    private readonly record struct ResponseSize(long IdentityLength, bool Encoded);
+
+    /// <summary>URL, size, Last-Modified and encoding taken from one DevTools response.</summary>
+    internal readonly record struct ResponseHeaderFacts(
+        string Url,
+        long ContentLength,
+        DateTime? LastModified,
+        bool ContentEncoded
+    );
+
     private async Task SetupDevToolsProtocolForResponseHeaders()
     {
         try
@@ -585,66 +608,183 @@ public class BrowserObject
     {
         try
         {
-            var json = System.Text.Json.JsonDocument.Parse(payload);
-
-            if (!json.RootElement.TryGetProperty("response", out var response))
+            if (!TryParseResponseHeaderFacts(payload, out var facts))
                 return;
-            if (!response.TryGetProperty("url", out var urlElement))
-                return;
-
-            var url = urlElement.GetString();
-            if (string.IsNullOrEmpty(url))
-                return;
-
-            // Get headers
-            if (!response.TryGetProperty("headers", out var headers))
-                return;
-
-            // Try to get Last-Modified header
-            DateTime? lastModified = null;
-
-            // Headers can be case-insensitive, check common variations
-            foreach (var headerName in new[] { "Last-Modified", "last-modified", "lastModified" })
-            {
-                if (headers.TryGetProperty(headerName, out var lastModifiedElement))
-                {
-                    var lastModifiedStr = lastModifiedElement.GetString();
-                    if (!string.IsNullOrEmpty(lastModifiedStr))
-                    {
-                        if (
-                            DateTime.TryParseExact(
-                                lastModifiedStr,
-                                "ddd, dd MMM yyyy HH:mm:ss 'GMT'",
-                                CultureInfo.InvariantCulture,
-                                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-                                out var parsedDate
-                            )
-                        )
-                        {
-                            lastModified = parsedDate.ToLocalTime();
-                            break;
-                        }
-                        // Fallback to general parsing
-                        else if (DateTime.TryParse(lastModifiedStr, out parsedDate))
-                        {
-                            lastModified = parsedDate;
-                            break;
-                        }
-                    }
-                }
-            }
 
             // Update _lastRespondTime for the most recent response
-            if (lastModified.HasValue)
-            {
-                _lastRespondTime = lastModified;
-            }
+            if (facts.LastModified.HasValue)
+                _lastRespondTime = facts.LastModified;
+
+            RememberResponseSize(facts);
         }
         catch (Exception ex)
         {
             // Silently ignore parsing errors to avoid spam
             Log.ZLogDebug($"Failed to parse DevTools Protocol event: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Reads the URL, Content-Length and Last-Modified from a
+    /// <c>Network.responseReceived</c> payload. Header names are matched
+    /// without case; a missing length is 0, not a failure.
+    /// </summary>
+    internal static bool TryParseResponseHeaderFacts(string payload, out ResponseHeaderFacts facts)
+    {
+        facts = default;
+        using var json = JsonDocument.Parse(payload);
+
+        if (!json.RootElement.TryGetProperty("response", out var response))
+            return false;
+        if (!response.TryGetProperty("url", out var urlElement))
+            return false;
+
+        var url = urlElement.GetString();
+        if (string.IsNullOrEmpty(url))
+            return false;
+        if (!response.TryGetProperty("headers", out var headers))
+            return false;
+        if (headers.ValueKind != JsonValueKind.Object)
+            return false;
+
+        string? lastModifiedText = null;
+        string? contentEncoding = null;
+        long contentLength = 0;
+        foreach (var header in headers.EnumerateObject())
+        {
+            if (header.Name.Equals("Last-Modified", StringComparison.OrdinalIgnoreCase))
+            {
+                lastModifiedText = HeaderText(header.Value);
+            }
+            else if (header.Name.Equals("Content-Encoding", StringComparison.OrdinalIgnoreCase))
+            {
+                contentEncoding = HeaderText(header.Value);
+            }
+            else if (
+                header.Name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)
+                && long.TryParse(HeaderText(header.Value), out var parsed)
+                && parsed > 0
+            )
+            {
+                contentLength = parsed;
+            }
+        }
+
+        facts = new ResponseHeaderFacts(
+            url,
+            contentLength,
+            ParseHttpDate(lastModifiedText),
+            IsEncodedContent(contentEncoding)
+        );
+        return true;
+    }
+
+    /// <summary>
+    /// True when <paramref name="encoding"/> names a compression the bytes on
+    /// disk will not still be wearing. <c>identity</c> and an empty value are
+    /// not encoded. A compressed Content-Length is not the file's size.
+    /// </summary>
+    internal static bool IsEncodedContent(string? encoding)
+    {
+        if (string.IsNullOrWhiteSpace(encoding))
+            return false;
+
+        foreach (
+            var part in encoding.Split(
+                ',',
+                StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries
+            )
+        )
+        {
+            if (!part.Equals("identity", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static string? HeaderText(JsonElement value) =>
+        value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number => value.GetRawText(),
+            _ => null,
+        };
+
+    private static DateTime? ParseHttpDate(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return null;
+
+        if (
+            DateTime.TryParseExact(
+                text,
+                "ddd, dd MMM yyyy HH:mm:ss 'GMT'",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var parsed
+            )
+        )
+            return parsed.ToLocalTime();
+
+        return DateTime.TryParse(text, out parsed) ? parsed : null;
+    }
+
+    private void RememberResponseSize(ResponseHeaderFacts facts)
+    {
+        // A compressed length must not be stored as the file size. Remember
+        // that the body was encoded so the pipeline can ask for the identity
+        // length instead of waiting out a header that will never be the file.
+        var identityLength = facts.ContentEncoded ? 0 : facts.ContentLength;
+        if (identityLength <= 0 && !facts.ContentEncoded)
+            return;
+        if (string.IsNullOrEmpty(facts.Url))
+            return;
+
+        lock (_contentLengthLock)
+        {
+            if (_responseSizes.TryGetValue(facts.Url, out var existing))
+            {
+                _responseSizes[facts.Url] = new ResponseSize(
+                    identityLength > 0 ? identityLength : existing.IdentityLength,
+                    facts.ContentEncoded || existing.Encoded
+                );
+                return;
+            }
+
+            _responseSizes[facts.Url] = new ResponseSize(identityLength, facts.ContentEncoded);
+            _contentLengthOrder.Enqueue(facts.Url);
+            while (_contentLengthOrder.Count > MaxRememberedContentLengths)
+                _responseSizes.Remove(_contentLengthOrder.Dequeue());
+        }
+    }
+
+    /// <summary>
+    /// The uncompressed Content-Length last seen for <paramref name="url"/>.
+    /// False when the only length seen was a compressed one.
+    /// </summary>
+    internal bool TryGetResponseContentLength(string url, out long size)
+    {
+        size = 0;
+        if (string.IsNullOrEmpty(url))
+            return false;
+
+        lock (_contentLengthLock)
+        {
+            return _responseSizes.TryGetValue(url, out var fact)
+                && fact.IdentityLength > 0
+                && (size = fact.IdentityLength) > 0;
+        }
+    }
+
+    /// <summary>True when the response for <paramref name="url"/> was content-encoded.</summary>
+    internal bool ResponseWasEncoded(string url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return false;
+
+        lock (_contentLengthLock)
+            return _responseSizes.TryGetValue(url, out var fact) && fact.Encoded;
     }
 
     #endregion
