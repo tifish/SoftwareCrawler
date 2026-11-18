@@ -1779,8 +1779,8 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
     }
 
     /// <summary>
-    /// How many times to open the download URL when the peer resets the handshake.
-    /// A frequent check does not retry the item, and the reset usually clears on
+    /// How many times to open the download URL when the peer drops the connection.
+    /// A frequent check does not retry the item, and the drop usually clears on
     /// the next connection. The caller's timeout still bounds all of the attempts.
     /// </summary>
     private const int DownloadUrlTransportAttempts = 3;
@@ -1816,10 +1816,13 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
     }
 
     /// <summary>
-    /// A connection the peer closed while it was still being set up. The message
-    /// the caller sees is "The SSL connection could not be established"; the
-    /// socket error underneath is the reset. Status codes are not exceptions, so
-    /// they never match here.
+    /// A connection the peer closed before the response headers arrived. A
+    /// handshake reset is <see cref="HttpRequestError.SecureConnectionError"/>
+    /// ("The SSL connection could not be established"). An EOF while the request
+    /// is in flight is a raw <see cref="IOException"/> ("unexpected EOF or 0
+    /// bytes from the transport stream"), which <c>HttpConnection</c> wraps as
+    /// <see cref="HttpRequestError.Unknown"/>. Status codes are not exceptions,
+    /// so they never match here.
     /// </summary>
     internal static bool IsTransientTransportFailure(Exception exception)
     {
@@ -1828,13 +1831,40 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             if (current is OperationCanceledException)
                 return false;
 
+            if (current is not HttpRequestException http)
+                continue;
+
             if (
-                current is HttpRequestException http
-                && http.HttpRequestError
+                http.HttpRequestError
                     is HttpRequestError.SecureConnectionError
                         or HttpRequestError.ConnectionError
                         or HttpRequestError.ResponseEnded
             )
+                return true;
+
+            // MapSendException copies an HttpIOException's error onto the outer
+            // exception, so those are classified above. A raw IOException is left
+            // as Unknown: that is the unexpected-EOF drop.
+            if (
+                http.HttpRequestError == HttpRequestError.Unknown
+                && ContainsIoException(http.InnerException)
+            )
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool ContainsIoException(Exception? exception)
+    {
+        for (Exception? current = exception; current != null; current = current.InnerException)
+        {
+            // A cancel that happens to wrap an IOException is the caller's token,
+            // not a dropped connection. The outer loop applies the same rule.
+            if (current is OperationCanceledException)
+                return false;
+
+            if (current is IOException)
                 return true;
         }
 

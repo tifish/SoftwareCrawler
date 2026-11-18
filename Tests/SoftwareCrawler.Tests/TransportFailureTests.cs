@@ -4,9 +4,9 @@ using System.Net.Sockets;
 namespace SoftwareCrawler.Tests;
 
 /// <summary>
-/// Direct downloads fail the item when the peer resets the TLS handshake. The
+/// Direct downloads fail the item when the peer drops the connection. The
 /// frequent check does not retry the item, so the header request retries only
-/// this kind of failure, and the logged text has to name the reset.
+/// this kind of failure, and the logged text has to name the drop.
 /// </summary>
 public class TransportFailureTests
 {
@@ -27,6 +27,39 @@ public class TransportFailureTests
             "The SSL connection could not be established: An existing connection was forcibly closed by the remote host.",
             DownloadPipeline.DescribeTransportFailure(reset)
         );
+    }
+
+    [Fact]
+    public void UnexpectedEofIsRetried()
+    {
+        // HttpConnection.MapSendException wraps a raw IOException as Unknown.
+        // The message pair is what the frequent-check log kept for Codex Desktop.
+        var eof = new HttpRequestException(
+            HttpRequestError.Unknown,
+            "An error occurred while sending the request.",
+            new IOException("Received an unexpected EOF or 0 bytes from the transport stream.")
+        );
+
+        Assert.True(DownloadPipeline.IsTransientTransportFailure(eof));
+        Assert.Equal(
+            "An error occurred while sending the request. Received an unexpected EOF or 0 bytes from the transport stream.",
+            DownloadPipeline.DescribeTransportFailure(eof)
+        );
+    }
+
+    [Fact]
+    public void UnknownWithoutATransportDropIsNotRetried()
+    {
+        Assert.False(
+            DownloadPipeline.IsTransientTransportFailure(
+                new HttpRequestException(
+                    HttpRequestError.Unknown,
+                    "An error occurred while sending the request.",
+                    new InvalidOperationException("bad request state")
+                )
+            )
+        );
+        Assert.False(DownloadPipeline.IsTransientTransportFailure(new IOException("disk full")));
     }
 
     [Fact]
