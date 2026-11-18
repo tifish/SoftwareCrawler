@@ -303,7 +303,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                 catch (Exception ex)
                 {
                     return Failed(
-                        $"Failed to request download URL: {ex.Message}",
+                        $"Failed to request download URL: {DescribeTransportFailure(ex)}",
                         DownloadOnceResult.FailedAndRetry
                     );
                 }
@@ -320,19 +320,30 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             {
                 try
                 {
-                    using var headerCts = new CancellationTokenSource(
-                        TimeSpan.FromSeconds(startDownloadTimeout)
+                    using var headerCts = CancellationTokenSource.CreateLinkedTokenSource(
+                        _item.CancellationToken
                     );
-                    response = await client.GetAsync(
-                        _item.WebPage,
-                        HttpCompletionOption.ResponseHeadersRead,
+                    headerCts.CancelAfter(TimeSpan.FromSeconds(startDownloadTimeout));
+                    // A reset mid-handshake throws here, before any byte is saved.
+                    // Retry on a new connection; the frequent check will not retry the item.
+                    response = await SendWithTransportRetryAsync(
+                        token =>
+                            client.GetAsync(
+                                _item.WebPage,
+                                HttpCompletionOption.ResponseHeadersRead,
+                                token
+                            ),
                         headerCts.Token
                     );
+                }
+                catch (OperationCanceledException) when (_item.HasCancelled)
+                {
+                    return DownloadOnceResult.FailedAndNoRetry;
                 }
                 catch (Exception ex)
                 {
                     return Failed(
-                        $"Failed to request download URL: {ex.Message}",
+                        $"Failed to request download URL: {DescribeTransportFailure(ex)}",
                         DownloadOnceResult.FailedAndRetry
                     );
                 }
@@ -375,7 +386,7 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                     catch (Exception ex)
                     {
                         Log.ZLogWarning(
-                            $"GitHub API fallback failed for {_item.Name}: {ex.Message}"
+                            $"GitHub API fallback failed for {_item.Name}: {DescribeTransportFailure(ex)}"
                         );
                     }
                 }
@@ -1767,6 +1778,90 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         return null;
     }
 
+    /// <summary>
+    /// How many times to open the download URL when the peer resets the handshake.
+    /// A frequent check does not retry the item, and the reset usually clears on
+    /// the next connection. The caller's timeout still bounds all of the attempts.
+    /// </summary>
+    private const int DownloadUrlTransportAttempts = 3;
+
+    /// <summary>
+    /// Sends again when the failure is a dropped connection rather than an HTTP
+    /// status. Each call builds its own request: a request message cannot be sent
+    /// twice, and a failed connection must not be reused.
+    /// </summary>
+    private async Task<HttpResponseMessage> SendWithTransportRetryAsync(
+        Func<CancellationToken, Task<HttpResponseMessage>> send,
+        CancellationToken cancellationToken
+    )
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await send(cancellationToken);
+            }
+            catch (Exception ex)
+                when (
+                    attempt < DownloadUrlTransportAttempts
+                    && !cancellationToken.IsCancellationRequested
+                    && IsTransientTransportFailure(ex)
+                )
+            {
+                Log.ZLogWarning(
+                    $"Download {_item.Name}: attempt {attempt} to request the download URL failed ({DescribeTransportFailure(ex)}), retrying"
+                );
+            }
+        }
+    }
+
+    /// <summary>
+    /// A connection the peer closed while it was still being set up. The message
+    /// the caller sees is "The SSL connection could not be established"; the
+    /// socket error underneath is the reset. Status codes are not exceptions, so
+    /// they never match here.
+    /// </summary>
+    internal static bool IsTransientTransportFailure(Exception exception)
+    {
+        for (Exception? current = exception; current != null; current = current.InnerException)
+        {
+            if (current is OperationCanceledException)
+                return false;
+
+            if (
+                current is HttpRequestException http
+                && http.HttpRequestError
+                    is HttpRequestError.SecureConnectionError
+                        or HttpRequestError.ConnectionError
+                        or HttpRequestError.ResponseEnded
+            )
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The failure the log should keep. The outer text only says to see the inner
+    /// exception, and that inner text is the reset itself.
+    /// </summary>
+    internal static string DescribeTransportFailure(Exception exception)
+    {
+        var innermost = exception;
+        while (innermost.InnerException != null)
+            innermost = innermost.InnerException;
+
+        if (ReferenceEquals(innermost, exception) || string.IsNullOrWhiteSpace(innermost.Message))
+            return exception.Message;
+
+        var outer = exception.Message;
+        const string trailer = ", see inner exception.";
+        if (outer.EndsWith(trailer, StringComparison.Ordinal))
+            outer = string.Concat(outer.AsSpan(0, outer.Length - trailer.Length), ":");
+
+        return $"{outer} {innermost.Message}";
+    }
+
     private static bool IsGitHubGatewayFailure(HttpStatusCode status) =>
         status is HttpStatusCode.BadGateway
             or HttpStatusCode.ServiceUnavailable
@@ -1798,14 +1893,20 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                 $"Download {_item.Name}: GitHub release gateway failed, resolving {asset.FileName} through the API"
             );
 
-        using var releaseRequest = new HttpRequestMessage(
-            HttpMethod.Get,
-            GitHubReleaseAsset.ReleaseApiUrl(asset)
-        );
-        releaseRequest.Headers.Accept.ParseAdd("application/vnd.github+json");
-        using var releaseResponse = await client.SendAsync(
-            releaseRequest,
-            HttpCompletionOption.ResponseHeadersRead,
+        using var releaseResponse = await SendWithTransportRetryAsync(
+            async token =>
+            {
+                using var releaseRequest = new HttpRequestMessage(
+                    HttpMethod.Get,
+                    GitHubReleaseAsset.ReleaseApiUrl(asset)
+                );
+                releaseRequest.Headers.Accept.ParseAdd("application/vnd.github+json");
+                return await client.SendAsync(
+                    releaseRequest,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    token
+                );
+            },
             cancellationToken
         );
         if (!releaseResponse.IsSuccessStatusCode)
@@ -1826,13 +1927,20 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
             return null;
         }
 
-        using var fileRequest = new HttpRequestMessage(HttpMethod.Get, assetUrl);
-        // Without this, the asset URL returns JSON metadata instead of redirecting
-        // at the file.
-        fileRequest.Headers.Accept.ParseAdd("application/octet-stream");
-        var fileResponse = await client.SendAsync(
-            fileRequest,
-            HttpCompletionOption.ResponseHeadersRead,
+        // Without application/octet-stream, the asset URL returns JSON metadata
+        // instead of redirecting at the file. A new request each attempt: one
+        // HttpRequestMessage cannot be sent twice.
+        var fileResponse = await SendWithTransportRetryAsync(
+            async token =>
+            {
+                using var fileRequest = new HttpRequestMessage(HttpMethod.Get, assetUrl);
+                fileRequest.Headers.Accept.ParseAdd("application/octet-stream");
+                return await client.SendAsync(
+                    fileRequest,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    token
+                );
+            },
             cancellationToken
         );
         if (!fileResponse.IsSuccessStatusCode)
