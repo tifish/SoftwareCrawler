@@ -265,118 +265,67 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         // Windows release instead of the generic default.
         async Task<DownloadOnceResult> DirectDownloadOverHttp()
         {
-            _item.Status = DownloadingStatus.WaitingForDownload;
-
-            using var handler = new HttpClientHandler();
-            if (!string.IsNullOrWhiteSpace(_item.EffectiveProxy))
-                handler.Proxy = new WebProxy(_item.EffectiveProxy);
-
-            using var client = new HttpClient(handler);
-            client.Timeout = Timeout.InfiniteTimeSpan;
-            client.DefaultRequestHeaders.UserAgent.ParseAdd(
-                "SoftwareCrawler/1.0 (Windows NT 10.0; Win64; x64)"
-            );
-
-            var startDownloadTimeout =
-                _item.StartDownloadTimeout > 0 ? _item.StartDownloadTimeout : Settings.StartDownloadTimeout;
-
-            HttpResponseMessage? response = null;
-            // A wildcard file name (*-x64.exe) is not a gateway URL. Ask the API
-            // which asset matches, the same detour a 504 takes below.
-            var patternRequest =
-                GitHubReleaseAsset.TryParse(_item.WebPage, out var patternAsset)
-                && patternAsset.IsPattern;
-            if (patternRequest)
+            try
             {
-                try
-                {
-                    using var patternCts = CancellationTokenSource.CreateLinkedTokenSource(
-                        _item.CancellationToken
-                    );
-                    patternCts.CancelAfter(TimeSpan.FromSeconds(startDownloadTimeout));
-                    response = await TryGitHubReleaseApiAsync(client, null, patternCts.Token);
-                }
-                catch (OperationCanceledException) when (_item.HasCancelled)
-                {
-                    return DownloadOnceResult.FailedAndNoRetry;
-                }
-                catch (Exception ex)
-                {
-                    return Failed(
-                        $"Failed to request download URL: {DescribeTransportFailure(ex)}",
-                        DownloadOnceResult.FailedAndRetry
-                    );
-                }
+                _item.Status = DownloadingStatus.WaitingForDownload;
 
-                if (response == null)
-                    return Failed(
-                        $"GitHub release has no single asset matching {patternAsset.FileName}.",
-                        _item.HasCancelled
-                            ? DownloadOnceResult.FailedAndNoRetry
-                            : DownloadOnceResult.FailedAndRetry
-                    );
-            }
-            else
-            {
-                try
-                {
-                    using var headerCts = CancellationTokenSource.CreateLinkedTokenSource(
-                        _item.CancellationToken
-                    );
-                    headerCts.CancelAfter(TimeSpan.FromSeconds(startDownloadTimeout));
-                    // A reset mid-handshake throws here, before any byte is saved.
-                    // Retry on a new connection; the frequent check will not retry the item.
-                    response = await SendWithTransportRetryAsync(
-                        token =>
-                            client.GetAsync(
-                                _item.WebPage,
-                                HttpCompletionOption.ResponseHeadersRead,
-                                token
-                            ),
-                        headerCts.Token
-                    );
-                }
-                catch (OperationCanceledException) when (_item.HasCancelled)
-                {
-                    return DownloadOnceResult.FailedAndNoRetry;
-                }
-                catch (Exception ex)
-                {
-                    return Failed(
-                        $"Failed to request download URL: {DescribeTransportFailure(ex)}",
-                        DownloadOnceResult.FailedAndRetry
-                    );
-                }
-            }
+                var startDownloadTimeout =
+                    _item.StartDownloadTimeout > 0 ? _item.StartDownloadTimeout : Settings.StartDownloadTimeout;
 
-            // github.com/releases/download 504s once a release lists enough assets
-            // (Codex publishes ~200). The file is still on the API: that URL 302s
-            // to the CDN. Only this gateway failure takes the detour; any other
-            // host or status is unchanged. A pattern request already took it.
-            if (
-                !patternRequest
-                && response is { IsSuccessStatusCode: false }
-                && IsGitHubGatewayFailure(response.StatusCode)
-            )
-            {
-                var failedUri = response.RequestMessage?.RequestUri;
-                var statusCode = (int)response.StatusCode;
-                var reason = response.ReasonPhrase;
-                response.Dispose();
-                response = null;
-
-                if (!_item.HasCancelled)
+                HttpResponseMessage? response = null;
+                // A wildcard file name (*-x64.exe) is not a gateway URL. Ask the API
+                // which asset matches, the same detour a 504 takes below.
+                var patternRequest =
+                    GitHubReleaseAsset.TryParse(_item.WebPage, out var patternAsset)
+                    && patternAsset.IsPattern;
+                if (patternRequest)
                 {
                     try
                     {
-                        using var fallbackCts = CancellationTokenSource.CreateLinkedTokenSource(
+                        using var patternCts = CancellationTokenSource.CreateLinkedTokenSource(
                             _item.CancellationToken
                         );
-                        fallbackCts.CancelAfter(TimeSpan.FromSeconds(startDownloadTimeout));
-                        response = await TryGitHubReleaseApiAsync(
-                            client,
-                            failedUri,
-                            fallbackCts.Token
+                        patternCts.CancelAfter(TimeSpan.FromSeconds(startDownloadTimeout));
+                        response = await TryGitHubReleaseApiAsync(null, patternCts.Token);
+                    }
+                    catch (OperationCanceledException) when (_item.HasCancelled)
+                    {
+                        return DownloadOnceResult.FailedAndNoRetry;
+                    }
+                    catch (Exception ex)
+                    {
+                        return Failed(
+                            $"Failed to request download URL: {DescribeTransportFailure(ex)}",
+                            DownloadOnceResult.FailedAndRetry
+                        );
+                    }
+
+                    if (response == null)
+                        return Failed(
+                            $"GitHub release has no single asset matching {patternAsset.FileName}.",
+                            _item.HasCancelled
+                                ? DownloadOnceResult.FailedAndNoRetry
+                                : DownloadOnceResult.FailedAndRetry
+                        );
+                }
+                else
+                {
+                    try
+                    {
+                        using var headerCts = CancellationTokenSource.CreateLinkedTokenSource(
+                            _item.CancellationToken
+                        );
+                        headerCts.CancelAfter(TimeSpan.FromSeconds(startDownloadTimeout));
+                        // A reset mid-handshake throws here, before any byte is saved.
+                        // Retry on a new connection; the frequent check will not retry the item.
+                        response = await SendWithTransportRetryAsync(
+                            (directClient, token) =>
+                                directClient.GetAsync(
+                                    _item.WebPage,
+                                    HttpCompletionOption.ResponseHeadersRead,
+                                    token
+                                ),
+                            headerCts.Token
                         );
                     }
                     catch (OperationCanceledException) when (_item.HasCancelled)
@@ -385,156 +334,200 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                     }
                     catch (Exception ex)
                     {
-                        Log.ZLogWarning(
-                            $"GitHub API fallback failed for {_item.Name}: {DescribeTransportFailure(ex)}"
+                        return Failed(
+                            $"Failed to request download URL: {DescribeTransportFailure(ex)}",
+                            DownloadOnceResult.FailedAndRetry
                         );
                     }
                 }
 
-                if (response == null)
-                    return Failed(
-                        $"Download URL returned {statusCode} {reason}.",
-                        _item.HasCancelled
-                            ? DownloadOnceResult.FailedAndNoRetry
-                            : DownloadOnceResult.FailedAndRetry
-                    );
-            }
-
-            using (response!)
-            {
-                if (!response.IsSuccessStatusCode)
-                    return Failed(
-                        $"Download URL returned {(int)response.StatusCode} {response.ReasonPhrase}.",
-                        DownloadOnceResult.FailedAndRetry
-                    );
-
-                var contentDisposition = response.Content.Headers.ContentDisposition;
-                var fileName =
-                    contentDisposition?.FileNameStar ?? contentDisposition?.FileName?.Trim('"');
-                if (string.IsNullOrWhiteSpace(fileName))
+                // github.com/releases/download 504s once a release lists enough assets
+                // (Codex publishes ~200). The file is still on the API: that URL 302s
+                // to the CDN. Only this gateway failure takes the detour; any other
+                // host or status is unchanged. A pattern request already took it.
+                if (
+                    !patternRequest
+                    && response is { IsSuccessStatusCode: false }
+                    && IsGitHubGatewayFailure(response.StatusCode)
+                )
                 {
-                    var finalUri = response.RequestMessage?.RequestUri ?? new Uri(_item.WebPage);
-                    fileName = Uri.UnescapeDataString(Path.GetFileName(finalUri.LocalPath));
-                }
+                    var failedUri = response.RequestMessage?.RequestUri;
+                    var statusCode = (int)response.StatusCode;
+                    var reason = response.ReasonPhrase;
+                    response.Dispose();
+                    response = null;
 
-                if (string.IsNullOrWhiteSpace(fileName))
-                    return Failed(
-                        "Cannot determine download file name.",
-                        DownloadOnceResult.FailedAndNoRetry
-                    );
-
-                var item = new DownloadItem
-                {
-                    Url = response.RequestMessage?.RequestUri?.ToString() ?? _item.WebPage,
-                    SuggestedFileName = fileName,
-                    TotalBytes = response.Content.Headers.ContentLength ?? 0,
-                    EndTime = response.Content.Headers.LastModified?.LocalDateTime,
-                    LastUpdateTime = DateTime.Now,
-                };
-
-                // Reuse the same decision logic as browser downloads
-                // (file type check, same-file detection, testOnly handling).
-                OnBeginDownloadHandler(this, item);
-
-                switch (beginDownloadResult)
-                {
-                    case BeginDownloadResult.Failed:
-                        return DownloadOnceResult.FailedAndRetry;
-                    case BeginDownloadResult.Downloaded:
-                        return await Succeeded(DownloadingStatus.SameFileAlreadyDownloaded);
-                    case BeginDownloadResult.HasUpdate:
-                        return await Succeeded(DownloadingStatus.HasUpdate);
-                }
-
-                _item.Status = DownloadingStatus.Downloading;
-                try
-                {
-                    using var downloadCts = CancellationTokenSource.CreateLinkedTokenSource(
-                        _item.CancellationToken
-                    );
-                    downloadCts.CancelAfter(TimeSpan.FromSeconds(Settings.DownloadTimeout));
-                    await using var httpStream = await response.Content.ReadAsStreamAsync(
-                        downloadCts.Token
-                    );
-                    await using var fileStream = new FileStream(
-                        item.DownloadedFilePath,
-                        FileMode.Create,
-                        FileAccess.Write,
-                        FileShare.None,
-                        81920,
-                        useAsync: true
-                    );
-
-                    var buffer = new byte[81920];
-                    int bytesRead;
-                    while (
-                        (bytesRead = await httpStream.ReadAsync(buffer, downloadCts.Token)) > 0
-                    )
+                    if (!_item.HasCancelled)
                     {
-                        if (_item.HasCancelled)
+                        try
                         {
-                            item.IsCancelled = true;
+                            using var fallbackCts = CancellationTokenSource.CreateLinkedTokenSource(
+                                _item.CancellationToken
+                            );
+                            fallbackCts.CancelAfter(TimeSpan.FromSeconds(startDownloadTimeout));
+                            response = await TryGitHubReleaseApiAsync(failedUri, fallbackCts.Token);
+                        }
+                        catch (OperationCanceledException) when (_item.HasCancelled)
+                        {
                             return DownloadOnceResult.FailedAndNoRetry;
                         }
-
-                        await fileStream.WriteAsync(
-                            buffer.AsMemory(0, bytesRead),
-                            downloadCts.Token
-                        );
-
-                        item.ReceivedBytes += bytesRead;
-                        item.PercentComplete =
-                            item.TotalBytes > 0
-                                ? (int)((double)item.ReceivedBytes / item.TotalBytes * 100)
-                                : 0;
-
-                        var now = DateTime.Now;
-                        var elapsed = (now - item.LastUpdateTime).TotalSeconds;
-                        if (elapsed >= 0.2)
+                        catch (Exception ex)
                         {
-                            item.CurrentSpeed = (long)(
-                                (item.ReceivedBytes - item.LastReceivedBytes) / elapsed
+                            Log.ZLogWarning(
+                                $"GitHub API fallback failed for {_item.Name}: {DescribeTransportFailure(ex)}"
                             );
-                            item.RemainingTime =
-                                item.CurrentSpeed > 0 && item.TotalBytes > 0
-                                    ? TimeSpan.FromSeconds(
-                                        (item.TotalBytes - item.ReceivedBytes)
-                                            / (double)item.CurrentSpeed
-                                    )
-                                    : TimeSpan.Zero;
-                            item.LastReceivedBytes = item.ReceivedBytes;
-                            item.LastUpdateTime = now;
-                            OnDownloadProgressHandler(this, item);
                         }
                     }
+
+                    if (response == null)
+                        return Failed(
+                            $"Download URL returned {statusCode} {reason}.",
+                            _item.HasCancelled
+                                ? DownloadOnceResult.FailedAndNoRetry
+                                : DownloadOnceResult.FailedAndRetry
+                        );
                 }
-                catch (OperationCanceledException)
+
+                using (response!)
                 {
-                    if (_item.HasCancelled)
-                        return DownloadOnceResult.FailedAndNoRetry;
-                    return TransferTimedOut();
+                    if (!response.IsSuccessStatusCode)
+                        return Failed(
+                            $"Download URL returned {(int)response.StatusCode} {response.ReasonPhrase}.",
+                            DownloadOnceResult.FailedAndRetry
+                        );
+
+                    var contentDisposition = response.Content.Headers.ContentDisposition;
+                    var fileName =
+                        contentDisposition?.FileNameStar ?? contentDisposition?.FileName?.Trim('"');
+                    if (string.IsNullOrWhiteSpace(fileName))
+                    {
+                        var finalUri = response.RequestMessage?.RequestUri ?? new Uri(_item.WebPage);
+                        fileName = Uri.UnescapeDataString(Path.GetFileName(finalUri.LocalPath));
+                    }
+
+                    if (string.IsNullOrWhiteSpace(fileName))
+                        return Failed(
+                            "Cannot determine download file name.",
+                            DownloadOnceResult.FailedAndNoRetry
+                        );
+
+                    var item = new DownloadItem
+                    {
+                        Url = response.RequestMessage?.RequestUri?.ToString() ?? _item.WebPage,
+                        SuggestedFileName = fileName,
+                        TotalBytes = response.Content.Headers.ContentLength ?? 0,
+                        EndTime = response.Content.Headers.LastModified?.LocalDateTime,
+                        LastUpdateTime = DateTime.Now,
+                    };
+
+                    // Reuse the same decision logic as browser downloads
+                    // (file type check, same-file detection, testOnly handling).
+                    OnBeginDownloadHandler(this, item);
+
+                    switch (beginDownloadResult)
+                    {
+                        case BeginDownloadResult.Failed:
+                            return DownloadOnceResult.FailedAndRetry;
+                        case BeginDownloadResult.Downloaded:
+                            return await Succeeded(DownloadingStatus.SameFileAlreadyDownloaded);
+                        case BeginDownloadResult.HasUpdate:
+                            return await Succeeded(DownloadingStatus.HasUpdate);
+                    }
+
+                    _item.Status = DownloadingStatus.Downloading;
+                    try
+                    {
+                        using var downloadCts = CancellationTokenSource.CreateLinkedTokenSource(
+                            _item.CancellationToken
+                        );
+                        downloadCts.CancelAfter(TimeSpan.FromSeconds(Settings.DownloadTimeout));
+                        await using var httpStream = await response.Content.ReadAsStreamAsync(
+                            downloadCts.Token
+                        );
+                        await using var fileStream = new FileStream(
+                            item.DownloadedFilePath,
+                            FileMode.Create,
+                            FileAccess.Write,
+                            FileShare.None,
+                            81920,
+                            useAsync: true
+                        );
+
+                        var buffer = new byte[81920];
+                        int bytesRead;
+                        while (
+                            (bytesRead = await httpStream.ReadAsync(buffer, downloadCts.Token)) > 0
+                        )
+                        {
+                            if (_item.HasCancelled)
+                            {
+                                item.IsCancelled = true;
+                                return DownloadOnceResult.FailedAndNoRetry;
+                            }
+
+                            await fileStream.WriteAsync(
+                                buffer.AsMemory(0, bytesRead),
+                                downloadCts.Token
+                            );
+
+                            item.ReceivedBytes += bytesRead;
+                            item.PercentComplete =
+                                item.TotalBytes > 0
+                                    ? (int)((double)item.ReceivedBytes / item.TotalBytes * 100)
+                                    : 0;
+
+                            var now = DateTime.Now;
+                            var elapsed = (now - item.LastUpdateTime).TotalSeconds;
+                            if (elapsed >= 0.2)
+                            {
+                                item.CurrentSpeed = (long)(
+                                    (item.ReceivedBytes - item.LastReceivedBytes) / elapsed
+                                );
+                                item.RemainingTime =
+                                    item.CurrentSpeed > 0 && item.TotalBytes > 0
+                                        ? TimeSpan.FromSeconds(
+                                            (item.TotalBytes - item.ReceivedBytes)
+                                                / (double)item.CurrentSpeed
+                                        )
+                                        : TimeSpan.Zero;
+                                item.LastReceivedBytes = item.ReceivedBytes;
+                                item.LastUpdateTime = now;
+                                OnDownloadProgressHandler(this, item);
+                            }
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        if (_item.HasCancelled)
+                            return DownloadOnceResult.FailedAndNoRetry;
+                        return TransferTimedOut();
+                    }
+                    catch (Exception ex)
+                    {
+                        return Failed(
+                            $"Failed to download file: {ex.Message}",
+                            DownloadOnceResult.FailedAndRetry
+                        );
+                    }
+
+                    if (item.TotalBytes > 0 && item.ReceivedBytes != item.TotalBytes)
+                        return Failed(
+                            $"Download incomplete: {item.ReceivedBytes} of {item.TotalBytes} bytes.",
+                            DownloadOnceResult.FailedAndRetry
+                        );
+
+                    if (item.TotalBytes == 0)
+                        item.TotalBytes = item.ReceivedBytes;
+                    item.PercentComplete = 100;
+                    item.IsComplete = true;
+                    OnDownloadProgressHandler(this, item);
+
+                    return await Succeeded(DownloadingStatus.Downloaded);
                 }
-                catch (Exception ex)
-                {
-                    return Failed(
-                        $"Failed to download file: {ex.Message}",
-                        DownloadOnceResult.FailedAndRetry
-                    );
-                }
-
-                if (item.TotalBytes > 0 && item.ReceivedBytes != item.TotalBytes)
-                    return Failed(
-                        $"Download incomplete: {item.ReceivedBytes} of {item.TotalBytes} bytes.",
-                        DownloadOnceResult.FailedAndRetry
-                    );
-
-                if (item.TotalBytes == 0)
-                    item.TotalBytes = item.ReceivedBytes;
-                item.PercentComplete = 100;
-                item.IsComplete = true;
-                OnDownloadProgressHandler(this, item);
-
-                return await Succeeded(DownloadingStatus.Downloaded);
+            }
+            finally
+            {
+                DisposeDirectClient();
             }
         }
 
@@ -1779,6 +1772,12 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
     }
 
     /// <summary>
+    /// The <see cref="HttpClient"/> whose response is still being read. A failed
+    /// attempt replaces it so the next one does not reuse that connection.
+    /// </summary>
+    private HttpClient? _directClient;
+
+    /// <summary>
     /// How many times to open the download URL when the peer drops the connection.
     /// A frequent check does not retry the item, and the drop usually clears on
     /// the next connection. The caller's timeout still bounds all of the attempts.
@@ -1786,20 +1785,91 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
     private const int DownloadUrlTransportAttempts = 3;
 
     /// <summary>
+    /// Handler for one direct-download attempt. TLS resumption stays off: a
+    /// reset handshake leaves a session ticket in this process, and the next
+    /// connection presents it and is reset again. These requests are header
+    /// checks, so a full handshake is cheap next to a stuck item.
+    /// </summary>
+    internal static SocketsHttpHandler CreateDirectDownloadHandler(string? proxy)
+    {
+        var handler = new SocketsHttpHandler();
+        if (!string.IsNullOrWhiteSpace(proxy))
+        {
+            handler.UseProxy = true;
+            handler.Proxy = new WebProxy(proxy);
+        }
+        else
+        {
+            // Empty means go direct. Leaving UseProxy at its default would
+            // still pick up the process default proxy.
+            handler.UseProxy = false;
+        }
+
+        handler.SslOptions.AllowTlsResume = false;
+        return handler;
+    }
+
+    /// <summary>
+    /// The proxy a transport attempt should use. The first attempt honors the
+    /// item. A direct item whose handshake is reset retries through the machine
+    /// proxy when one is configured: the same direct path keeps getting reset,
+    /// and that proxy is the one the item can already opt into.
+    /// </summary>
+    internal static string? ProxyForTransportAttempt(
+        int attempt,
+        string? itemProxy,
+        string? machineProxy
+    )
+    {
+        if (!string.IsNullOrWhiteSpace(itemProxy))
+            return itemProxy;
+
+        if (attempt > 1 && !string.IsNullOrWhiteSpace(machineProxy))
+            return machineProxy;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Drops the previous direct-download client and opens one that will not
+    /// resume a TLS session.
+    /// </summary>
+    private HttpClient ReplaceDirectClient(string? proxy)
+    {
+        _directClient?.Dispose();
+        _directClient = new HttpClient(CreateDirectDownloadHandler(proxy))
+        {
+            Timeout = Timeout.InfiniteTimeSpan,
+        };
+        _directClient.DefaultRequestHeaders.UserAgent.ParseAdd(
+            "SoftwareCrawler/1.0 (Windows NT 10.0; Win64; x64)"
+        );
+        return _directClient;
+    }
+
+    private void DisposeDirectClient()
+    {
+        _directClient?.Dispose();
+        _directClient = null;
+    }
+
+    /// <summary>
     /// Sends again when the failure is a dropped connection rather than an HTTP
-    /// status. Each call builds its own request: a request message cannot be sent
+    /// status. Each attempt gets a new client: a request message cannot be sent
     /// twice, and a failed connection must not be reused.
     /// </summary>
     private async Task<HttpResponseMessage> SendWithTransportRetryAsync(
-        Func<CancellationToken, Task<HttpResponseMessage>> send,
+        Func<HttpClient, CancellationToken, Task<HttpResponseMessage>> send,
         CancellationToken cancellationToken
     )
     {
         for (var attempt = 1; ; attempt++)
         {
+            var proxy = ProxyForTransportAttempt(attempt, _item.EffectiveProxy, Settings.Proxy);
+            var client = ReplaceDirectClient(proxy);
             try
             {
-                return await send(cancellationToken);
+                return await send(client, cancellationToken);
             }
             catch (Exception ex)
                 when (
@@ -1808,8 +1878,18 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                     && IsTransientTransportFailure(ex)
                 )
             {
+                var nextProxy = ProxyForTransportAttempt(
+                    attempt + 1,
+                    _item.EffectiveProxy,
+                    Settings.Proxy
+                );
+                var via =
+                    string.IsNullOrWhiteSpace(_item.EffectiveProxy)
+                    && !string.IsNullOrWhiteSpace(nextProxy)
+                        ? " through the proxy"
+                        : "";
                 Log.ZLogWarning(
-                    $"Download {_item.Name}: attempt {attempt} to request the download URL failed ({DescribeTransportFailure(ex)}), retrying"
+                    $"Download {_item.Name}: attempt {attempt} to request the download URL failed ({DescribeTransportFailure(ex)}), retrying{via}"
                 );
             }
         }
@@ -1903,7 +1983,6 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
     /// URL is not a release asset or the API cannot name the file.
     /// </summary>
     private async Task<HttpResponseMessage?> TryGitHubReleaseApiAsync(
-        HttpClient client,
         Uri? failedUri,
         CancellationToken cancellationToken
     )
@@ -1923,31 +2002,39 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
                 $"Download {_item.Name}: GitHub release gateway failed, resolving {asset.FileName} through the API"
             );
 
-        using var releaseResponse = await SendWithTransportRetryAsync(
-            async token =>
-            {
-                using var releaseRequest = new HttpRequestMessage(
-                    HttpMethod.Get,
-                    GitHubReleaseAsset.ReleaseApiUrl(asset)
-                );
-                releaseRequest.Headers.Accept.ParseAdd("application/vnd.github+json");
-                return await client.SendAsync(
-                    releaseRequest,
-                    HttpCompletionOption.ResponseHeadersRead,
-                    token
-                );
-            },
-            cancellationToken
-        );
-        if (!releaseResponse.IsSuccessStatusCode)
+        // Read the JSON and drop this response before the file request. The next
+        // attempt replaces the client, which would dispose a response still open
+        // on the previous one.
+        string json;
+        using (
+            var releaseResponse = await SendWithTransportRetryAsync(
+                async (directClient, token) =>
+                {
+                    using var releaseRequest = new HttpRequestMessage(
+                        HttpMethod.Get,
+                        GitHubReleaseAsset.ReleaseApiUrl(asset)
+                    );
+                    releaseRequest.Headers.Accept.ParseAdd("application/vnd.github+json");
+                    return await directClient.SendAsync(
+                        releaseRequest,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        token
+                    );
+                },
+                cancellationToken
+            )
+        )
         {
-            Log.ZLogWarning(
-                $"GitHub API fallback for {_item.Name} got {(int)releaseResponse.StatusCode} {releaseResponse.ReasonPhrase}"
-            );
-            return null;
-        }
+            if (!releaseResponse.IsSuccessStatusCode)
+            {
+                Log.ZLogWarning(
+                    $"GitHub API fallback for {_item.Name} got {(int)releaseResponse.StatusCode} {releaseResponse.ReasonPhrase}"
+                );
+                return null;
+            }
 
-        var json = await releaseResponse.Content.ReadAsStringAsync(cancellationToken);
+            json = await releaseResponse.Content.ReadAsStringAsync(cancellationToken);
+        }
         var assetUrl = GitHubReleaseAsset.FindAssetApiUrl(json, asset.FileName);
         if (assetUrl == null)
         {
@@ -1961,11 +2048,11 @@ internal sealed class DownloadPipeline(SoftwareItem softwareItem, bool testOnly)
         // instead of redirecting at the file. A new request each attempt: one
         // HttpRequestMessage cannot be sent twice.
         var fileResponse = await SendWithTransportRetryAsync(
-            async token =>
+            async (directClient, token) =>
             {
                 using var fileRequest = new HttpRequestMessage(HttpMethod.Get, assetUrl);
                 fileRequest.Headers.Accept.ParseAdd("application/octet-stream");
-                return await client.SendAsync(
+                return await directClient.SendAsync(
                     fileRequest,
                     HttpCompletionOption.ResponseHeadersRead,
                     token
